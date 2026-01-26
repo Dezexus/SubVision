@@ -40,7 +40,6 @@ SubVision — это инструмент на базе ИИ для автома
 ### Требования
 
 -   [Docker](https://www.docker.com/get-started)
--   [Docker Compose](https://docs.docker.com/compose/install/) (обычно идет в комплекте с Docker Desktop)
 -   Драйверы NVIDIA для вашей ОС, если вы планируете использовать GPU.
 
 ### Запуск
