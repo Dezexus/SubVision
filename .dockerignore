@@ -1,0 +1,7 @@
+__pycache__
+.venv
+.git
+*.mp4
+*.srt
+hf_cache
+paddle_cache
