@@ -5,23 +5,17 @@ import gc
 from collections import Counter
 
 from .ocr_engine import PaddleWrapper
-from .image_ops import apply_gamma_correction
+from .image_ops import apply_clahe
 from .llm_engine import GemmaBatchFixer
 from .utils import format_timestamp, is_similar, is_better_quality
 
+
 class OCRWorker(threading.Thread):
     """
-    Выполняет OCR видео в отдельном потоке, управляет созданием
-    субтитров, стабилизацией текста и опциональной AI-коррекцией.
+    Выполняет OCR видео в отдельном потоке.
     """
-    def __init__(self, params, callbacks):
-        """
-        Инициализирует воркер.
 
-        Args:
-            params (dict): Параметры для OCR (путь к видео, ROI, и т.д.).
-            callbacks (dict): Словарь с callback-функциями (log, progress, finish).
-        """
+    def __init__(self, params, callbacks):
         super().__init__()
         self.params = params
         self.cb = callbacks
@@ -29,44 +23,34 @@ class OCRWorker(threading.Thread):
         self.ocr_engine = None
 
     def stop(self):
-        """Устанавливает флаг для безопасной остановки потока."""
         self.is_running = False
 
     def _log(self, msg):
-        """Безопасно вызывает callback для логирования."""
         if self.cb.get('log'):
             self.cb['log'](msg)
 
     def _emit_subtitle(self, sub_item):
-        """Безопасно вызывает callback для отправки нового субтитра."""
         if self.cb.get('subtitle'):
             self.cb['subtitle'](sub_item)
 
     def _emit_ai_update(self, sub_item):
-        """Безопасно вызывает callback для отправки AI-исправлений."""
         if self.cb.get('ai_update'):
             self.cb['ai_update'](sub_item)
 
     def run(self):
-        """
-        Основной цикл обработки видео.
-
-        Читает кадры, выполняет OCR, стабилизирует текст с помощью буфера,
-        формирует временные метки, опционально исправляет текст через LLM
-        и сохраняет результат в .srt файл.
-        """
         srt_data = []
         try:
             self._log(f"--- ЗАПУСК OCR ---")
             step = self.params['step']
             roi = self.params['roi']
             video_path = self.params['video_path']
-            gamma_val = self.params.get('gamma', 2.5)
+            # Получаем параметр для CLAHE
+            clip_limit_val = self.params.get('clip_limit', 2.0)
 
             self.ocr_engine = PaddleWrapper(lang=self.params.get('langs', 'en'))
             device_name = "GPU" if self.ocr_engine.use_gpu else "CPU"
-            self._log(f"Устройство: {device_name} | Gamma: {gamma_val}")
-            self._log(f"Алгоритмы: Auto-Upscale")
+            self._log(f"Устройство: {device_name} | CLAHE Limit: {clip_limit_val}")
+            self._log(f"Алгоритмы: CLAHE + Force Upscale x2")
 
             cap = cv2.VideoCapture(video_path)
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -83,12 +67,12 @@ class OCRWorker(threading.Thread):
                 ok, frame = cap.read()
                 if not ok:
                     break
-                
+
                 if self.cb.get('progress') and frame_idx % 50 == 0:
                     self.cb['progress'](frame_idx, total_frames)
-                
+
                 current_ts = frame_idx / fps
-                
+
                 if frame_idx % step == 0:
                     h, w = frame.shape[:2]
                     if roi and roi[2] > 0:
@@ -99,10 +83,12 @@ class OCRWorker(threading.Thread):
                         frame_for_ocr = frame
 
                     if frame_for_ocr.size > 0:
-                        processed = apply_gamma_correction(frame_for_ocr, gamma=gamma_val)
-                        if processed.shape[0] < 80:
-                            processed = cv2.resize(processed, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
-                        
+                        # 1. Применяем CLAHE
+                        processed = apply_clahe(frame_for_ocr, clip_limit=clip_limit_val)
+
+                        # 2. Принудительный Upscale x2
+                        processed = cv2.resize(processed, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+
                         try:
                             res = self.ocr_engine.predict(processed)
                             text, conf = PaddleWrapper.parse_results(res, self.params['conf'])
@@ -132,28 +118,28 @@ class OCRWorker(threading.Thread):
                             if current_text and current_conf >= 0.75:
                                 buffer_lag = (len(subtitle_buffer) / 2) * (step / fps)
                                 actual_end = max(current_start + 0.1, current_ts - buffer_lag)
-                                item = {'id': len(srt_data) + 1, 'start': current_start, 'end': actual_end, 'text': current_text, 'conf': current_conf}
+                                item = {'id': len(srt_data) + 1, 'start': current_start, 'end': actual_end,
+                                        'text': current_text, 'conf': current_conf}
                                 srt_data.append(item)
                                 self._emit_subtitle(item)
                             elif current_text:
-                                self._log(f"Пропуск (Low conf {int(current_conf * 100)}%): {current_text}")
+                                pass  # self._log(f"Пропуск... {current_text}")
 
                             if stable_text:
                                 current_start, current_text, current_conf = current_ts, stable_text, stable_conf
                             else:
                                 current_text, current_start, current_conf = "", None, 0.0
-                
+
                 frame_idx += 1
 
             if current_text and current_start and current_conf >= 0.75:
-                item = {'id': len(srt_data) + 1, 'start': current_start, 'end': total_frames / fps, 'text': current_text, 'conf': current_conf}
+                item = {'id': len(srt_data) + 1, 'start': current_start, 'end': total_frames / fps,
+                        'text': current_text, 'conf': current_conf}
                 srt_data.append(item)
                 self._emit_subtitle(item)
-            elif current_text:
-                self._log(f"Пропуск финальной (Low conf {int(current_conf * 100)}%): {current_text}")
-            
+
             cap.release()
-            
+
             if self.params.get('use_llm', False) and srt_data:
                 self._log("--- ИИ Редактура (Gemma) ---")
                 fixer = GemmaBatchFixer(self._log)
@@ -173,7 +159,8 @@ class OCRWorker(threading.Thread):
             try:
                 with open(self.params['output_path'], "w", encoding="utf-8") as f:
                     for item in srt_data:
-                        f.write(f"{item['id']}\n{format_timestamp(item['start'])} --> {format_timestamp(item['end'])}\n{item['text']}\n\n")
+                        f.write(
+                            f"{item['id']}\n{format_timestamp(item['start'])} --> {format_timestamp(item['end'])}\n{item['text']}\n\n")
                 self._log(f"Сохранено: {self.params['output_path']}")
             except Exception as f_err:
                 self._log(f"Ошибка сохранения: {f_err}")
@@ -181,7 +168,7 @@ class OCRWorker(threading.Thread):
             if self.ocr_engine:
                 del self.ocr_engine
                 self.ocr_engine = None
-            
+
             gc.collect()
             try:
                 import paddle
