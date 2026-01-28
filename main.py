@@ -3,21 +3,12 @@ import os
 import cv2
 from PIL import Image
 from core.worker import OCRWorker
-from core.image_ops import extract_frame_cv2, calculate_roi_from_mask, apply_gamma_correction
+from core.image_ops import extract_frame_cv2, calculate_roi_from_mask, apply_clahe
 
 workers_registry = {}
 
+
 def get_video_info(video_path):
-    """
-    Извлекает информацию о видео.
-
-    Args:
-        video_path (str): Путь к видеофайлу.
-
-    Returns:
-        tuple: Кортеж, содержащий первый кадр видео в формате RGB, 
-               общее количество кадров и обновленный слайдер Gradio.
-    """
     os.environ["DISABLE_MODEL_SOURCE_CHECK"] = "1"
     if video_path is None:
         return None, 1, gr.update(value=0, maximum=1)
@@ -30,34 +21,17 @@ def get_video_info(video_path):
     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     return frame_rgb, total, gr.update(maximum=total - 1, value=0)
 
+
 def ui_extract_frame(video_path, frame_index):
-    """
-    Извлекает определенный кадр из видео.
-
-    Args:
-        video_path (str): Путь к видеофайлу.
-        frame_index (int): Индекс кадра для извлечения.
-
-    Returns:
-        numpy.ndarray: Извлеченный кадр в формате RGB или None, если кадр не найден.
-    """
     frame = extract_frame_cv2(video_path, frame_index)
     if frame is None:
         return None
     return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-def ui_generate_preview(video_path, frame_index, editor_data, gamma_val):
+
+def ui_generate_preview(video_path, frame_index, editor_data, clahe_val):
     """
-    Генерирует предварительный просмотр кадра с примененной гамма-коррекцией и ROI.
-
-    Args:
-        video_path (str): Путь к видеофайлу.
-        frame_index (int): Индекс кадра для предварительного просмотра.
-        editor_data (dict): Данные из редактора изображений Gradio, содержащие маску ROI.
-        gamma_val (float): Значение гамма-коррекции.
-
-    Returns:
-        PIL.Image.Image: Изображение для предварительного просмотра или None.
+    Генерирует превью с CLAHE и Upscale x2.
     """
     if video_path is None:
         return None
@@ -74,27 +48,17 @@ def ui_generate_preview(video_path, frame_index, editor_data, gamma_val):
         frame_roi = frame_bgr[y:y + h, x:x + w]
     else:
         frame_roi = frame_bgr
-    processed = apply_gamma_correction(frame_roi, gamma=gamma_val)
-    if processed.shape[0] < 80:
-        processed = cv2.resize(processed, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+
+    # 1. Применяем CLAHE (умный контраст)
+    processed = apply_clahe(frame_roi, clip_limit=clahe_val)
+
+    # 2. Принудительный Upscale x2
+    processed = cv2.resize(processed, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+
     return Image.fromarray(cv2.cvtColor(processed, cv2.COLOR_BGR2RGB))
 
-def run_processing(video_file, editor_data, langs, step, use_llm, gamma_val, request: gr.Request):
-    """
-    Запускает процесс распознавания текста на видео.
 
-    Args:
-        video_file (str): Путь к видеофайлу.
-        editor_data (dict): Данные из редактора изображений Gradio.
-        langs (str): Строка с языками для распознавания.
-        step (int): Шаг для обработки кадров.
-        use_llm (bool): Флаг использования LLM для редактуры.
-        gamma_val (float): Значение гамма-коррекции.
-        request (gr.Request): Запрос Gradio для получения ID сессии.
-
-    Yields:
-        tuple: Кортеж с логами, путем к файлу субтитров и данными для таблицы.
-    """
+def run_processing(video_file, editor_data, langs, step, use_llm, clahe_val, request: gr.Request):
     if video_file is None:
         yield "❌ Нет видео", None, None
         return
@@ -103,13 +67,15 @@ def run_processing(video_file, editor_data, langs, step, use_llm, gamma_val, req
     output_srt = video_file.replace(os.path.splitext(video_file)[1], ".srt")
     if os.path.exists(output_srt):
         os.remove(output_srt)
+
+    # Передаем clip_limit вместо gamma
     params = {
         'video_path': video_file, 'output_path': output_srt,
         'langs': langs, 'step': int(step),
         'conf': 0.5,
         'roi': roi_state,
         'use_llm': use_llm,
-        'gamma': gamma_val
+        'clip_limit': clahe_val
     }
     logs = []
     table_data = []
@@ -164,21 +130,14 @@ def run_processing(video_file, editor_data, langs, step, use_llm, gamma_val, req
     else:
         yield "\n".join(logs), None, table_data
 
+
 def stop_processing(request: gr.Request):
-    """
-    Останавливает текущий процесс распознавания.
-
-    Args:
-        request (gr.Request): Запрос Gradio для получения ID сессии.
-
-    Returns:
-        str: Сообщение о статусе остановки.
-    """
     session_id = request.session_hash
     if session_id in workers_registry:
         workers_registry[session_id].stop()
         return "🛑 Остановка..."
     return "Нет активных процессов."
+
 
 with gr.Blocks(title="SubVision") as app:
     total_frames_state = gr.State(value=100)
@@ -190,13 +149,14 @@ with gr.Blocks(title="SubVision") as app:
             roi_editor = gr.ImageEditor(label="3. Зона субтитров", type="numpy", interactive=True,
                                         brush=gr.Brush(colors=["#ff0000"], default_size=20), height=300)
         with gr.Column(scale=4):
-            preview_img = gr.Image(label="Глазами нейросети (Pre-processed)", height=200)
+            preview_img = gr.Image(label="Глазами нейросети (CLAHE + Upscale)", height=200)
             with gr.Group():
                 use_llm = gr.Checkbox(label="ИИ Редактура (Gemma)", value=False)
                 langs = gr.Textbox(value="en", label="Языки")
             with gr.Accordion("Настройки", open=True):
                 step = gr.Slider(1, 10, value=2, step=1, label="Шаг")
-                gamma_slider = gr.Slider(0.1, 5.0, value=2.5, step=0.1, label="Gamma (Контраст)")
+                # Заменили Gamma на CLAHE
+                clahe_slider = gr.Slider(0.1, 6.0, value=2.0, step=0.1, label="CLAHE (Контраст)")
             with gr.Row():
                 btn_run = gr.Button("🚀 СТАРТ", variant="primary")
                 btn_stop = gr.Button("⏹ СТОП")
@@ -215,16 +175,16 @@ with gr.Blocks(title="SubVision") as app:
     video_input.change(get_video_info, inputs=video_input, outputs=[roi_editor, total_frames_state, frame_slider])
     frame_slider.change(ui_extract_frame, inputs=[video_input, frame_slider], outputs=roi_editor)
     gr.on(
-        triggers=[roi_editor.change, frame_slider.change, gamma_slider.change],
+        triggers=[roi_editor.change, frame_slider.change, clahe_slider.change],
         fn=ui_generate_preview,
-        inputs=[video_input, frame_slider, roi_editor, gamma_slider],
+        inputs=[video_input, frame_slider, roi_editor, clahe_slider],
         outputs=preview_img,
         show_progress="hidden"
     )
 
     btn_run.click(
         run_processing,
-        inputs=[video_input, roi_editor, langs, step, use_llm, gamma_slider],
+        inputs=[video_input, roi_editor, langs, step, use_llm, clahe_slider],
         outputs=[log_out, file_out, subs_table]
     )
     btn_stop.click(stop_processing, outputs=log_out)
