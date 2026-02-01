@@ -21,7 +21,7 @@ def apply_clahe(frame, clip_limit=2.0, tile_grid_size=(8, 8)):
 
 def denoise_frame(frame, strength=5):
     """
-    Applies fast denoising to remove grain enhanced by CLAHE.
+    Applies fast denoising to remove grain.
     """
     if frame is None:
         return None
@@ -30,7 +30,7 @@ def denoise_frame(frame, strength=5):
 
 def apply_sharpening(frame):
     """
-    Applies a sharpening kernel to enhance edges after upscaling.
+    Applies a sharpening kernel.
     """
     if frame is None:
         return None
@@ -42,9 +42,29 @@ def apply_sharpening(frame):
     return cv2.filter2D(frame, -1, kernel)
 
 
+def calculate_image_diff(img1, img2):
+    """
+    Calculates structural difference between two images (0.0 - 1.0).
+    """
+    if img1 is None or img2 is None:
+        return 1.0
+    if img1.shape != img2.shape:
+        return 1.0
+
+    g1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+    g2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+    g1_small = cv2.resize(g1, (64, 64))
+    g2_small = cv2.resize(g2, (64, 64))
+
+    err = np.sum((g1_small.astype("float") - g2_small.astype("float")) ** 2)
+    err /= float(g1_small.shape[0] * g1_small.shape[1])
+
+    return err / 65025.0
+
+
 def extract_frame_cv2(video_path, frame_index):
     """
-    Extracts a single frame from video by index.
+    Extracts a frame from video.
     """
     if video_path is None:
         return None
@@ -62,7 +82,7 @@ def extract_frame_cv2(video_path, frame_index):
 
 def calculate_roi_from_mask(image_dict):
     """
-    Calculates ROI coordinates [x, y, w, h] from Gradio image mask.
+    Calculates ROI from Gradio mask.
     """
     if not image_dict or not "layers" in image_dict:
         return [0, 0, 0, 0]
