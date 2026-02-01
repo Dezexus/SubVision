@@ -6,40 +6,34 @@ from .utils import clean_llm_text
 try:
     from huggingface_hub import hf_hub_download
     from llama_cpp import Llama
+
     HAS_LLM = True
 except ImportError:
     HAS_LLM = False
 
+
 class GemmaBatchFixer:
     """
-    Класс для пакетного исправления субтитров с помощью модели Gemma.
+    Class for batch correction of subtitles using the Gemma model.
     """
-    def __init__(self, log_func):
-        """
-        Инициализирует фиксер.
 
-        Args:
-            log_func (callable): Функция для логирования сообщений.
-        """
+    def __init__(self, log_func):
         self.log = log_func
         self.model_path = None
         self.llm = None
 
     def load_model(self):
         """
-        Загружает GGUF-модель Gemma из Hugging Face Hub.
-
-        Returns:
-            bool: True в случае успеха, иначе False.
+        Loads the Gemma GGUF model from Hugging Face Hub.
         """
         if not HAS_LLM:
-            self.log("❌ Llama-cpp не установлена. ИИ недоступен.")
+            self.log("❌ Llama-cpp not installed. AI unavailable.")
             return False
-        
+
         repo_id = "bartowski/google_gemma-3-4b-it-GGUF"
         filename = "google_gemma-3-4b-it-Q4_K_M.gguf"
-        self.log(f"Загрузка AI модели: {filename}...")
-        
+        self.log(f"Loading AI model: {filename}...")
+
         try:
             self.model_path = hf_hub_download(repo_id=repo_id, filename=filename)
             self.llm = Llama(
@@ -50,23 +44,26 @@ class GemmaBatchFixer:
             )
             return True
         except Exception as e:
-            self.log(f"❌ Ошибка загрузки LLM: {e}")
+            self.log(f"❌ LLM Load Error: {e}")
             return False
 
     def fix_all_in_one_go(self, all_subtitles, lang='en'):
         """
-        Исправляет список субтитров одним запросом к LLM.
-
-        Args:
-            all_subtitles (list): Список словарей с субтитрами.
-            lang (str): Язык субтитров (например, 'en', 'ru').
+        Corrects a list of subtitles in a single LLM query.
         """
         if not self.llm or not all_subtitles:
             return
 
-        self.log("🤖 Формирую единый запрос для LLM со всем текстом...")
+        self.log("🤖 Forming single LLM request...")
         lines_block = "\\n".join([f"{item['id']}. {item['text']}" for item in all_subtitles])
-        lang_map = {'ru': 'Russian', 'en': 'English', 'de': 'German', 'fr': 'French'}
+        lang_map = {
+            'ru': 'Russian',
+            'en': 'English',
+            'de': 'German',
+            'fr': 'French',
+            'japan': 'Japanese',
+            'ch': 'Chinese'
+        }
         target_lang = lang_map.get(lang, 'the target language')
 
         prompt = (
@@ -85,14 +82,14 @@ class GemmaBatchFixer:
             f"OUTPUT (Corrected lines only, as a numbered list):<end_of_turn>\\n"
             f"<start_of_turn>model\\n"
         )
-        
+
         try:
-            self.log("🧠 Отправляю текст нейросети... (Это может занять время)")
+            self.log("🧠 Sending text to AI...")
             output = self.llm(prompt, max_tokens=2048, stop=["<end_of_turn>"], echo=False, temperature=0.1)
             raw_response = output['choices'][0]['text'].strip()
             fixed_lines = raw_response.split('\\n')
-            
-            self.log("✅ Нейросеть завершила обработку. Применяю исправления...")
+
+            self.log("✅ AI processing complete. Applying fixes...")
             pattern = re.compile(r'^(\\d+)[\\.\\)]\\s*(.*)')
             subs_by_id = {str(sub['id']): sub for sub in all_subtitles}
             correction_count = 0
@@ -102,10 +99,10 @@ class GemmaBatchFixer:
                 if match:
                     id_str, raw_text = match.groups()
                     clean_text = clean_llm_text(raw_text)
-                    
+
                     if not clean_text or id_str not in subs_by_id:
                         continue
-                        
+
                     original_text = subs_by_id[id_str]['text']
                     if original_text.strip().lower() != clean_text.strip().lower():
                         similarity = SequenceMatcher(None, original_text.lower(), clean_text.lower()).ratio()
@@ -113,20 +110,19 @@ class GemmaBatchFixer:
                             subs_by_id[id_str]['text'] = clean_text
                             correction_count += 1
                         else:
-                            self.log(f"⚠️ LLM предложила слишком непохожее исправление для строки #{id_str}, игнорирую.")
-            
-            self.log(f"✨ Применено исправлений: {correction_count}")
+                            self.log(f"⚠️ LLM suggestion too different for #{id_str}, ignored.")
+
+            self.log(f"✨ Fixes applied: {correction_count}")
 
         except Exception as e:
-            self.log(f"CRITICAL: Ошибка при работе с LLM: {e}")
+            self.log(f"CRITICAL: LLM Error: {e}")
             return
 
     def unload(self):
         """
-        Выгружает модель из памяти и очищает VRAM.
+        Unloads model from memory and clears VRAM.
         """
         if self.llm:
             del self.llm
             self.llm = None
             gc.collect()
-
