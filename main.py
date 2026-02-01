@@ -11,7 +11,9 @@ from core.ui_utils import generate_progress_html
 
 workers_registry = {}
 
-# Default Gemma Prompt Template
+# Constants
+DEFAULT_LLM_REPO = "bartowski/google_gemma-3-4b-it-GGUF"
+DEFAULT_LLM_FILE = "google_gemma-3-4b-it-Q4_K_M.gguf"
 DEFAULT_PROMPT = (
     "<start_of_turn>user\n"
     "You are a professional subtitle editor. Your task is to carefully read the entire subtitle text provided below and correct any grammatical, punctuation, or spelling errors in {language}.\n\n"
@@ -30,8 +32,12 @@ DEFAULT_PROMPT = (
 )
 
 
+def reset_ai_settings():
+    """Returns default values for AI settings."""
+    return DEFAULT_LLM_REPO, DEFAULT_LLM_FILE, DEFAULT_PROMPT
+
+
 def apply_preset_ui(preset_name):
-    """Wrapper to return values for Gradio components based on preset."""
     vals = get_preset_values(preset_name)
     if not vals:
         return gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
@@ -194,19 +200,18 @@ with gr.Blocks(title="SubVision") as app:
             roi_editor = gr.ImageEditor(label="3. Subtitle Zone", type="numpy", interactive=True,
                                         brush=gr.Brush(colors=["#ff0000"], default_size=20), height=300)
 
-            # --- AI Configuration Block (Left Side) ---
             with gr.Group():
                 gr.Markdown("### 🤖 AI Post-Processing")
                 use_llm = gr.Checkbox(label="Enable AI Editing (Gemma)", value=False)
                 with gr.Accordion("Advanced AI Config", open=False):
-                    llm_repo_input = gr.Textbox(value="bartowski/google_gemma-3-4b-it-GGUF", label="Repo ID")
-                    llm_file_input = gr.Textbox(value="google_gemma-3-4b-it-Q4_K_M.gguf", label="Filename")
+                    llm_repo_input = gr.Textbox(value=DEFAULT_LLM_REPO, label="Repo ID")
+                    llm_file_input = gr.Textbox(value=DEFAULT_LLM_FILE, label="Filename")
                     llm_prompt_input = gr.TextArea(value=DEFAULT_PROMPT, label="Prompt Template", lines=6)
+                    btn_reset_ai = gr.Button("Default Settings", size="sm")
 
         with gr.Column(scale=4):
             preview_img = gr.Image(label="AI Preview", height=200)
 
-            # --- Settings Accordion ---
             with gr.Accordion("OCR Settings", open=True):
                 preset_selector = gr.Dropdown(
                     choices=get_preset_choices(),
@@ -259,6 +264,12 @@ with gr.Blocks(title="SubVision") as app:
         fn=apply_preset_ui,
         inputs=preset_selector,
         outputs=[step, conf_slider, clahe_slider, chk_smart_skip, chk_visual_cutoff]
+    )
+
+    # AI Reset Handler
+    btn_reset_ai.click(
+        fn=reset_ai_settings,
+        outputs=[llm_repo_input, llm_file_input, llm_prompt_input]
     )
 
     gr.on(
