@@ -2,29 +2,22 @@ import gradio as gr
 import os
 import cv2
 from PIL import Image
+
+# Core imports
 from core.worker import OCRWorker
 from core.image_ops import extract_frame_cv2, calculate_roi_from_mask, apply_clahe, apply_sharpening, denoise_frame
+from core.presets import get_preset_choices, get_preset_values
+from core.ui_utils import generate_progress_html
 
 workers_registry = {}
 
-# --- PRESETS CONFIGURATION ---
-# Format: "Name": (Step, MinConf, CLAHE, SmartSkip, VisualCutoff)
-PRESETS = {
-    "⚖️ Баланс": (2, 80, 2.0, True, True),
-    "🏎️ Скорость": (4, 70, 1.0, True, False),
-    "🎯 Качество": (1, 85, 2.5, False, True),
-    "🔦 Сложное видео": (2, 60, 4.5, True, False)
-}
 
-
-def apply_preset(preset_name):
-    """
-    Returns values for UI components based on selected preset.
-    """
-    if preset_name not in PRESETS:
+def apply_preset_ui(preset_name):
+    """Wrapper to return values for Gradio components based on preset."""
+    vals = get_preset_values(preset_name)
+    if not vals:
         return gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
-
-    vals = PRESETS[preset_name]
+    # Returns: Step, MinConf, CLAHE, SmartSkip, VisualCutoff
     return vals[0], vals[1], vals[2], vals[3], vals[4]
 
 
@@ -72,25 +65,6 @@ def ui_generate_preview(video_path, frame_index, editor_data, clahe_val):
     final = apply_sharpening(processed)
 
     return Image.fromarray(cv2.cvtColor(final, cv2.COLOR_BGR2RGB))
-
-
-def generate_progress_html(current, total, eta):
-    if total == 0:
-        pct = 0
-    else:
-        pct = int((current / total) * 100)
-
-    return f"""
-    <div style="margin-top: 10px; font-family: sans-serif;">
-        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-            <span style="font-weight: bold;">Progress: {pct}%</span>
-            <span style="color: #666;">ETA: {eta}</span>
-        </div>
-        <div style="width: 100%; background-color: #e0e0e0; border-radius: 8px; height: 16px; overflow: hidden;">
-            <div style="width: {pct}%; background-color: #4caf50; height: 100%; transition: width 0.3s ease;"></div>
-        </div>
-    </div>
-    """
 
 
 def run_processing(video_file, editor_data, langs, step, conf_threshold, use_llm, clahe_val,
@@ -214,13 +188,11 @@ with gr.Blocks(title="SubVision") as app:
                     interactive=True
                 )
 
-            # --- Settings Accordion ---
             with gr.Accordion("Settings", open=True):
-                # Preset Dropdown
                 preset_selector = gr.Dropdown(
-                    choices=list(PRESETS.keys()),
-                    value="⚖️ Баланс",
-                    label="Пресет (Режим работы)",
+                    choices=get_preset_choices(),
+                    value="⚖️ Balance",
+                    label="Preset Mode",
                     interactive=True
                 )
 
@@ -249,13 +221,11 @@ with gr.Blocks(title="SubVision") as app:
         interactive=False
     )
 
-    # Handlers
     video_input.change(get_video_info, inputs=video_input, outputs=[roi_editor, total_frames_state, frame_slider])
     frame_slider.change(ui_extract_frame, inputs=[video_input, frame_slider], outputs=roi_editor)
 
-    # Preset Handler
     preset_selector.change(
-        fn=apply_preset,
+        fn=apply_preset_ui,
         inputs=preset_selector,
         outputs=[step, conf_slider, clahe_slider, chk_smart_skip, chk_visual_cutoff]
     )
