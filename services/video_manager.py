@@ -39,6 +39,9 @@ class VideoManager:
     def get_video_info(video_path):
         """Returns frame, total count and metadata for UI with robust error handling."""
         os.environ["DISABLE_MODEL_SOURCE_CHECK"] = "1"
+        # Suppress OpenCV logs to avoid AV1 error spam
+        os.environ["OPENCV_LOG_LEVEL"] = "OFF"
+
         if video_path is None:
             return None, 1
 
@@ -56,6 +59,7 @@ class VideoManager:
 
         ok, frame = cap.read()
 
+        # Fallback: try reading a later frame if the first one is empty
         if not ok and total > 10:
             cap.set(cv2.CAP_PROP_POS_FRAMES, 10)
             ok, frame = cap.read()
