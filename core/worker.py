@@ -1,5 +1,6 @@
 import gc
 import logging
+import queue
 import threading
 import time
 import traceback
@@ -16,9 +17,13 @@ from .video_provider import VideoProvider
 
 logger = logging.getLogger(__name__)
 
+SENTINEL = object()
+
 
 class OCRWorker(threading.Thread):
-    """Orchestrates video processing, OCR, and subtitle generation."""
+    """
+    Orchestrates video processing, OCR, and subtitle generation using a producer-consumer pattern.
+    """
 
     def __init__(
         self,
@@ -29,19 +34,43 @@ class OCRWorker(threading.Thread):
         self.params = params
         self.cb = callbacks
         self.is_running = True
+        self.frame_queue: queue.Queue[Any] = queue.Queue(maxsize=30)
+        self.producer_error: Exception | None = None
 
     def stop(self) -> None:
-        """Signals the worker to stop processing."""
+        """Signals the worker to stop processing and clears the queue."""
         self.is_running = False
+        try:
+            while not self.frame_queue.empty():
+                self.frame_queue.get_nowait()
+        except queue.Empty:
+            pass
+
+    def _producer_loop(self, video: VideoProvider, pipeline: ImagePipeline) -> None:
+        """Reads frames and applies image processing in a separate thread."""
+        try:
+            for frame_idx, timestamp, frame in video:
+                if not self.is_running:
+                    break
+
+                final_img, skipped = pipeline.process(frame)
+                self.frame_queue.put((frame_idx, timestamp, final_img, skipped))
+
+            self.frame_queue.put(SENTINEL)
+
+        except Exception as e:
+            self.producer_error = e
+            self.frame_queue.put(SENTINEL)
 
     def run(self) -> None:
-        """Main execution loop."""
+        """Main execution loop handling OCR inference and aggregation."""
         srt_data: list[dict[str, Any]] = []
         video: VideoProvider | None = None
         ocr_engine: PaddleWrapper | None = None
+        producer_thread: threading.Thread | None = None
 
         try:
-            self._log("--- START OCR ---")
+            self._log("--- START OCR (Parallel Pipeline) ---")
 
             preset_name = str(self.params.get("preset_name", "⚖️ Balance"))
             config = get_preset_config(preset_name)
@@ -61,21 +90,35 @@ class OCRWorker(threading.Thread):
             roi = self.params.get("roi", [0, 0, 0, 0])
             pipeline = ImagePipeline(roi=roi, config=config)
 
+            ocr_engine = PaddleWrapper(lang=str(self.params.get("langs", "en")))
+
             aggregator = SubtitleAggregator(min_conf=float(config["min_conf"]))
             aggregator.on_new_subtitle = self._emit_subtitle
 
-            ocr_engine = PaddleWrapper(lang=str(self.params.get("langs", "en")))
+            producer_thread = threading.Thread(
+                target=self._producer_loop, args=(video, pipeline), daemon=True
+            )
+            producer_thread.start()
 
             last_ocr_result = ("", 0.0)
             start_time = time.time()
+            total_frames = video.total_frames
 
-            for frame_idx, timestamp, frame in video:
-                if not self.is_running:
+            while self.is_running:
+                try:
+                    item = self.frame_queue.get(timeout=2.0)
+                except queue.Empty:
+                    if not producer_thread.is_alive():
+                        break
+                    continue
+
+                if item is SENTINEL:
+                    if self.producer_error:
+                        raise self.producer_error
                     break
 
-                self._update_progress(frame_idx, video.total_frames, start_time)
-
-                final_img, skipped = pipeline.process(frame)
+                frame_idx, timestamp, final_img, skipped = item
+                self._update_progress(frame_idx, total_frames, start_time)
 
                 if skipped:
                     text, conf = last_ocr_result
@@ -90,6 +133,7 @@ class OCRWorker(threading.Thread):
                     text, conf = "", 0.0
 
                 aggregator.add_result(text, conf, timestamp)
+                self.frame_queue.task_done()
 
             srt_data = aggregator.finalize()
             self._log(f"Smart Skip: {pipeline.skipped_count} frames")
@@ -104,10 +148,18 @@ class OCRWorker(threading.Thread):
             self._log(f"CRITICAL: {e}\n{traceback.format_exc()}")
             self.cb.get("finish", lambda x: None)(False)  # type: ignore[no-untyped-call]
         finally:
+            self.is_running = False
             if video:
                 video.release()
             if ocr_engine:
                 del ocr_engine
+
+            try:
+                while not self.frame_queue.empty():
+                    self.frame_queue.get_nowait()
+            except Exception:
+                pass
+
             gc.collect()
             try:
                 import paddle
