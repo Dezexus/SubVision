@@ -7,7 +7,6 @@ from core.image_ops import extract_frame_cv2, calculate_roi_from_mask, apply_cla
 
 workers_registry = {}
 
-
 def get_video_info(video_path):
     os.environ["DISABLE_MODEL_SOURCE_CHECK"] = "1"
     if video_path is None:
@@ -21,17 +20,15 @@ def get_video_info(video_path):
     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     return frame_rgb, total, gr.update(maximum=total - 1, value=0)
 
-
 def ui_extract_frame(video_path, frame_index):
     frame = extract_frame_cv2(video_path, frame_index)
     if frame is None:
         return None
     return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-
 def ui_generate_preview(video_path, frame_index, editor_data, clahe_val):
     """
-    Генерирует превью с CLAHE и Upscale x2.
+    Generates a preview with CLAHE and 2x Upscale.
     """
     if video_path is None:
         return None
@@ -49,18 +46,14 @@ def ui_generate_preview(video_path, frame_index, editor_data, clahe_val):
     else:
         frame_roi = frame_bgr
 
-    # 1. Применяем CLAHE (умный контраст)
     processed = apply_clahe(frame_roi, clip_limit=clahe_val)
-
-    # 2. Принудительный Upscale x2
     processed = cv2.resize(processed, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
 
     return Image.fromarray(cv2.cvtColor(processed, cv2.COLOR_BGR2RGB))
 
-
 def run_processing(video_file, editor_data, langs, step, use_llm, clahe_val, request: gr.Request):
     if video_file is None:
-        yield "❌ Нет видео", None, None
+        yield "❌ No video file", None, None
         return
     session_id = request.session_hash
     roi_state = calculate_roi_from_mask(editor_data)
@@ -68,7 +61,6 @@ def run_processing(video_file, editor_data, langs, step, use_llm, clahe_val, req
     if os.path.exists(output_srt):
         os.remove(output_srt)
 
-    # Передаем clip_limit вместо gamma
     params = {
         'video_path': video_file, 'output_path': output_srt,
         'langs': langs, 'step': int(step),
@@ -125,47 +117,54 @@ def run_processing(video_file, editor_data, langs, step, use_llm, clahe_val, req
         time.sleep(0.5)
         yield "\n".join(logs), None, table_data
     if os.path.exists(output_srt):
-        logs.append(f"✅ Готово: {os.path.basename(output_srt)}")
+        logs.append(f"✅ Done: {os.path.basename(output_srt)}")
         yield "\n".join(logs), output_srt, table_data
     else:
         yield "\n".join(logs), None, table_data
-
 
 def stop_processing(request: gr.Request):
     session_id = request.session_hash
     if session_id in workers_registry:
         workers_registry[session_id].stop()
-        return "🛑 Остановка..."
-    return "Нет активных процессов."
-
+        return "🛑 Stopping..."
+    return "No active processes."
 
 with gr.Blocks(title="SubVision") as app:
     total_frames_state = gr.State(value=100)
     gr.Markdown("## ⚡ SubVision (AI Video OCR)")
     with gr.Row():
         with gr.Column(scale=6):
-            video_input = gr.File(label="1. Видео файл", file_types=[".mp4", ".avi", ".mkv", ".mov"])
-            frame_slider = gr.Slider(0, 100, value=0, step=1, label="2. Выбор кадра")
-            roi_editor = gr.ImageEditor(label="3. Зона субтитров", type="numpy", interactive=True,
+            video_input = gr.File(label="1. Video File", file_types=[".mp4", ".avi", ".mkv", ".mov"])
+            frame_slider = gr.Slider(0, 100, value=0, step=1, label="2. Frame Selection")
+            roi_editor = gr.ImageEditor(label="3. Subtitle Zone", type="numpy", interactive=True,
                                         brush=gr.Brush(colors=["#ff0000"], default_size=20), height=300)
         with gr.Column(scale=4):
-            preview_img = gr.Image(label="Глазами нейросети (CLAHE + Upscale)", height=200)
+            preview_img = gr.Image(label="AI Preview (CLAHE + Upscale)", height=200)
             with gr.Group():
-                use_llm = gr.Checkbox(label="ИИ Редактура (Gemma)", value=False)
-                langs = gr.Textbox(value="en", label="Языки")
-            with gr.Accordion("Настройки", open=True):
-                step = gr.Slider(1, 10, value=2, step=1, label="Шаг")
-                # Заменили Gamma на CLAHE
-                clahe_slider = gr.Slider(0.1, 6.0, value=2.0, step=0.1, label="CLAHE (Контраст)")
+                use_llm = gr.Checkbox(label="AI Editing (Gemma)", value=False)
+                langs = gr.Dropdown(
+                    choices=[
+                        ("English", "en"),
+                        ("Russian", "ru"),
+                        ("Japanese", "japan"),
+                        ("Chinese", "ch")
+                    ],
+                    value="en",
+                    label="Language",
+                    interactive=True
+                )
+            with gr.Accordion("Settings", open=True):
+                step = gr.Slider(1, 10, value=2, step=1, label="Step")
+                clahe_slider = gr.Slider(0.1, 6.0, value=2.0, step=0.1, label="CLAHE (Contrast)")
             with gr.Row():
-                btn_run = gr.Button("🚀 СТАРТ", variant="primary")
-                btn_stop = gr.Button("⏹ СТОП")
-            log_out = gr.TextArea(label="Лог", lines=5, autoscroll=True)
-            file_out = gr.File(label="Скачать SRT")
+                btn_run = gr.Button("🚀 START", variant="primary")
+                btn_stop = gr.Button("⏹ STOP")
+            log_out = gr.TextArea(label="Log", lines=5, autoscroll=True)
+            file_out = gr.File(label="Download SRT")
 
-    gr.Markdown("### 📝 Распознанные субтитры")
+    gr.Markdown("### 📝 Recognized Subtitles")
     subs_table = gr.Dataframe(
-        headers=["№", "Оригинал", "Точность", "ИИ Редактура"],
+        headers=["#", "Original", "Accuracy", "AI Edit"],
         datatype=["str", "str", "markdown", "markdown"],
         row_count=(5, "dynamic"),
         column_count=(4, "fixed"),
