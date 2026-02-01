@@ -2,6 +2,7 @@ import threading
 import cv2
 import traceback
 import gc
+import time
 from collections import Counter
 
 from .ocr_engine import PaddleWrapper
@@ -12,7 +13,7 @@ from .utils import format_timestamp, is_similar, is_better_quality
 
 class OCRWorker(threading.Thread):
     """
-    Выполняет OCR видео в отдельном потоке.
+    Runs video OCR in a separate thread with ETA calculation.
     """
 
     def __init__(self, params, callbacks):
@@ -40,17 +41,15 @@ class OCRWorker(threading.Thread):
     def run(self):
         srt_data = []
         try:
-            self._log(f"--- ЗАПУСК OCR ---")
+            self._log(f"--- START OCR ---")
             step = self.params['step']
             roi = self.params['roi']
             video_path = self.params['video_path']
-            # Получаем параметр для CLAHE
             clip_limit_val = self.params.get('clip_limit', 2.0)
 
             self.ocr_engine = PaddleWrapper(lang=self.params.get('langs', 'en'))
             device_name = "GPU" if self.ocr_engine.use_gpu else "CPU"
-            self._log(f"Устройство: {device_name} | CLAHE Limit: {clip_limit_val}")
-            self._log(f"Алгоритмы: CLAHE + Force Upscale x2")
+            self._log(f"Device: {device_name} | CLAHE Limit: {clip_limit_val}")
 
             cap = cv2.VideoCapture(video_path)
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -63,13 +62,23 @@ class OCRWorker(threading.Thread):
             subtitle_buffer = []
             MAX_BUFFER_SIZE = 5
 
+            start_time = time.time()
+
             while self.is_running:
                 ok, frame = cap.read()
                 if not ok:
                     break
 
-                if self.cb.get('progress') and frame_idx % 50 == 0:
-                    self.cb['progress'](frame_idx, total_frames)
+                if self.cb.get('progress'):
+                    elapsed = time.time() - start_time
+                    eta_str = "--:--"
+                    if frame_idx > 0:
+                        avg_time = elapsed / frame_idx
+                        remain_frames = total_frames - frame_idx
+                        eta_sec = int(remain_frames * avg_time)
+                        eta_str = f"{eta_sec // 60:02d}:{eta_sec % 60:02d}"
+
+                    self.cb['progress'](frame_idx, total_frames, eta_str)
 
                 current_ts = frame_idx / fps
 
@@ -83,10 +92,7 @@ class OCRWorker(threading.Thread):
                         frame_for_ocr = frame
 
                     if frame_for_ocr.size > 0:
-                        # 1. Применяем CLAHE
                         processed = apply_clahe(frame_for_ocr, clip_limit=clip_limit_val)
-
-                        # 2. Принудительный Upscale x2
                         processed = cv2.resize(processed, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
 
                         try:
@@ -122,8 +128,6 @@ class OCRWorker(threading.Thread):
                                         'text': current_text, 'conf': current_conf}
                                 srt_data.append(item)
                                 self._emit_subtitle(item)
-                            elif current_text:
-                                pass  # self._log(f"Пропуск... {current_text}")
 
                             if stable_text:
                                 current_start, current_text, current_conf = current_ts, stable_text, stable_conf
@@ -141,7 +145,7 @@ class OCRWorker(threading.Thread):
             cap.release()
 
             if self.params.get('use_llm', False) and srt_data:
-                self._log("--- ИИ Редактура (Gemma) ---")
+                self._log("--- AI Editing (Gemma) ---")
                 fixer = GemmaBatchFixer(self._log)
                 if fixer.load_model():
                     raw_langs = self.params.get('langs', 'en')
@@ -161,9 +165,9 @@ class OCRWorker(threading.Thread):
                     for item in srt_data:
                         f.write(
                             f"{item['id']}\n{format_timestamp(item['start'])} --> {format_timestamp(item['end'])}\n{item['text']}\n\n")
-                self._log(f"Сохранено: {self.params['output_path']}")
+                self._log(f"Saved: {self.params['output_path']}")
             except Exception as f_err:
-                self._log(f"Ошибка сохранения: {f_err}")
+                self._log(f"Save Error: {f_err}")
 
             if self.ocr_engine:
                 del self.ocr_engine
