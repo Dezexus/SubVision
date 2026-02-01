@@ -35,18 +35,17 @@ def create_app():
                         height=220
                     )
 
-                # Hidden initially controls
-                with gr.Group() as video_controls:
-                    frame_slider = gr.Slider(0, 100, value=0, step=1, label="Frame Selector", visible=False)
-                    roi_editor = gr.ImageEditor(
-                        label="Select Subtitle Area",
-                        type="numpy",
-                        interactive=True,
-                        brush=gr.Brush(colors=["#ff0000"], default_size=20),
-                        height=350,
-                        show_label=True,
-                        visible=False
-                    )
+                # Hidden initially controls (Removed Group wrapper to eliminate border)
+                frame_slider = gr.Slider(0, 100, value=0, step=1, label="Frame Selector", visible=False)
+                roi_editor = gr.ImageEditor(
+                    label="Select Subtitle Area",
+                    type="numpy",
+                    interactive=True,
+                    brush=gr.Brush(colors=["#ff0000"], default_size=20),
+                    height=350,
+                    show_label=True,
+                    visible=False
+                )
 
                 with gr.Accordion("AI Editing", open=True):
                     use_llm = gr.Checkbox(label="Enable AI Correction", value=False)
@@ -55,7 +54,6 @@ def create_app():
                         llm_repo_input = gr.Textbox(value=callbacks.DEFAULT_LLM_REPO, label="Repo ID")
                         llm_file_input = gr.Textbox(value=callbacks.DEFAULT_LLM_FILE, label="Filename")
 
-                        # Fixed height with scroll support
                         llm_prompt_input = gr.TextArea(
                             value=callbacks.DEFAULT_PROMPT,
                             label="Prompt Template",
