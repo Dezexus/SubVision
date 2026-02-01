@@ -1,0 +1,16 @@
+# Code Formatting & Linting
+black
+ruff
+
+# Type Checking
+mypy
+types-requests
+types-setuptools
+types-Pillow
+
+# Pre-commit hooks
+pre-commit
+
+# Testing
+pytest
+pytest-cov
