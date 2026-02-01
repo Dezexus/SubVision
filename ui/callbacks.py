@@ -4,10 +4,8 @@ from core.ui_utils import generate_progress_html
 from services.video_manager import VideoManager
 from services.process_manager import ProcessManager
 
-# Singleton instance
 process_mgr = ProcessManager()
 
-# Constants
 DEFAULT_LLM_REPO = "bartowski/google_gemma-3-4b-it-GGUF"
 DEFAULT_LLM_FILE = "google_gemma-3-4b-it-Q4_K_M.gguf"
 DEFAULT_PROMPT = (
@@ -64,7 +62,7 @@ def on_run_click(video_file, editor_data, langs, step, conf_threshold, use_llm, 
                  use_smart_skip, use_visual_cutoff,
                  llm_repo, llm_file, llm_prompt, request: gr.Request):
     if video_file is None:
-        yield "❌ No video file", None, None, ""
+        yield "❌ No video file", gr.update(visible=False), None, ""
         return
 
     session_id = request.session_hash
@@ -73,7 +71,6 @@ def on_run_click(video_file, editor_data, langs, step, conf_threshold, use_llm, 
     is_finished = [False]
     prog_state = [0, 100, "Calculating..."]
 
-    # Callbacks for the worker to update UI state
     def log_cb(msg):
         logs.append(msg)
 
@@ -109,17 +106,18 @@ def on_run_click(video_file, editor_data, langs, step, conf_threshold, use_llm, 
         use_smart_skip, use_visual_cutoff, llm_repo, llm_file, llm_prompt, callbacks
     )
 
-    # UI Update Loop
     while not is_finished[0]:
         import time
         time.sleep(0.5)
         html_bar = generate_progress_html(prog_state[0], prog_state[1], prog_state[2])
-        yield "\n".join(logs), None, table_data, html_bar
+        # Update download button to be hidden during processing
+        yield "\n".join(logs), gr.update(visible=False), table_data, html_bar
 
     import os
     if os.path.exists(output_path):
         logs.append(f"✅ Done: {os.path.basename(output_path)}")
         final_html = generate_progress_html(100, 100, "00:00")
-        yield "\n".join(logs), output_path, table_data, final_html
+        # Show download button with file path
+        yield "\n".join(logs), gr.update(value=output_path, visible=True), table_data, final_html
     else:
-        yield "\n".join(logs), None, table_data, generate_progress_html(0, 100, "--:--")
+        yield "\n".join(logs), gr.update(visible=False), table_data, generate_progress_html(0, 100, "--:--")
