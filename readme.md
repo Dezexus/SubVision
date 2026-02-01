@@ -18,7 +18,7 @@ SubVision is a professional tool for extracting hardcoded subtitles from video f
 
 ## 🛠️ Technology Stack
 
-*   **OCR**: PaddleOCR (v2.9+)
+*   **OCR**: PaddleOCR (v3.3+)
 *   **LLM**: Google Gemma 4B (via `llama-cpp-python`)
 *   **Vision**: OpenCV (NumPy processing)
 *   **UI**: Gradio 4
