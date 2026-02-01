@@ -11,13 +11,30 @@ from core.ui_utils import generate_progress_html
 
 workers_registry = {}
 
+# Default Gemma Prompt Template
+DEFAULT_PROMPT = (
+    "<start_of_turn>user\n"
+    "You are a professional subtitle editor. Your task is to carefully read the entire subtitle text provided below and correct any grammatical, punctuation, or spelling errors in {language}.\n\n"
+    "KEY RULES:\n"
+    "1. Preserve fictional names and terms.\n"
+    "2. Do not rephrase sentences. Only fix clear errors.\n"
+    "3. Preserve original punctuation.\n"
+    "4. The input is a numbered list. Your output must be a numbered list matching the original line numbers.\n"
+    "5. IMPORTANT: Only include lines that you have corrected in your output.\n\n"
+    "Here is the text:\n"
+    "---\n"
+    "{subtitles}\n"
+    "---\n\n"
+    "OUTPUT (Corrected lines only, as a numbered list):<end_of_turn>\n"
+    "<start_of_turn>model\n"
+)
+
 
 def apply_preset_ui(preset_name):
     """Wrapper to return values for Gradio components based on preset."""
     vals = get_preset_values(preset_name)
     if not vals:
         return gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
-    # Returns: Step, MinConf, CLAHE, SmartSkip, VisualCutoff
     return vals[0], vals[1], vals[2], vals[3], vals[4]
 
 
@@ -68,7 +85,8 @@ def ui_generate_preview(video_path, frame_index, editor_data, clahe_val):
 
 
 def run_processing(video_file, editor_data, langs, step, conf_threshold, use_llm, clahe_val,
-                   use_smart_skip, use_visual_cutoff, request: gr.Request):
+                   use_smart_skip, use_visual_cutoff,
+                   llm_repo, llm_file, llm_prompt, request: gr.Request):
     if video_file is None:
         yield "❌ No video file", None, None, ""
         return
@@ -87,7 +105,10 @@ def run_processing(video_file, editor_data, langs, step, conf_threshold, use_llm
         'use_llm': use_llm,
         'clip_limit': clahe_val,
         'smart_skip': use_smart_skip,
-        'visual_cutoff': use_visual_cutoff
+        'visual_cutoff': use_visual_cutoff,
+        'llm_repo': llm_repo,
+        'llm_filename': llm_file,
+        'llm_prompt': llm_prompt
     }
     logs = []
     table_data = []
@@ -172,10 +193,28 @@ with gr.Blocks(title="SubVision") as app:
             frame_slider = gr.Slider(0, 100, value=0, step=1, label="2. Frame Selection")
             roi_editor = gr.ImageEditor(label="3. Subtitle Zone", type="numpy", interactive=True,
                                         brush=gr.Brush(colors=["#ff0000"], default_size=20), height=300)
+
+            # --- AI Configuration Block (Left Side) ---
+            with gr.Group():
+                gr.Markdown("### 🤖 AI Post-Processing")
+                use_llm = gr.Checkbox(label="Enable AI Editing (Gemma)", value=False)
+                with gr.Accordion("Advanced AI Config", open=False):
+                    llm_repo_input = gr.Textbox(value="bartowski/google_gemma-3-4b-it-GGUF", label="Repo ID")
+                    llm_file_input = gr.Textbox(value="google_gemma-3-4b-it-Q4_K_M.gguf", label="Filename")
+                    llm_prompt_input = gr.TextArea(value=DEFAULT_PROMPT, label="Prompt Template", lines=6)
+
         with gr.Column(scale=4):
             preview_img = gr.Image(label="AI Preview", height=200)
-            with gr.Group():
-                use_llm = gr.Checkbox(label="AI Editing (Gemma)", value=False)
+
+            # --- Settings Accordion ---
+            with gr.Accordion("OCR Settings", open=True):
+                preset_selector = gr.Dropdown(
+                    choices=get_preset_choices(),
+                    value="⚖️ Balance",
+                    label="Preset Mode",
+                    interactive=True
+                )
+
                 langs = gr.Dropdown(
                     choices=[
                         ("English", "en"),
@@ -184,15 +223,7 @@ with gr.Blocks(title="SubVision") as app:
                         ("Chinese", "ch")
                     ],
                     value="en",
-                    label="Language",
-                    interactive=True
-                )
-
-            with gr.Accordion("Settings", open=True):
-                preset_selector = gr.Dropdown(
-                    choices=get_preset_choices(),
-                    value="⚖️ Balance",
-                    label="Preset Mode",
+                    label="OCR Language",
                     interactive=True
                 )
 
@@ -240,8 +271,9 @@ with gr.Blocks(title="SubVision") as app:
 
     btn_run.click(
         run_processing,
-        inputs=[video_input, roi_editor, langs, step, conf_slider, use_llm, clahe_slider, chk_smart_skip,
-                chk_visual_cutoff],
+        inputs=[video_input, roi_editor, langs, step, conf_slider, use_llm, clahe_slider,
+                chk_smart_skip, chk_visual_cutoff,
+                llm_repo_input, llm_file_input, llm_prompt_input],
         outputs=[log_out, file_out, subs_table, progress_bar]
     )
     btn_stop.click(stop_processing, outputs=log_out)
