@@ -14,6 +14,7 @@ def create_app():
 
     with gr.Blocks(title="SubVision", theme=theme, css=CUSTOM_CSS) as app:
         total_frames_state = gr.State(value=100)
+        pending_video_path_state = gr.State(value=None)
 
         # Header
         with gr.Row():
@@ -34,18 +35,21 @@ def create_app():
                         file_types=[".mp4", ".avi", ".mkv", ".mov"],
                         height=220
                     )
+                    # Convert button (Hidden by default)
+                    btn_convert = gr.Button("🛠️ Fix Format (Convert to H.264)", visible=False, variant="secondary")
 
-                # Hidden initially controls (Removed Group wrapper to eliminate border)
-                frame_slider = gr.Slider(0, 100, value=0, step=1, label="Frame Selector", visible=False)
-                roi_editor = gr.ImageEditor(
-                    label="Select Subtitle Area",
-                    type="numpy",
-                    interactive=True,
-                    brush=gr.Brush(colors=["#ff0000"], default_size=20),
-                    height=350,
-                    show_label=True,
-                    visible=False
-                )
+                # Hidden initially controls
+                with gr.Group() as video_controls:
+                    frame_slider = gr.Slider(0, 100, value=0, step=1, label="Frame Selector", visible=False)
+                    roi_editor = gr.ImageEditor(
+                        label="Select Subtitle Area",
+                        type="numpy",
+                        interactive=True,
+                        brush=gr.Brush(colors=["#ff0000"], default_size=20),
+                        height=350,
+                        show_label=True,
+                        visible=False
+                    )
 
                 with gr.Accordion("AI Editing", open=True):
                     use_llm = gr.Checkbox(label="Enable AI Correction", value=False)
@@ -117,7 +121,14 @@ def create_app():
         video_input.change(
             callbacks.on_video_upload,
             inputs=video_input,
-            outputs=[roi_editor, total_frames_state, frame_slider]
+            outputs=[roi_editor, total_frames_state, frame_slider, btn_convert, pending_video_path_state]
+        )
+
+        # Convert Click Handler
+        btn_convert.click(
+            callbacks.on_convert_click,
+            inputs=pending_video_path_state,
+            outputs=[video_input, btn_convert, pending_video_path_state]
         )
 
         frame_slider.change(callbacks.on_frame_change, inputs=[video_input, frame_slider], outputs=roi_editor)
