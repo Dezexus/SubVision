@@ -44,13 +44,12 @@ class OCRWorker(threading.Thread):
             clip_limit_val = self.params.get('clip_limit', 2.0)
             min_conf = self.params.get('min_conf', 0.80)
 
-            # Feature flags
             use_smart_skip = self.params.get('smart_skip', True)
             use_visual_cutoff = self.params.get('visual_cutoff', True)
 
             self.ocr_engine = PaddleWrapper(lang=self.params.get('langs', 'en'))
             device_name = "GPU" if self.ocr_engine.use_gpu else "CPU"
-            self._log(f"Device: {device_name} | CLAHE: {clip_limit_val}")
+            self._log(f"Device: {device_name} | CLAHE: {clip_limit_val} | Min Conf: {int(min_conf * 100)}%")
             self._log(
                 f"Smart Skip: {'ON' if use_smart_skip else 'OFF'} | Visual Cutoff: {'ON' if use_visual_cutoff else 'OFF'}")
 
@@ -65,7 +64,6 @@ class OCRWorker(threading.Thread):
             subtitle_buffer = []
             MAX_BUFFER_SIZE = 5
 
-            # Optimization & Logic state
             last_processed_img = None
             last_ocr_result = ("", 0.0)
             active_sub_snapshot = None
@@ -90,7 +88,6 @@ class OCRWorker(threading.Thread):
 
                 current_ts = frame_idx / fps
 
-                # --- ROI Extraction ---
                 h, w = frame.shape[:2]
                 if roi and roi[2] > 0:
                     y1, y2 = max(0, roi[1]), min(h, roi[1] + roi[3])
@@ -99,8 +96,6 @@ class OCRWorker(threading.Thread):
                 else:
                     frame_roi = frame
 
-                # --- Visual Cutoff Logic (Instant End) ---
-                # Only check if enabled AND we have an active subtitle AND snapshot
                 if use_visual_cutoff and current_text and active_sub_snapshot is not None and frame_roi.size > 0:
                     curr_denoised = denoise_frame(frame_roi, strength=3)
                     cutoff_diff = calculate_image_diff(curr_denoised, active_sub_snapshot)
@@ -115,13 +110,10 @@ class OCRWorker(threading.Thread):
                         active_sub_snapshot = None
                         subtitle_buffer = []
 
-                # --- Main OCR Loop ---
                 if frame_idx % step == 0 and frame_roi.size > 0:
                     denoised = denoise_frame(frame_roi, strength=3)
 
-                    # Smart Skip Logic
                     run_ocr_pipeline = True
-
                     if use_smart_skip:
                         diff = calculate_image_diff(denoised, last_processed_img)
                         if diff < 0.005 and last_processed_img is not None:
@@ -157,12 +149,13 @@ class OCRWorker(threading.Thread):
                     else:
                         stable_text, stable_conf = "", 0.0
 
+                    # --- LOGIC UPDATE HERE ---
                     if is_similar(stable_text, current_text, 0.5):
-                        if is_better_quality(stable_text, current_text):
+                        # Only update if quality is better AND confidence is still above threshold
+                        if is_better_quality(stable_text, current_text) and stable_conf >= min_conf:
                             current_text = stable_text
                             current_conf = stable_conf
                     else:
-                        # New text detected
                         if stable_text and stable_conf >= min_conf:
                             if current_text:
                                 item = {'id': len(srt_data) + 1, 'start': current_start, 'end': current_ts,
@@ -177,11 +170,7 @@ class OCRWorker(threading.Thread):
                             if use_visual_cutoff:
                                 active_sub_snapshot = denoised.copy()
 
-                        # Text disappeared via OCR buffer (Backup or Main if Cutoff disabled)
                         elif not stable_text and current_text:
-                            # If Visual Cutoff is disabled, this is the ONLY way to end subtitle.
-                            # If enabled, this acts as a backup in case visual diff was too small.
-
                             buffer_lag = (len(subtitle_buffer) / 2) * (step / fps)
                             actual_end = max(current_start + 0.1, current_ts - buffer_lag)
 
