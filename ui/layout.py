@@ -50,9 +50,13 @@ def create_app():
                     btn_run = gr.Button("🚀 START", variant="primary")
                     btn_stop = gr.Button("⏹ STOP")
 
+                # Progress and Output
                 progress_bar = gr.HTML(label="Progress", value="")
+
+                # Replaced File output with Download Button
+                btn_download = gr.DownloadButton(label="💾 Download .SRT", visible=False, variant="primary")
+
                 log_out = gr.TextArea(label="Log", lines=5, autoscroll=True)
-                file_out = gr.File(label="Download SRT")
 
         gr.Markdown("### 📝 Recognized Subtitles")
         subs_table = gr.Dataframe(
@@ -88,7 +92,7 @@ def create_app():
             callbacks.on_run_click,
             inputs=[video_input, roi_editor, langs, step, conf_slider, use_llm, clahe_slider,
                     chk_smart_skip, chk_visual_cutoff, llm_repo_input, llm_file_input, llm_prompt_input],
-            outputs=[log_out, file_out, subs_table, progress_bar]
+            outputs=[log_out, btn_download, subs_table, progress_bar]
         )
         btn_stop.click(callbacks.on_stop_click, outputs=log_out)
 
