@@ -6,14 +6,14 @@ import time
 from collections import Counter
 
 from .ocr_engine import PaddleWrapper
-from .image_ops import apply_clahe
+from .image_ops import apply_clahe, apply_sharpening, denoise_frame
 from .llm_engine import GemmaBatchFixer
 from .utils import format_timestamp, is_similar, is_better_quality
 
 
 class OCRWorker(threading.Thread):
     """
-    Runs video OCR in a separate thread with ETA calculation and dynamic confidence threshold.
+    Runs video OCR with an enhanced image processing pipeline (Denoise -> CLAHE -> Upscale -> Sharpen).
     """
 
     def __init__(self, params, callbacks):
@@ -51,6 +51,7 @@ class OCRWorker(threading.Thread):
             self.ocr_engine = PaddleWrapper(lang=self.params.get('langs', 'en'))
             device_name = "GPU" if self.ocr_engine.use_gpu else "CPU"
             self._log(f"Device: {device_name} | CLAHE: {clip_limit_val} | Min Conf: {int(min_conf * 100)}%")
+            self._log(f"Pipeline: Denoise -> CLAHE -> Upscale x2 -> Sharpen")
 
             cap = cv2.VideoCapture(video_path)
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -93,12 +94,20 @@ class OCRWorker(threading.Thread):
                         frame_for_ocr = frame
 
                     if frame_for_ocr.size > 0:
-                        processed = apply_clahe(frame_for_ocr, clip_limit=clip_limit_val)
-                        processed = cv2.resize(processed, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+                        # 1. Denoise (Mild) to prevent CLAHE grain
+                        denoised = denoise_frame(frame_for_ocr, strength=3)
+
+                        # 2. CLAHE
+                        clahe_processed = apply_clahe(denoised, clip_limit=clip_limit_val)
+
+                        # 3. Upscale x2
+                        upscaled = cv2.resize(clahe_processed, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+
+                        # 4. Sharpening
+                        final_processed = apply_sharpening(upscaled)
 
                         try:
-                            res = self.ocr_engine.predict(processed)
-                            # Detection threshold is separate from approval threshold
+                            res = self.ocr_engine.predict(final_processed)
                             text, conf = PaddleWrapper.parse_results(res, self.params['conf'])
                             text_res_tuple = (text, conf)
                         except Exception as e:
@@ -123,7 +132,6 @@ class OCRWorker(threading.Thread):
                                 current_text = stable_text
                                 current_conf = stable_conf
                         else:
-                            # Apply dynamic confidence threshold
                             if current_text and current_conf >= min_conf:
                                 buffer_lag = (len(subtitle_buffer) / 2) * (step / fps)
                                 actual_end = max(current_start + 0.1, current_ts - buffer_lag)
