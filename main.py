@@ -30,9 +30,6 @@ def ui_extract_frame(video_path, frame_index):
 
 
 def ui_generate_preview(video_path, frame_index, editor_data, clahe_val):
-    """
-    Generates a preview with Denoise -> CLAHE -> Upscale -> Sharpen.
-    """
     if video_path is None:
         return None
     frame_bgr = extract_frame_cv2(video_path, frame_index)
@@ -49,7 +46,6 @@ def ui_generate_preview(video_path, frame_index, editor_data, clahe_val):
     else:
         frame_roi = frame_bgr
 
-    # Pipeline visualization
     denoised = denoise_frame(frame_roi, strength=3)
     processed = apply_clahe(denoised, clip_limit=clahe_val)
     processed = cv2.resize(processed, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
@@ -77,7 +73,8 @@ def generate_progress_html(current, total, eta):
     """
 
 
-def run_processing(video_file, editor_data, langs, step, conf_threshold, use_llm, clahe_val, request: gr.Request):
+def run_processing(video_file, editor_data, langs, step, conf_threshold, use_llm, clahe_val,
+                   use_smart_skip, use_visual_cutoff, request: gr.Request):
     if video_file is None:
         yield "❌ No video file", None, None, ""
         return
@@ -94,7 +91,9 @@ def run_processing(video_file, editor_data, langs, step, conf_threshold, use_llm
         'min_conf': conf_threshold / 100.0,
         'roi': roi_state,
         'use_llm': use_llm,
-        'clip_limit': clahe_val
+        'clip_limit': clahe_val,
+        'smart_skip': use_smart_skip,
+        'visual_cutoff': use_visual_cutoff
     }
     logs = []
     table_data = []
@@ -198,12 +197,15 @@ with gr.Blocks(title="SubVision") as app:
                 step = gr.Slider(1, 10, value=2, step=1, label="Step")
                 conf_slider = gr.Slider(50, 100, value=80, step=1, label="Min Accuracy %")
                 clahe_slider = gr.Slider(0.1, 6.0, value=2.0, step=0.1, label="CLAHE (Contrast)")
+                with gr.Row():
+                    chk_smart_skip = gr.Checkbox(label="⚡ Smart Skip (Faster)", value=True)
+                    chk_visual_cutoff = gr.Checkbox(label="✂ Visual Cutoff (Precise End)", value=True)
+
             with gr.Row():
                 btn_run = gr.Button("🚀 START", variant="primary")
                 btn_stop = gr.Button("⏹ STOP")
 
             progress_bar = gr.HTML(label="Progress", value="")
-
             log_out = gr.TextArea(label="Log", lines=5, autoscroll=True)
             file_out = gr.File(label="Download SRT")
 
@@ -228,7 +230,8 @@ with gr.Blocks(title="SubVision") as app:
 
     btn_run.click(
         run_processing,
-        inputs=[video_input, roi_editor, langs, step, conf_slider, use_llm, clahe_slider],
+        inputs=[video_input, roi_editor, langs, step, conf_slider, use_llm, clahe_slider, chk_smart_skip,
+                chk_visual_cutoff],
         outputs=[log_out, file_out, subs_table, progress_bar]
     )
     btn_stop.click(stop_processing, outputs=log_out)
