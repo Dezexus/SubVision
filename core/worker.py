@@ -6,16 +6,12 @@ import time
 from collections import Counter
 
 from .ocr_engine import PaddleWrapper
-from .image_ops import apply_clahe, apply_sharpening, denoise_frame
+from .image_ops import apply_clahe, apply_sharpening, denoise_frame, calculate_image_diff
 from .llm_engine import GemmaBatchFixer
 from .utils import format_timestamp, is_similar, is_better_quality
 
 
 class OCRWorker(threading.Thread):
-    """
-    Runs video OCR with an enhanced image processing pipeline (Denoise -> CLAHE -> Upscale -> Sharpen).
-    """
-
     def __init__(self, params, callbacks):
         super().__init__()
         self.params = params
@@ -51,7 +47,7 @@ class OCRWorker(threading.Thread):
             self.ocr_engine = PaddleWrapper(lang=self.params.get('langs', 'en'))
             device_name = "GPU" if self.ocr_engine.use_gpu else "CPU"
             self._log(f"Device: {device_name} | CLAHE: {clip_limit_val} | Min Conf: {int(min_conf * 100)}%")
-            self._log(f"Pipeline: Denoise -> CLAHE -> Upscale x2 -> Sharpen")
+            self._log(f"Pipeline: Denoise -> Smart Skip -> CLAHE -> Upscale -> Sharpen")
 
             cap = cv2.VideoCapture(video_path)
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -63,6 +59,11 @@ class OCRWorker(threading.Thread):
             frame_idx = 0
             subtitle_buffer = []
             MAX_BUFFER_SIZE = 5
+
+            # Optimization variables
+            last_processed_img = None
+            last_ocr_result = ("", 0.0)
+            skipped_frames_count = 0
 
             start_time = time.time()
 
@@ -94,25 +95,33 @@ class OCRWorker(threading.Thread):
                         frame_for_ocr = frame
 
                     if frame_for_ocr.size > 0:
-                        # 1. Denoise (Mild) to prevent CLAHE grain
+                        # 1. Denoise first (needed for stable diff check)
                         denoised = denoise_frame(frame_for_ocr, strength=3)
 
-                        # 2. CLAHE
-                        clahe_processed = apply_clahe(denoised, clip_limit=clip_limit_val)
+                        # 2. Smart Skip: Check if frame is similar to previous
+                        diff = calculate_image_diff(denoised, last_processed_img)
 
-                        # 3. Upscale x2
-                        upscaled = cv2.resize(clahe_processed, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+                        if diff < 0.005 and last_processed_img is not None:
+                            # Frame is static, reuse result
+                            text_res_tuple = last_ocr_result
+                            skipped_frames_count += 1
+                        else:
+                            # Frame changed, run full heavy pipeline
+                            clahe_processed = apply_clahe(denoised, clip_limit=clip_limit_val)
+                            upscaled = cv2.resize(clahe_processed, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+                            final_processed = apply_sharpening(upscaled)
 
-                        # 4. Sharpening
-                        final_processed = apply_sharpening(upscaled)
+                            try:
+                                res = self.ocr_engine.predict(final_processed)
+                                text, conf = PaddleWrapper.parse_results(res, self.params['conf'])
+                                text_res_tuple = (text, conf)
+                            except Exception as e:
+                                self._log(f"OCR Err: {e}")
+                                text_res_tuple = ("", 0.0)
 
-                        try:
-                            res = self.ocr_engine.predict(final_processed)
-                            text, conf = PaddleWrapper.parse_results(res, self.params['conf'])
-                            text_res_tuple = (text, conf)
-                        except Exception as e:
-                            self._log(f"OCR Err: {e}")
-                            text_res_tuple = ("", 0.0)
+                            # Update cache
+                            last_processed_img = denoised.copy()
+                            last_ocr_result = text_res_tuple
 
                         subtitle_buffer.append(text_res_tuple)
                         if len(subtitle_buffer) > MAX_BUFFER_SIZE:
@@ -154,6 +163,7 @@ class OCRWorker(threading.Thread):
                 self._emit_subtitle(item)
 
             cap.release()
+            self._log(f"⚡ Smart Skip optimized {skipped_frames_count} OCR calls")
 
             if self.params.get('use_llm', False) and srt_data:
                 self._log("--- AI Editing (Gemma) ---")
@@ -161,6 +171,7 @@ class OCRWorker(threading.Thread):
                 if fixer.load_model():
                     raw_langs = self.params.get('langs', 'en')
                     user_lang = raw_langs.replace(',', '+').split('+')[0].strip()
+                    # Reverted to full processing as requested
                     fixer.fix_all_in_one_go(srt_data, lang=user_lang)
                     for item in srt_data:
                         self._emit_ai_update(item)
