@@ -30,18 +30,31 @@ def on_preset_change(preset_name):
     vals = get_preset_values(preset_name)
     if not vals:
         return gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
+    gr.Info(f"Applied preset: {preset_name}")
     return vals[0], vals[1], vals[2], vals[3], vals[4]
 
 
 def on_reset_ai():
+    gr.Info("AI settings reset to default.")
     return DEFAULT_LLM_REPO, DEFAULT_LLM_FILE, DEFAULT_PROMPT
 
 
 def on_video_upload(video_path):
+    if video_path:
+        gr.Info("Video uploaded. Please select subtitle area.")
+
     frame, total = VideoManager.get_video_info(video_path)
+
     if frame is None:
-        return None, gr.State(1), gr.update(value=0, maximum=1)
-    return frame, gr.State(total), gr.update(maximum=total - 1, value=0)
+        # Hide controls if upload failed
+        return None, gr.State(1), gr.update(value=0, maximum=1, visible=False)
+
+    # Show controls (ROI Editor and Slider) when video is loaded
+    return (
+        gr.update(value=frame, visible=True),  # roi_editor
+        gr.State(total),  # total_frames_state
+        gr.update(value=0, maximum=total - 1, visible=True)  # frame_slider
+    )
 
 
 def on_frame_change(video_path, frame_index):
@@ -54,7 +67,8 @@ def on_preview_update(video_path, frame_index, editor_data, clahe_val):
 
 def on_stop_click(request: gr.Request):
     if process_mgr.stop_process(request.session_hash):
-        return "🛑 Stopping..."
+        gr.Warning("Process stopped by user.")
+        return "Stopping..."
     return "No active processes."
 
 
@@ -62,14 +76,17 @@ def on_run_click(video_file, editor_data, langs, step, conf_threshold, use_llm, 
                  use_smart_skip, use_visual_cutoff,
                  llm_repo, llm_file, llm_prompt, request: gr.Request):
     if video_file is None:
-        yield "❌ No video file", gr.update(visible=False), None, ""
+        gr.Error("Please upload a video first!")
+        yield "Error: No video", gr.update(visible=False), None, ""
         return
+
+    gr.Info("Processing started...")
 
     session_id = request.session_hash
     logs = []
     table_data = []
     is_finished = [False]
-    prog_state = [0, 100, "Calculating..."]
+    prog_state = [0, 100, "Initializing..."]
 
     def log_cb(msg):
         logs.append(msg)
@@ -101,23 +118,27 @@ def on_run_click(video_file, editor_data, langs, step, conf_threshold, use_llm, 
         'finish': finish_cb, 'progress': progress_cb
     }
 
-    output_path = process_mgr.start_process(
-        session_id, video_file, editor_data, langs, step, conf_threshold, use_llm, clahe_val,
-        use_smart_skip, use_visual_cutoff, llm_repo, llm_file, llm_prompt, callbacks
-    )
+    try:
+        output_path = process_mgr.start_process(
+            session_id, video_file, editor_data, langs, step, conf_threshold, use_llm, clahe_val,
+            use_smart_skip, use_visual_cutoff, llm_repo, llm_file, llm_prompt, callbacks
+        )
+    except Exception as e:
+        gr.Error(f"Failed to start: {e}")
+        return
 
     while not is_finished[0]:
         import time
         time.sleep(0.5)
         html_bar = generate_progress_html(prog_state[0], prog_state[1], prog_state[2])
-        # Update download button to be hidden during processing
         yield "\n".join(logs), gr.update(visible=False), table_data, html_bar
 
     import os
     if os.path.exists(output_path):
-        logs.append(f"✅ Done: {os.path.basename(output_path)}")
+        gr.Info("Extraction complete!")
+        logs.append(f"Done: {os.path.basename(output_path)}")
         final_html = generate_progress_html(100, 100, "00:00")
-        # Show download button with file path
         yield "\n".join(logs), gr.update(value=output_path, visible=True), table_data, final_html
     else:
+        gr.Warning("Process finished but no file was generated.")
         yield "\n".join(logs), gr.update(visible=False), table_data, generate_progress_html(0, 100, "--:--")
