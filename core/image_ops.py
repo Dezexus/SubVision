@@ -52,8 +52,9 @@ def calculate_image_diff(img1: np.ndarray | None, img2: np.ndarray | None) -> fl
 
     g1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
     g2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
-    g1_small = cv2.resize(g1, (64, 64))
-    g2_small = cv2.resize(g2, (64, 64))
+
+    g1_small = cv2.resize(g1, (128, 128))
+    g2_small = cv2.resize(g2, (128, 128))
 
     g1_float = g1_small.astype("float")
     g2_float = g2_small.astype("float")
