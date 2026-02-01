@@ -7,6 +7,7 @@ from core.image_ops import extract_frame_cv2, calculate_roi_from_mask, apply_cla
 
 workers_registry = {}
 
+
 def get_video_info(video_path):
     os.environ["DISABLE_MODEL_SOURCE_CHECK"] = "1"
     if video_path is None:
@@ -20,11 +21,13 @@ def get_video_info(video_path):
     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     return frame_rgb, total, gr.update(maximum=total - 1, value=0)
 
+
 def ui_extract_frame(video_path, frame_index):
     frame = extract_frame_cv2(video_path, frame_index)
     if frame is None:
         return None
     return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
 
 def ui_generate_preview(video_path, frame_index, editor_data, clahe_val):
     """
@@ -51,7 +54,9 @@ def ui_generate_preview(video_path, frame_index, editor_data, clahe_val):
 
     return Image.fromarray(cv2.cvtColor(processed, cv2.COLOR_BGR2RGB))
 
-def run_processing(video_file, editor_data, langs, step, use_llm, clahe_val, request: gr.Request):
+
+def run_processing(video_file, editor_data, langs, step, use_llm, clahe_val, request: gr.Request,
+                   progress=gr.Progress()):
     if video_file is None:
         yield "❌ No video file", None, None
         return
@@ -72,6 +77,9 @@ def run_processing(video_file, editor_data, langs, step, use_llm, clahe_val, req
     logs = []
     table_data = []
     is_finished = [False]
+
+    # Shared state for progress bridge: [current, total, eta_string]
+    prog_state = [0, 100, "Calculating..."]
 
     def log_callback(msg):
         logs.append(msg)
@@ -100,6 +108,11 @@ def run_processing(video_file, editor_data, langs, step, use_llm, clahe_val, req
                     row[3] = ""
                 break
 
+    def progress_callback(cur, tot, eta):
+        prog_state[0] = cur
+        prog_state[1] = tot
+        prog_state[2] = eta
+
     def on_finish(success):
         is_finished[0] = True
         if session_id in workers_registry:
@@ -107,20 +120,27 @@ def run_processing(video_file, editor_data, langs, step, use_llm, clahe_val, req
 
     callbacks = {
         'log': log_callback, 'finish': on_finish,
-        'subtitle': subtitle_callback, 'ai_update': ai_update_callback
+        'subtitle': subtitle_callback, 'ai_update': ai_update_callback,
+        'progress': progress_callback
     }
     worker = OCRWorker(params, callbacks)
     workers_registry[session_id] = worker
     worker.start()
+
     while not is_finished[0]:
         import time
         time.sleep(0.5)
+        # Update UI progress bar
+        if prog_state[1] > 0:
+            progress((prog_state[0], prog_state[1]), desc=f"Processing... ETA: {prog_state[2]}")
         yield "\n".join(logs), None, table_data
+
     if os.path.exists(output_srt):
         logs.append(f"✅ Done: {os.path.basename(output_srt)}")
         yield "\n".join(logs), output_srt, table_data
     else:
         yield "\n".join(logs), None, table_data
+
 
 def stop_processing(request: gr.Request):
     session_id = request.session_hash
@@ -128,6 +148,7 @@ def stop_processing(request: gr.Request):
         workers_registry[session_id].stop()
         return "🛑 Stopping..."
     return "No active processes."
+
 
 with gr.Blocks(title="SubVision") as app:
     total_frames_state = gr.State(value=100)
