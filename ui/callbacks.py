@@ -40,21 +40,52 @@ def on_reset_ai():
 
 
 def on_video_upload(video_path):
-    if video_path:
-        gr.Info("Video uploaded. Please select subtitle area.")
+    if not video_path:
+        # Hide convert button if cleared
+        return None, gr.State(1), gr.update(value=0, maximum=1, visible=False), gr.update(visible=False), None
 
+    gr.Info("Analyzing video file...")
     frame, total = VideoManager.get_video_info(video_path)
 
     if frame is None:
-        # Hide controls if upload failed
-        return None, gr.State(1), gr.update(value=0, maximum=1, visible=False)
+        gr.Warning("Codec likely unsupported (AV1/VP9).")
+        gr.Info("Click 'Fix Format' button below to convert.")
+        # Show Convert Button, Store Path, Hide controls
+        return (
+            None,
+            gr.State(1),
+            gr.update(value=0, maximum=1, visible=False),
+            gr.update(visible=True),  # Show convert btn
+            video_path  # Store pending path
+        )
 
-    # Show controls (ROI Editor and Slider) when video is loaded
+    gr.Info(f"Video loaded! Found {total} frames.")
+
     return (
-        gr.update(value=frame, visible=True),  # roi_editor
-        gr.State(total),  # total_frames_state
-        gr.update(value=0, maximum=total - 1, visible=True)  # frame_slider
+        gr.update(value=frame, visible=True),
+        gr.State(total),
+        gr.update(value=0, maximum=total - 1, visible=True),
+        gr.update(visible=False),  # Hide convert btn
+        None
     )
+
+
+def on_convert_click(video_path):
+    if not video_path:
+        return None, gr.update(visible=False), None
+
+    gr.Info("⏳ Converting video to H.264... Please wait.")
+
+    # This will block until done
+    new_path = VideoManager.convert_video_to_h264(video_path)
+
+    if new_path:
+        gr.Info("✅ Conversion successful! Loading new file...")
+        # Return new file to video_input, hide button, clear pending
+        return new_path, gr.update(visible=False), None
+    else:
+        gr.Error("Conversion failed. Check logs.")
+        return None, gr.update(visible=False), None
 
 
 def on_frame_change(video_path, frame_index):
