@@ -3,7 +3,7 @@ import os
 import cv2
 from PIL import Image
 from core.worker import OCRWorker
-from core.image_ops import extract_frame_cv2, calculate_roi_from_mask, apply_clahe
+from core.image_ops import extract_frame_cv2, calculate_roi_from_mask, apply_clahe, apply_sharpening, denoise_frame
 
 workers_registry = {}
 
@@ -31,7 +31,7 @@ def ui_extract_frame(video_path, frame_index):
 
 def ui_generate_preview(video_path, frame_index, editor_data, clahe_val):
     """
-    Generates a preview with CLAHE and 2x Upscale.
+    Generates a preview with Denoise -> CLAHE -> Upscale -> Sharpen.
     """
     if video_path is None:
         return None
@@ -49,10 +49,13 @@ def ui_generate_preview(video_path, frame_index, editor_data, clahe_val):
     else:
         frame_roi = frame_bgr
 
-    processed = apply_clahe(frame_roi, clip_limit=clahe_val)
+    # Pipeline visualization
+    denoised = denoise_frame(frame_roi, strength=3)
+    processed = apply_clahe(denoised, clip_limit=clahe_val)
     processed = cv2.resize(processed, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+    final = apply_sharpening(processed)
 
-    return Image.fromarray(cv2.cvtColor(processed, cv2.COLOR_BGR2RGB))
+    return Image.fromarray(cv2.cvtColor(final, cv2.COLOR_BGR2RGB))
 
 
 def generate_progress_html(current, total, eta):
@@ -177,7 +180,7 @@ with gr.Blocks(title="SubVision") as app:
             roi_editor = gr.ImageEditor(label="3. Subtitle Zone", type="numpy", interactive=True,
                                         brush=gr.Brush(colors=["#ff0000"], default_size=20), height=300)
         with gr.Column(scale=4):
-            preview_img = gr.Image(label="AI Preview (CLAHE + Upscale)", height=200)
+            preview_img = gr.Image(label="AI Preview (Denoise+CLAHE+Sharp)", height=200)
             with gr.Group():
                 use_llm = gr.Checkbox(label="AI Editing (Gemma)", value=False)
                 langs = gr.Dropdown(
@@ -199,7 +202,6 @@ with gr.Blocks(title="SubVision") as app:
                 btn_run = gr.Button("🚀 START", variant="primary")
                 btn_stop = gr.Button("⏹ STOP")
 
-            # Progress Bar Component (Separate)
             progress_bar = gr.HTML(label="Progress", value="")
 
             log_out = gr.TextArea(label="Log", lines=5, autoscroll=True)
