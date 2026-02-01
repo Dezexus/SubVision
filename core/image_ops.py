@@ -5,53 +5,46 @@ from PIL import Image
 
 def apply_clahe(frame, clip_limit=2.0, tile_grid_size=(8, 8)):
     """
-    Применяет CLAHE (умный адаптивный контраст) к изображению.
-
-    Использует цветовое пространство LAB, чтобы менять только яркость,
-    не искажая цвета.
-
-    Args:
-        frame (numpy.ndarray): Входное изображение (BGR).
-        clip_limit (float): Порог контраста (обычно 1.0 - 4.0).
-        tile_grid_size (tuple): Размер сетки для локального выравнивания.
-
-    Returns:
-        numpy.ndarray: Обработанное изображение.
+    Applies CLAHE (Contrast Limited Adaptive Histogram Equalization).
     """
     if frame is None:
         return None
 
-    # Конвертируем в LAB (Lightness, A, B)
     lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
-
-    # Разделяем каналы
     l, a, b = cv2.split(lab)
-
-    # Создаем CLAHE объект
     clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
-
-    # Применяем только к каналу L (яркость)
     cl = clahe.apply(l)
-
-    # Собираем каналы обратно
     limg = cv2.merge((cl, a, b))
-
-    # Конвертируем обратно в BGR
     processed = cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
-
     return processed
+
+
+def denoise_frame(frame, strength=5):
+    """
+    Applies fast denoising to remove grain enhanced by CLAHE.
+    """
+    if frame is None:
+        return None
+    return cv2.fastNlMeansDenoisingColored(frame, None, strength, strength, 7, 21)
+
+
+def apply_sharpening(frame):
+    """
+    Applies a sharpening kernel to enhance edges after upscaling.
+    """
+    if frame is None:
+        return None
+
+    kernel = np.array([[-1, -1, -1],
+                       [-1, 9, -1],
+                       [-1, -1, -1]])
+
+    return cv2.filter2D(frame, -1, kernel)
 
 
 def extract_frame_cv2(video_path, frame_index):
     """
-    Извлекает кадр из видео по индексу.
-
-    Args:
-        video_path (str): Путь к видео.
-        frame_index (int): Индекс кадра.
-
-    Returns:
-        numpy.ndarray: Кадр в формате BGR или None.
+    Extracts a single frame from video by index.
     """
     if video_path is None:
         return None
@@ -69,13 +62,7 @@ def extract_frame_cv2(video_path, frame_index):
 
 def calculate_roi_from_mask(image_dict):
     """
-    Вычисляет координаты (ROI) из маски компонента Gradio.
-
-    Args:
-        image_dict (dict): Словарь с данными от gr.ImageEditor.
-
-    Returns:
-        list: Координаты [x, y, w, h] или [0, 0, 0, 0].
+    Calculates ROI coordinates [x, y, w, h] from Gradio image mask.
     """
     if not image_dict or not "layers" in image_dict:
         return [0, 0, 0, 0]
