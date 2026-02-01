@@ -7,7 +7,7 @@ from collections import Counter
 
 from .ocr_engine import PaddleWrapper
 from .image_ops import apply_clahe, apply_sharpening, denoise_frame, calculate_image_diff
-from .llm_engine import GemmaBatchFixer
+from .llm_engine import LLMFixer
 from .utils import format_timestamp, is_similar, is_better_quality
 
 
@@ -149,9 +149,7 @@ class OCRWorker(threading.Thread):
                     else:
                         stable_text, stable_conf = "", 0.0
 
-                    # --- LOGIC UPDATE HERE ---
                     if is_similar(stable_text, current_text, 0.5):
-                        # Only update if quality is better AND confidence is still above threshold
                         if is_better_quality(stable_text, current_text) and stable_conf >= min_conf:
                             current_text = stable_text
                             current_conf = stable_conf
@@ -194,12 +192,18 @@ class OCRWorker(threading.Thread):
             self._log(f"⚡ Smart Skip optimized {skipped_frames_count} frames")
 
             if self.params.get('use_llm', False) and srt_data:
-                self._log("--- AI Editing (Gemma) ---")
-                fixer = GemmaBatchFixer(self._log)
-                if fixer.load_model():
+                self._log("--- AI Editing (Custom Model) ---")
+                fixer = LLMFixer(self._log)
+
+                # Load custom or default params
+                repo = self.params.get('llm_repo', "bartowski/google_gemma-3-4b-it-GGUF")
+                fname = self.params.get('llm_filename', "google_gemma-3-4b-it-Q4_K_M.gguf")
+                prompt = self.params.get('llm_prompt', None)
+
+                if fixer.load_model(repo, fname):
                     raw_langs = self.params.get('langs', 'en')
                     user_lang = raw_langs.replace(',', '+').split('+')[0].strip()
-                    fixer.fix_all_in_one_go(srt_data, lang=user_lang)
+                    fixer.fix_subtitles(srt_data, lang=user_lang, prompt_template=prompt)
                     for item in srt_data:
                         self._emit_ai_update(item)
                     fixer.unload()
