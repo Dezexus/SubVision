@@ -55,10 +55,28 @@ def ui_generate_preview(video_path, frame_index, editor_data, clahe_val):
     return Image.fromarray(cv2.cvtColor(processed, cv2.COLOR_BGR2RGB))
 
 
-def run_processing(video_file, editor_data, langs, step, conf_threshold, use_llm, clahe_val, request: gr.Request,
-                   progress=gr.Progress()):
+def generate_progress_html(current, total, eta):
+    if total == 0:
+        pct = 0
+    else:
+        pct = int((current / total) * 100)
+
+    return f"""
+    <div style="margin-top: 10px; font-family: sans-serif;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span style="font-weight: bold;">Progress: {pct}%</span>
+            <span style="color: #666;">ETA: {eta}</span>
+        </div>
+        <div style="width: 100%; background-color: #e0e0e0; border-radius: 8px; height: 16px; overflow: hidden;">
+            <div style="width: {pct}%; background-color: #4caf50; height: 100%; transition: width 0.3s ease;"></div>
+        </div>
+    </div>
+    """
+
+
+def run_processing(video_file, editor_data, langs, step, conf_threshold, use_llm, clahe_val, request: gr.Request):
     if video_file is None:
-        yield "❌ No video file", None, None
+        yield "❌ No video file", None, None, ""
         return
     session_id = request.session_hash
     roi_state = calculate_roi_from_mask(editor_data)
@@ -69,8 +87,8 @@ def run_processing(video_file, editor_data, langs, step, conf_threshold, use_llm
     params = {
         'video_path': video_file, 'output_path': output_srt,
         'langs': langs, 'step': int(step),
-        'conf': 0.5,  # Detection threshold (lower bound)
-        'min_conf': conf_threshold / 100.0,  # Approval threshold
+        'conf': 0.5,
+        'min_conf': conf_threshold / 100.0,
         'roi': roi_state,
         'use_llm': use_llm,
         'clip_limit': clahe_val
@@ -130,15 +148,15 @@ def run_processing(video_file, editor_data, langs, step, conf_threshold, use_llm
     while not is_finished[0]:
         import time
         time.sleep(0.5)
-        if prog_state[1] > 0:
-            progress((prog_state[0], prog_state[1]), desc=f"Processing... ETA: {prog_state[2]}")
-        yield "\n".join(logs), None, table_data
+        html_bar = generate_progress_html(prog_state[0], prog_state[1], prog_state[2])
+        yield "\n".join(logs), None, table_data, html_bar
 
     if os.path.exists(output_srt):
         logs.append(f"✅ Done: {os.path.basename(output_srt)}")
-        yield "\n".join(logs), output_srt, table_data
+        final_html = generate_progress_html(100, 100, "00:00")
+        yield "\n".join(logs), output_srt, table_data, final_html
     else:
-        yield "\n".join(logs), None, table_data
+        yield "\n".join(logs), None, table_data, generate_progress_html(0, 100, "--:--")
 
 
 def stop_processing(request: gr.Request):
@@ -180,6 +198,10 @@ with gr.Blocks(title="SubVision") as app:
             with gr.Row():
                 btn_run = gr.Button("🚀 START", variant="primary")
                 btn_stop = gr.Button("⏹ STOP")
+
+            # Progress Bar Component (Separate)
+            progress_bar = gr.HTML(label="Progress", value="")
+
             log_out = gr.TextArea(label="Log", lines=5, autoscroll=True)
             file_out = gr.File(label="Download SRT")
 
@@ -205,7 +227,7 @@ with gr.Blocks(title="SubVision") as app:
     btn_run.click(
         run_processing,
         inputs=[video_input, roi_editor, langs, step, conf_slider, use_llm, clahe_slider],
-        outputs=[log_out, file_out, subs_table]
+        outputs=[log_out, file_out, subs_table, progress_bar]
     )
     btn_stop.click(stop_processing, outputs=log_out)
 
