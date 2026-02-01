@@ -1,27 +1,75 @@
 import cv2
 import os
+import subprocess
 from PIL import Image
 from core.image_ops import extract_frame_cv2, calculate_roi_from_mask, apply_clahe, apply_sharpening, denoise_frame
 
 
 class VideoManager:
     @staticmethod
+    def convert_video_to_h264(input_path):
+        """
+        Converts video to standard MP4 (H.264) using FFmpeg.
+        Returns the new path if successful, else None.
+        """
+        if not input_path:
+            return None
+
+        output_path = f"{input_path}_converted.mp4"
+        if os.path.exists(output_path):
+            return output_path
+
+        print(f"🔄 Converting {input_path} to compatible format...")
+
+        # Ultra-fast conversion command
+        cmd = [
+            "ffmpeg", "-y", "-i", input_path,
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+            "-c:a", "copy",
+            output_path
+        ]
+        try:
+            # This blocks until finished
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return output_path
+        except subprocess.CalledProcessError:
+            return None
+
+    @staticmethod
     def get_video_info(video_path):
-        """Returns frame, total count and metadata for UI."""
+        """Returns frame, total count and metadata for UI with robust error handling."""
         os.environ["DISABLE_MODEL_SOURCE_CHECK"] = "1"
         if video_path is None:
             return None, 1
 
-        cap = cv2.VideoCapture(video_path)
-        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        ok, frame = cap.read()
-        cap.release()
+        # Explicitly use FFMPEG backend AND disable HW acceleration
+        cap = cv2.VideoCapture(
+            video_path,
+            cv2.CAP_FFMPEG,
+            [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_NONE]
+        )
 
-        if not ok:
+        if not cap.isOpened():
             return None, 1
 
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        return frame_rgb, total
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        ok, frame = cap.read()
+
+        if not ok and total > 10:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 10)
+            ok, frame = cap.read()
+
+        cap.release()
+
+        if not ok or frame is None:
+            return None, 1
+
+        try:
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            return frame_rgb, total
+        except Exception:
+            return None, 1
 
     @staticmethod
     def get_frame_image(video_path, frame_index):
