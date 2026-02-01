@@ -55,7 +55,7 @@ def ui_generate_preview(video_path, frame_index, editor_data, clahe_val):
     return Image.fromarray(cv2.cvtColor(processed, cv2.COLOR_BGR2RGB))
 
 
-def run_processing(video_file, editor_data, langs, step, use_llm, clahe_val, request: gr.Request,
+def run_processing(video_file, editor_data, langs, step, conf_threshold, use_llm, clahe_val, request: gr.Request,
                    progress=gr.Progress()):
     if video_file is None:
         yield "❌ No video file", None, None
@@ -69,7 +69,8 @@ def run_processing(video_file, editor_data, langs, step, use_llm, clahe_val, req
     params = {
         'video_path': video_file, 'output_path': output_srt,
         'langs': langs, 'step': int(step),
-        'conf': 0.5,
+        'conf': 0.5,  # Detection threshold (lower bound)
+        'min_conf': conf_threshold / 100.0,  # Approval threshold
         'roi': roi_state,
         'use_llm': use_llm,
         'clip_limit': clahe_val
@@ -78,7 +79,6 @@ def run_processing(video_file, editor_data, langs, step, use_llm, clahe_val, req
     table_data = []
     is_finished = [False]
 
-    # Shared state for progress bridge: [current, total, eta_string]
     prog_state = [0, 100, "Calculating..."]
 
     def log_callback(msg):
@@ -130,7 +130,6 @@ def run_processing(video_file, editor_data, langs, step, use_llm, clahe_val, req
     while not is_finished[0]:
         import time
         time.sleep(0.5)
-        # Update UI progress bar
         if prog_state[1] > 0:
             progress((prog_state[0], prog_state[1]), desc=f"Processing... ETA: {prog_state[2]}")
         yield "\n".join(logs), None, table_data
@@ -176,6 +175,7 @@ with gr.Blocks(title="SubVision") as app:
                 )
             with gr.Accordion("Settings", open=True):
                 step = gr.Slider(1, 10, value=2, step=1, label="Step")
+                conf_slider = gr.Slider(50, 100, value=80, step=1, label="Min Accuracy %")
                 clahe_slider = gr.Slider(0.1, 6.0, value=2.0, step=0.1, label="CLAHE (Contrast)")
             with gr.Row():
                 btn_run = gr.Button("🚀 START", variant="primary")
@@ -204,7 +204,7 @@ with gr.Blocks(title="SubVision") as app:
 
     btn_run.click(
         run_processing,
-        inputs=[video_input, roi_editor, langs, step, use_llm, clahe_slider],
+        inputs=[video_input, roi_editor, langs, step, conf_slider, use_llm, clahe_slider],
         outputs=[log_out, file_out, subs_table]
     )
     btn_stop.click(stop_processing, outputs=log_out)
