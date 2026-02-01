@@ -7,6 +7,26 @@ from core.image_ops import extract_frame_cv2, calculate_roi_from_mask, apply_cla
 
 workers_registry = {}
 
+# --- PRESETS CONFIGURATION ---
+# Format: "Name": (Step, MinConf, CLAHE, SmartSkip, VisualCutoff)
+PRESETS = {
+    "⚖️ Баланс": (2, 80, 2.0, True, True),
+    "🏎️ Скорость": (4, 70, 1.0, True, False),
+    "🎯 Качество": (1, 85, 2.5, False, True),
+    "🔦 Сложное видео": (2, 60, 4.5, True, False)
+}
+
+
+def apply_preset(preset_name):
+    """
+    Returns values for UI components based on selected preset.
+    """
+    if preset_name not in PRESETS:
+        return gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
+
+    vals = PRESETS[preset_name]
+    return vals[0], vals[1], vals[2], vals[3], vals[4]
+
 
 def get_video_info(video_path):
     os.environ["DISABLE_MODEL_SOURCE_CHECK"] = "1"
@@ -179,7 +199,7 @@ with gr.Blocks(title="SubVision") as app:
             roi_editor = gr.ImageEditor(label="3. Subtitle Zone", type="numpy", interactive=True,
                                         brush=gr.Brush(colors=["#ff0000"], default_size=20), height=300)
         with gr.Column(scale=4):
-            preview_img = gr.Image(label="AI Preview (Denoise+CLAHE+Sharp)", height=200)
+            preview_img = gr.Image(label="AI Preview", height=200)
             with gr.Group():
                 use_llm = gr.Checkbox(label="AI Editing (Gemma)", value=False)
                 langs = gr.Dropdown(
@@ -193,13 +213,24 @@ with gr.Blocks(title="SubVision") as app:
                     label="Language",
                     interactive=True
                 )
+
+            # --- Settings Accordion ---
             with gr.Accordion("Settings", open=True):
+                # Preset Dropdown
+                preset_selector = gr.Dropdown(
+                    choices=list(PRESETS.keys()),
+                    value="⚖️ Баланс",
+                    label="Пресет (Режим работы)",
+                    interactive=True
+                )
+
                 step = gr.Slider(1, 10, value=2, step=1, label="Step")
                 conf_slider = gr.Slider(50, 100, value=80, step=1, label="Min Accuracy %")
                 clahe_slider = gr.Slider(0.1, 6.0, value=2.0, step=0.1, label="CLAHE (Contrast)")
+
                 with gr.Row():
-                    chk_smart_skip = gr.Checkbox(label="⚡ Smart Skip (Faster)", value=True)
-                    chk_visual_cutoff = gr.Checkbox(label="✂ Visual Cutoff (Precise End)", value=True)
+                    chk_smart_skip = gr.Checkbox(label="⚡ Smart Skip", value=True)
+                    chk_visual_cutoff = gr.Checkbox(label="✂ Visual Cutoff", value=True)
 
             with gr.Row():
                 btn_run = gr.Button("🚀 START", variant="primary")
@@ -218,8 +249,17 @@ with gr.Blocks(title="SubVision") as app:
         interactive=False
     )
 
+    # Handlers
     video_input.change(get_video_info, inputs=video_input, outputs=[roi_editor, total_frames_state, frame_slider])
     frame_slider.change(ui_extract_frame, inputs=[video_input, frame_slider], outputs=roi_editor)
+
+    # Preset Handler
+    preset_selector.change(
+        fn=apply_preset,
+        inputs=preset_selector,
+        outputs=[step, conf_slider, clahe_slider, chk_smart_skip, chk_visual_cutoff]
+    )
+
     gr.on(
         triggers=[roi_editor.change, frame_slider.change, clahe_slider.change],
         fn=ui_generate_preview,
