@@ -1,40 +1,63 @@
 import os
-from core.worker import OCRWorker
+from collections.abc import Callable
+from typing import Any
+
 from core.image_ops import calculate_roi_from_mask
+from core.worker import OCRWorker
 
 
 class ProcessManager:
-    def __init__(self):
-        self.workers_registry = {}
+    """Manages background OCR worker threads per session."""
 
-    def start_process(self, session_id, video_file, editor_data,
-                      langs, step, conf_threshold, use_llm, clahe_val,
-                      smart_skip, visual_cutoff,
-                      llm_repo, llm_file, llm_prompt, callbacks):
+    def __init__(self) -> None:
+        self.workers_registry: dict[str, OCRWorker] = {}
 
+    def start_process(
+        self,
+        session_id: str,
+        video_file: str,
+        editor_data: dict[str, Any] | None,
+        langs: str,
+        step: int,
+        conf_threshold: float,
+        use_llm: bool,
+        clahe_val: float,
+        smart_skip: bool,
+        visual_cutoff: bool,
+        llm_repo: str,
+        llm_file: str,
+        llm_prompt: str | None,
+        callbacks: dict[str, Callable[..., Any]],
+    ) -> str:
+        """Starts a new OCR processing task."""
         if session_id in self.workers_registry:
             self.stop_process(session_id)
 
         roi_state = calculate_roi_from_mask(editor_data)
-        output_srt = video_file.replace(os.path.splitext(video_file)[1], ".srt")
-        if os.path.exists(output_srt):
-            os.remove(output_srt)
+        base_name, _ = os.path.splitext(video_file)
+        output_srt = f"{base_name}.srt"
 
-        params = {
-            'video_path': video_file,
-            'output_path': output_srt,
-            'langs': langs,
-            'step': int(step),
-            'conf': 0.5,
-            'min_conf': conf_threshold / 100.0,
-            'roi': roi_state,
-            'use_llm': use_llm,
-            'clip_limit': clahe_val,
-            'smart_skip': smart_skip,
-            'visual_cutoff': visual_cutoff,
-            'llm_repo': llm_repo,
-            'llm_filename': llm_file,
-            'llm_prompt': llm_prompt
+        if os.path.exists(output_srt):
+            try:
+                os.remove(output_srt)
+            except OSError:
+                pass
+
+        params: dict[str, Any] = {
+            "video_path": video_file,
+            "output_path": output_srt,
+            "langs": langs,
+            "step": int(step),
+            "conf": 0.5,
+            "min_conf": conf_threshold / 100.0,
+            "roi": roi_state,
+            "use_llm": use_llm,
+            "clip_limit": clahe_val,
+            "smart_skip": smart_skip,
+            "visual_cutoff": visual_cutoff,
+            "llm_repo": llm_repo,
+            "llm_filename": llm_file,
+            "llm_prompt": llm_prompt,
         }
 
         worker = OCRWorker(params, callbacks)
@@ -42,7 +65,8 @@ class ProcessManager:
         worker.start()
         return output_srt
 
-    def stop_process(self, session_id):
+    def stop_process(self, session_id: str) -> bool:
+        """Stops and removes the worker for the given session."""
         if session_id in self.workers_registry:
             self.workers_registry[session_id].stop()
             del self.workers_registry[session_id]
