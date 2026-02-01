@@ -1,7 +1,6 @@
 # =========================================================================
 # ЭТАП 1: Builder
 # =========================================================================
-# ИСПОЛЬЗУЕМ CUDA 11.8 - это требование PaddlePaddle 3.2.0
 FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -21,12 +20,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel cmake scikit-build-core
 RUN pip install --no-cache-dir opencv-python-headless
 
-# Устанавливаем PaddlePaddle 3.2.0 для CUDA 11.8 (согласно документации)
 RUN pip install --no-cache-dir paddlepaddle-gpu==3.2.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
-
-# Устанавливаем PaddleOCR (версия 2.9.1+ это и есть 3.x)
 RUN pip install --no-cache-dir "paddleocr>=2.9.1"
-
 RUN pip install --no-cache-dir llama-cpp-python
 
 COPY requirements.txt .
@@ -35,7 +30,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # =========================================================================
 # ЭТАП 2: Runtime
 # =========================================================================
-# Тоже используем CUDA 11.8
 FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -44,7 +38,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PATH="/opt/venv/bin:$PATH"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 libgomp1 ccache libgl1-mesa-glx libglib2.0-0 \
+    python3 libgomp1 ccache libgl1-mesa-glx libglib2.0-0 ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
