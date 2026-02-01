@@ -44,10 +44,15 @@ class OCRWorker(threading.Thread):
             clip_limit_val = self.params.get('clip_limit', 2.0)
             min_conf = self.params.get('min_conf', 0.80)
 
+            # Feature flags
+            use_smart_skip = self.params.get('smart_skip', True)
+            use_visual_cutoff = self.params.get('visual_cutoff', True)
+
             self.ocr_engine = PaddleWrapper(lang=self.params.get('langs', 'en'))
             device_name = "GPU" if self.ocr_engine.use_gpu else "CPU"
-            self._log(f"Device: {device_name} | CLAHE: {clip_limit_val} | Min Conf: {int(min_conf * 100)}%")
-            self._log(f"Pipeline: Smart Skip + Visual Cutoff -> CLAHE -> OCR")
+            self._log(f"Device: {device_name} | CLAHE: {clip_limit_val}")
+            self._log(
+                f"Smart Skip: {'ON' if use_smart_skip else 'OFF'} | Visual Cutoff: {'ON' if use_visual_cutoff else 'OFF'}")
 
             cap = cv2.VideoCapture(video_path)
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -63,7 +68,7 @@ class OCRWorker(threading.Thread):
             # Optimization & Logic state
             last_processed_img = None
             last_ocr_result = ("", 0.0)
-            active_sub_snapshot = None  # Snapshot of ROI when subtitle started
+            active_sub_snapshot = None
             skipped_frames_count = 0
 
             start_time = time.time()
@@ -95,35 +100,36 @@ class OCRWorker(threading.Thread):
                     frame_roi = frame
 
                 # --- Visual Cutoff Logic (Instant End) ---
-                # Check every frame (ignoring step) if we have an active subtitle
-                if current_text and active_sub_snapshot is not None and frame_roi.size > 0:
-                    # Quick denoise for comparison
+                # Only check if enabled AND we have an active subtitle AND snapshot
+                if use_visual_cutoff and current_text and active_sub_snapshot is not None and frame_roi.size > 0:
                     curr_denoised = denoise_frame(frame_roi, strength=3)
                     cutoff_diff = calculate_image_diff(curr_denoised, active_sub_snapshot)
 
-                    # If scene changed significantly (>15%), cut the subtitle immediately
                     if cutoff_diff > 0.15:
-                        # self._log(f"✂ Visual Cutoff at {current_ts:.2f}s (Diff: {cutoff_diff:.3f})")
                         item = {'id': len(srt_data) + 1, 'start': current_start, 'end': current_ts,
                                 'text': current_text, 'conf': current_conf}
                         srt_data.append(item)
                         self._emit_subtitle(item)
 
-                        # Reset State
                         current_text, current_start, current_conf = "", None, 0.0
                         active_sub_snapshot = None
-                        subtitle_buffer = []  # Clear buffer to prevent "ghost" detections
+                        subtitle_buffer = []
 
-                # --- Main OCR Loop (Respects Step) ---
+                # --- Main OCR Loop ---
                 if frame_idx % step == 0 and frame_roi.size > 0:
                     denoised = denoise_frame(frame_roi, strength=3)
 
-                    # Smart Skip
-                    diff = calculate_image_diff(denoised, last_processed_img)
-                    if diff < 0.005 and last_processed_img is not None:
-                        text_res_tuple = last_ocr_result
-                        skipped_frames_count += 1
-                    else:
+                    # Smart Skip Logic
+                    run_ocr_pipeline = True
+
+                    if use_smart_skip:
+                        diff = calculate_image_diff(denoised, last_processed_img)
+                        if diff < 0.005 and last_processed_img is not None:
+                            text_res_tuple = last_ocr_result
+                            skipped_frames_count += 1
+                            run_ocr_pipeline = False
+
+                    if run_ocr_pipeline:
                         clahe_processed = apply_clahe(denoised, clip_limit=clip_limit_val)
                         upscaled = cv2.resize(clahe_processed, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
                         final_processed = apply_sharpening(upscaled)
@@ -151,31 +157,31 @@ class OCRWorker(threading.Thread):
                     else:
                         stable_text, stable_conf = "", 0.0
 
-                    # Logic to Start/Update Subtitle
                     if is_similar(stable_text, current_text, 0.5):
                         if is_better_quality(stable_text, current_text):
                             current_text = stable_text
                             current_conf = stable_conf
-                            # Update snapshot if quality improved significantly? No, keep original start snapshot for stability.
                     else:
-                        # New text detected via OCR
+                        # New text detected
                         if stable_text and stable_conf >= min_conf:
-                            # Close previous if exists
                             if current_text:
                                 item = {'id': len(srt_data) + 1, 'start': current_start, 'end': current_ts,
                                         'text': current_text, 'conf': current_conf}
                                 srt_data.append(item)
                                 self._emit_subtitle(item)
 
-                            # Start new
                             current_start = current_ts
                             current_text = stable_text
                             current_conf = stable_conf
-                            active_sub_snapshot = denoised.copy()  # Capture baseline for Cutoff
 
-                        # Text disappeared via OCR buffer logic (backup to Visual Cutoff)
+                            if use_visual_cutoff:
+                                active_sub_snapshot = denoised.copy()
+
+                        # Text disappeared via OCR buffer (Backup or Main if Cutoff disabled)
                         elif not stable_text and current_text:
-                            # Use buffer lag only if Visual Cutoff didn't trigger yet
+                            # If Visual Cutoff is disabled, this is the ONLY way to end subtitle.
+                            # If enabled, this acts as a backup in case visual diff was too small.
+
                             buffer_lag = (len(subtitle_buffer) / 2) * (step / fps)
                             actual_end = max(current_start + 0.1, current_ts - buffer_lag)
 
@@ -189,7 +195,6 @@ class OCRWorker(threading.Thread):
 
                 frame_idx += 1
 
-            # Final cleanup
             if current_text and current_start and current_conf >= min_conf:
                 item = {'id': len(srt_data) + 1, 'start': current_start, 'end': total_frames / fps,
                         'text': current_text, 'conf': current_conf}
