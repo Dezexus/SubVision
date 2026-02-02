@@ -1,5 +1,5 @@
 # =========================================================================
-# ЭТАП 1: Builder
+# 1: Builder
 # =========================================================================
 FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04 AS builder
 
@@ -17,18 +17,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel cmake scikit-build-core
-RUN pip install --no-cache-dir opencv-python-headless
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip setuptools wheel cmake scikit-build-core && \
+    pip install opencv-python-headless
 
-RUN pip install --no-cache-dir paddlepaddle-gpu==3.2.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
-RUN pip install --no-cache-dir "paddleocr>=2.9.1"
-RUN pip install --no-cache-dir llama-cpp-python
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install paddlepaddle-gpu==3.2.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install "paddleocr>=2.9.1" llama-cpp-python
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r requirements.txt
 
 # =========================================================================
-# ЭТАП 2: Runtime
+# 2: Runtime
 # =========================================================================
 FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
 
