@@ -43,7 +43,7 @@ def on_preset_change(preset_name: str) -> tuple[Any, ...]:
     if not vals:
         return gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
     gr.Info(f"Applied preset: {preset_name}")
-    # Returns: step, min_conf, clahe, smart_skip, visual_cutoff, scale_factor
+    # Returns: step, min_conf, clahe, smart_skip, visual_cutoff, is_upscale (bool)
     return vals[0], vals[1], vals[2], vals[3], vals[4], vals[5]
 
 
@@ -115,10 +115,13 @@ def on_preview_update(
     frame_index: int,
     editor_data: dict[str, Any],
     clahe_val: float,
-    scale_val: float,
+    use_upscale: bool,
 ) -> Image.Image | None:
     """Generates a preview with applied filters."""
-    return VideoManager.generate_preview(video_path, frame_index, editor_data, clahe_val, scale_val)
+    scale_factor = 2.0 if use_upscale else 1.0
+    return VideoManager.generate_preview(
+        video_path, frame_index, editor_data, clahe_val, scale_factor
+    )
 
 
 def on_stop_click(request: gr.Request) -> str:
@@ -137,7 +140,7 @@ def on_run_click(
     conf_threshold: float,
     use_llm: bool,
     clahe_val: float,
-    scale_val: float,
+    use_upscale: bool,
     use_smart_skip: bool,
     use_visual_cutoff: bool,
     llm_repo: str,
@@ -204,6 +207,8 @@ def on_run_click(
         "finish": finish_cb,
         "progress": progress_cb,
     }
+
+    scale_val = 2.0 if use_upscale else 1.0
 
     try:
         output_path = process_mgr.start_process(

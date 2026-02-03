@@ -56,14 +56,15 @@ def get_preset_choices() -> list[str]:
     return list(PRESETS_DELTAS.keys())
 
 
-def get_preset_values(preset_name: str) -> tuple[int, int, float, bool, bool, float]:
+def get_preset_values(preset_name: str) -> tuple[int, int, float, bool, bool, bool]:
     """Returns tuple values for UI compatibility."""
     cfg = get_preset_config(preset_name)
+    is_upscale = float(cfg["scale_factor"]) > 1.0
     return (
         int(cfg["step"]),
         int(cfg["min_conf"]),
         float(cfg["clahe"]),
         bool(cfg["smart_skip"]),
         bool(cfg["visual_cutoff"]),
-        float(cfg["scale_factor"]),
+        is_upscale,
     )
