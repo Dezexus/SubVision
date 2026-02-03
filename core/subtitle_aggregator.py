@@ -9,16 +9,16 @@ SubtitleItem = dict[str, Any]
 class SubtitleEvent:
     """Represents a single subtitle event currently being tracked."""
 
-    def __init__(self, text: str, start: float, conf: float) -> None:
+    def __init__(self, text: str, start: float, end: float, conf: float) -> None:
         self.text: str = text
         self.start: float = start
-        self.end: float = start
+        self.end: float = end
         self.max_conf: float = conf
         self.gap_frames: int = 0
 
-    def extend(self, text: str, time: float, conf: float) -> None:
+    def extend(self, text: str, end: float, conf: float) -> None:
         """Updates the event with new frame data."""
-        self.end = time
+        self.end = end
         self.gap_frames = 0
         if conf > self.max_conf or (conf == self.max_conf and len(text) > len(self.text)):
             self.text = text
@@ -28,26 +28,32 @@ class SubtitleEvent:
 class SubtitleAggregator:
     """Manages merging continuous OCR results into discrete subtitle blocks."""
 
-    def __init__(self, min_conf: float, gap_tolerance: int = 5) -> None:
+    def __init__(self, min_conf: float, gap_tolerance: int = 5, fps: float = 25.0) -> None:
         self.srt_data: list[SubtitleItem] = []
         self.active_event: SubtitleEvent | None = None
         self.min_conf: float = min_conf
         self.gap_tolerance: int = gap_tolerance
         self.on_new_subtitle: Callable[[SubtitleItem], None] | None = None
 
+        # Calculate duration of a single frame to correct the end timestamp
+        self.frame_duration = 1.0 / fps if fps > 0 else 0.04
+
     def add_result(self, text: str, conf: float, timestamp: float) -> None:
         """Processes a new OCR result and updates the event state."""
         is_valid = bool(text and conf >= self.min_conf)
 
+        # Calculate when this frame actually ends
+        frame_end_time = timestamp + self.frame_duration
+
         if is_valid:
             if self.active_event:
                 if is_similar(self.active_event.text, text, 0.6):
-                    self.active_event.extend(text, timestamp, conf)
+                    self.active_event.extend(text, frame_end_time, conf)
                 else:
                     self._commit_event()
-                    self.active_event = SubtitleEvent(text, timestamp, conf)
+                    self.active_event = SubtitleEvent(text, timestamp, frame_end_time, conf)
             else:
-                self.active_event = SubtitleEvent(text, timestamp, conf)
+                self.active_event = SubtitleEvent(text, timestamp, frame_end_time, conf)
         else:
             if self.active_event:
                 self.active_event.gap_frames += 1
