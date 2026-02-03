@@ -41,9 +41,10 @@ def on_preset_change(preset_name: str) -> tuple[Any, ...]:
     """Updates UI components based on the selected preset."""
     vals = get_preset_values(preset_name)
     if not vals:
-        return gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
+        return gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
     gr.Info(f"Applied preset: {preset_name}")
-    return vals[0], vals[1], vals[2], vals[3], vals[4]
+    # Returns: step, min_conf, clahe, smart_skip, visual_cutoff, scale_factor
+    return vals[0], vals[1], vals[2], vals[3], vals[4], vals[5]
 
 
 def on_reset_ai() -> tuple[str, str, str]:
@@ -110,10 +111,14 @@ def on_frame_change(video_path: str, frame_index: int) -> np.ndarray | None:
 
 
 def on_preview_update(
-    video_path: str, frame_index: int, editor_data: dict[str, Any], clahe_val: float
+    video_path: str,
+    frame_index: int,
+    editor_data: dict[str, Any],
+    clahe_val: float,
+    scale_val: float,
 ) -> Image.Image | None:
     """Generates a preview with applied filters."""
-    return VideoManager.generate_preview(video_path, frame_index, editor_data, clahe_val)
+    return VideoManager.generate_preview(video_path, frame_index, editor_data, clahe_val, scale_val)
 
 
 def on_stop_click(request: gr.Request) -> str:
@@ -132,6 +137,7 @@ def on_run_click(
     conf_threshold: float,
     use_llm: bool,
     clahe_val: float,
+    scale_val: float,
     use_smart_skip: bool,
     use_visual_cutoff: bool,
     llm_repo: str,
@@ -209,6 +215,7 @@ def on_run_click(
             conf_threshold,
             use_llm,
             clahe_val,
+            scale_val,
             use_smart_skip,
             use_visual_cutoff,
             llm_repo,

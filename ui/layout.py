@@ -107,6 +107,8 @@ def create_app() -> gr.Blocks:
                             label="Contrast (CLAHE)",
                         )
 
+                    scale_slider = gr.Slider(1.0, 3.0, value=2.0, step=0.5, label="Upscale Factor")
+
                     with gr.Row():
                         chk_smart_skip = gr.Checkbox(label="Smart Skip", value=True)
                         chk_visual_cutoff = gr.Checkbox(label="Visual Cutoff", value=True)
@@ -165,6 +167,7 @@ def create_app() -> gr.Blocks:
                 clahe_slider,
                 chk_smart_skip,
                 chk_visual_cutoff,
+                scale_slider,
             ],
         )
 
@@ -174,9 +177,14 @@ def create_app() -> gr.Blocks:
         )
 
         gr.on(
-            triggers=[roi_editor.change, frame_slider.change, clahe_slider.change],
+            triggers=[
+                roi_editor.change,
+                frame_slider.change,
+                clahe_slider.change,
+                scale_slider.change,
+            ],
             fn=callbacks.on_preview_update,
-            inputs=[video_input, frame_slider, roi_editor, clahe_slider],
+            inputs=[video_input, frame_slider, roi_editor, clahe_slider, scale_slider],
             outputs=preview_img,
             show_progress="hidden",
         )
@@ -191,6 +199,7 @@ def create_app() -> gr.Blocks:
                 conf_slider,
                 use_llm,
                 clahe_slider,
+                scale_slider,
                 chk_smart_skip,
                 chk_visual_cutoff,
                 llm_repo_input,

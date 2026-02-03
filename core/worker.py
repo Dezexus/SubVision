@@ -80,6 +80,7 @@ class OCRWorker(threading.Thread):
                     "step": self.params.get("step", config["step"]),
                     "clahe": self.params.get("clip_limit", config["clahe"]),
                     "smart_skip": self.params.get("smart_skip", config["smart_skip"]),
+                    "scale_factor": self.params.get("scale_factor", config["scale_factor"]),
                     "min_conf": self.params.get("min_conf", 0.80),
                 }
             )
@@ -92,7 +93,8 @@ class OCRWorker(threading.Thread):
 
             ocr_engine = PaddleWrapper(lang=str(self.params.get("langs", "en")))
 
-            aggregator = SubtitleAggregator(min_conf=float(config["min_conf"]))
+            # Pass actual video FPS for accurate subtitle end timing
+            aggregator = SubtitleAggregator(min_conf=float(config["min_conf"]), fps=video.fps)
             aggregator.on_new_subtitle = self._emit_subtitle
 
             producer_thread = threading.Thread(

@@ -56,7 +56,7 @@ def get_preset_choices() -> list[str]:
     return list(PRESETS_DELTAS.keys())
 
 
-def get_preset_values(preset_name: str) -> tuple[int, int, float, bool, bool]:
+def get_preset_values(preset_name: str) -> tuple[int, int, float, bool, bool, float]:
     """Returns tuple values for UI compatibility."""
     cfg = get_preset_config(preset_name)
     return (
@@ -65,4 +65,5 @@ def get_preset_values(preset_name: str) -> tuple[int, int, float, bool, bool]:
         float(cfg["clahe"]),
         bool(cfg["smart_skip"]),
         bool(cfg["visual_cutoff"]),
+        float(cfg["scale_factor"]),
     )

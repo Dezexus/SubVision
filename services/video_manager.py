@@ -106,6 +106,7 @@ class VideoManager:
         frame_index: int,
         editor_data: dict[str, Any] | None,
         clahe_val: float,
+        scale_factor: float,
     ) -> Image.Image | None:
         """Generates a processed preview image with filters applied."""
         if video_path is None:
@@ -130,10 +131,14 @@ class VideoManager:
         denoised = denoise_frame(frame_roi, strength=3.0)
         processed = apply_clahe(denoised, clip_limit=clahe_val)
 
-        # Explicit resize for preview clarity (matches pipeline default)
-        processed_resized = cv2.resize(
-            processed, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC
-        )
+        # Dynamic resize based on settings
+        if scale_factor > 1.0:
+            processed_resized = cv2.resize(
+                processed, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC
+            )
+        else:
+            processed_resized = processed
+
         final = apply_sharpening(processed_resized)
 
         if final is None:
