@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+python-multipart
+websockets
+opencv-python-headless
+numpy
+Pillow
+paddleocr
+paddlepaddle-gpu==3.2.0
+llama-cpp-python
+huggingface_hub
+requests
