@@ -14,21 +14,12 @@ export const AdvancedSettings = () => {
         <span>Fine Tuning</span>
       </div>
 
-      {/* Always Visible Sliders */}
       <Slider
         label="Min Confidence"
         min={50} max={100} step={1}
         value={config.conf_threshold || 80}
         valueDisplay={`${config.conf_threshold}%`}
         onChange={(e) => updateConfig({ conf_threshold: Number(e.target.value) })}
-      />
-
-      <Slider
-        label="Contrast (CLAHE)"
-        min={0} max={6.0} step={0.1}
-        value={config.clahe_limit || 2.0}
-        valueDisplay={config.clahe_limit}
-        onChange={(e) => updateConfig({ clahe_limit: Number(e.target.value) })}
       />
 
       <Slider
@@ -40,17 +31,26 @@ export const AdvancedSettings = () => {
       />
 
       <div className="space-y-1 pt-2">
+        {/* ИЗМЕНЕНИЕ: CLAHE теперь переключатель */}
+        <Switch
+          label="Contrast Boost (CLAHE)"
+          checked={(config.clahe_limit || 0) > 0}
+          onChange={(val) => updateConfig({ clahe_limit: val ? 2.0 : 0.0 })}
+        />
+
         <Switch
           label="Smart Skip (Static Scenes)"
           checked={config.smart_skip ?? true}
           onChange={(val) => updateConfig({ smart_skip: val })}
         />
-          <Switch
+
+        <Switch
           label="Upscale (2x Resolution)"
           checked={(config.scale_factor || 1) > 1.5}
           onChange={(val) => updateConfig({ scale_factor: val ? 2.0 : 1.0 })}
         />
-          <Switch
+
+        <Switch
           label="AI Correction (LLM)"
           checked={config.use_llm ?? false}
           onChange={(val) => updateConfig({ use_llm: val })}

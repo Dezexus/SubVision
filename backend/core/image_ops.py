@@ -13,6 +13,10 @@ def apply_clahe(frame: np.ndarray | None, clip_limit: float = 2.0, tile_grid_siz
     if frame is None:
         return None
 
+    # ИЗМЕНЕНИЕ: Если лимит <= 0, считаем функцию отключенной и возвращаем оригинал
+    if clip_limit <= 0:
+        return frame
+
     if HAS_CUDA:
         try:
             gpu_mat = cv2.cuda_GpuMat()

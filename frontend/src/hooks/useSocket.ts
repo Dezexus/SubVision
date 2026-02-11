@@ -2,8 +2,16 @@ import { useEffect } from 'react';
 import useWebSocket from 'react-use-websocket';
 import { useAppStore } from '../store/useAppStore';
 import type { WebSocketMessage } from '../types';
+import { API_BASE } from '../services/api';
 
-const SOCKET_URL = 'ws://localhost:7860/ws'; // Или из env
+// FIX: Construct WS URL dynamically based on API_BASE
+const getSocketUrl = () => {
+  const url = new URL(API_BASE);
+  const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${url.host}/ws`;
+};
+
+const SOCKET_URL = getSocketUrl();
 
 export const useSocket = () => {
   const {
@@ -16,7 +24,7 @@ export const useSocket = () => {
   } = useAppStore();
 
   const { lastJsonMessage } = useWebSocket(`${SOCKET_URL}/${clientId}`, {
-    shouldReconnect: () => true, // Авто-реконнект
+    shouldReconnect: () => true,
     reconnectInterval: 3000,
   });
 

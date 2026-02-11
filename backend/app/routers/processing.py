@@ -12,7 +12,10 @@ UPLOAD_DIR = "uploads"
 @router.post("/start")
 async def start_process(config: ProcessConfig):
     """Initializes and starts the background OCR worker."""
-    file_path = os.path.join(UPLOAD_DIR, config.filename)
+    # CRITICAL FIX: Sanitize filename
+    safe_filename = os.path.basename(config.filename)
+    file_path = os.path.join(UPLOAD_DIR, safe_filename)
+
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Video file not found")
 
@@ -33,12 +36,10 @@ async def start_process(config: ProcessConfig):
     }
 
     try:
-        # Note: ProcessManager needs to be refactored to accept 'roi' list directly
-        # instead of 'editor_data'
         process_mgr.start_process(
             session_id=config.client_id,
             video_file=file_path,
-            editor_data={"roi_override": config.roi}, # Adapted input
+            editor_data={"roi_override": config.roi},
             langs=config.languages,
             step=config.step,
             conf_threshold=config.conf_threshold,
@@ -60,6 +61,4 @@ async def start_process(config: ProcessConfig):
 async def stop_process(client_id: str):
     """Stops the active processing job for a client."""
     success = process_mgr.stop_process(client_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="No active process found")
     return {"status": "stopped"}

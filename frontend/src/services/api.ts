@@ -1,23 +1,24 @@
 import axios from 'axios';
 import type { ProcessConfig, VideoMetadata } from '../types';
 
-// Если вы запускаете локально, Vite проксирует или указываем прямой URL
-const API_BASE = 'http://localhost:7860/api';
+// FIX: Use Env var or fallback to localhost. Allows running on other devices.
+export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:7860';
+const API_URL = `${API_BASE}/api`;
 
 export const api = {
   // Загрузка видео
   uploadVideo: async (file: File): Promise<VideoMetadata> => {
     const formData = new FormData();
     formData.append('file', file);
-    const response = await axios.post<VideoMetadata>(`${API_BASE}/video/upload`, formData, {
+    const response = await axios.post<VideoMetadata>(`${API_URL}/video/upload`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
     return response.data;
   },
 
-  // Получение URL кадра (не запрос, а генератор ссылки)
+  // Получение URL кадра
   getFrameUrl: (filename: string, frameIndex: number) => {
-    return `${API_BASE}/video/frame/${filename}/${frameIndex}`;
+    return `${API_URL}/video/frame/${filename}/${frameIndex}`;
   },
 
   // Получение превью с фильтрами
@@ -29,20 +30,20 @@ export const api = {
     scale_factor: number;
     denoise: number;
   }) => {
-    const response = await axios.post(`${API_BASE}/video/preview`, config, {
-      responseType: 'blob', // Важно для картинки
+    const response = await axios.post(`${API_URL}/video/preview`, config, {
+      responseType: 'blob',
     });
     return URL.createObjectURL(response.data);
   },
 
   // Старт процесса
   startProcessing: async (config: ProcessConfig) => {
-    const response = await axios.post(`${API_BASE}/process/start`, config);
+    const response = await axios.post(`${API_URL}/process/start`, config);
     return response.data;
   },
 
   // Стоп
   stopProcessing: async (clientId: string) => {
-    await axios.post(`${API_BASE}/process/stop/${clientId}`);
+    await axios.post(`${API_URL}/process/stop/${clientId}`);
   }
 };

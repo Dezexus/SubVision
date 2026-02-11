@@ -7,6 +7,14 @@ import { SubtitleList } from './components/SubtitleList';
 import { useSocket } from '../../hooks/useSocket';
 import { useAppStore } from '../../store/useAppStore';
 
+const formatSrtTime = (seconds: number) => {
+  const date = new Date(0);
+  date.setSeconds(seconds);
+  date.setMilliseconds((seconds % 1) * 1000);
+  const iso = date.toISOString().substr(11, 12);
+  return iso.replace('.', ',');
+};
+
 export const ResultsPanel = () => {
   useSocket();
   const { isProcessing, metadata, subtitles } = useAppStore();
@@ -14,51 +22,64 @@ export const ResultsPanel = () => {
   const stats = useMemo(() => {
     const total = subtitles.length;
     const lowConf = subtitles.filter(s => s.conf < 0.6).length;
-    const avgConf = total > 0 
-      ? Math.round(subtitles.reduce((acc, s) => acc + s.conf, 0) / total * 100) 
+    const avgConf = total > 0
+      ? Math.round(subtitles.reduce((acc, s) => acc + s.conf, 0) / total * 100)
       : 0;
     return { total, lowConf, avgConf };
   }, [subtitles]);
 
   const handleDownload = () => {
-    if (!metadata) return;
+    if (!metadata || subtitles.length === 0) return;
+
+    let srtContent = "";
+    subtitles.forEach((sub, index) => {
+      srtContent += `${index + 1}\n`;
+      srtContent += `${formatSrtTime(sub.start)} --> ${formatSrtTime(sub.end)}\n`;
+      srtContent += `${sub.text}\n\n`;
+    });
+
+    // ИСПРАВЛЕНИЕ: Используем 'application/octet-stream', чтобы браузер точно скачал файл
+    const blob = new Blob([srtContent], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+
     const link = document.createElement('a');
-    link.href = `http://localhost:7860/uploads/${metadata.filename.replace(/\.[^/.]+$/, "")}.srt`;
-    link.download = `${metadata.filename}.srt`;
+    link.href = url;
+    // Убедимся, что имя файла корректное
+    const safeName = metadata.filename.replace(/\.[^/.]+$/, "");
+    link.download = `${safeName}_edited.srt`;
+
     document.body.appendChild(link);
     link.click();
+
+    // Чистим за собой
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
     <GlassPanel className="w-full lg:w-1/4 min-w-[320px] flex flex-col h-full z-20 bg-[#1e1e1e]">
       <ProgressHeader />
 
-      {/* Scrollable List */}
       <div className="flex-1 overflow-y-auto p-2 scrollbar-hide bg-[#1e1e1e]">
          <SubtitleList />
       </div>
 
-      {/* Footer: Stats + Action */}
       <div className="p-4 border-t border-[#333333] bg-[#252526] space-y-3">
-
-        {/* Statistics Row */}
         {subtitles.length > 0 && (
           <div className="flex justify-between text-xs text-[#858585] font-mono px-1">
-            <span>Total: <b className="text-[#F0F0F0]">{stats.total}</b></span>
-            <span>Low Conf: <b className={stats.lowConf > 0 ? "text-red-400" : "text-[#F0F0F0]"}>{stats.lowConf}</b></span>
-            <span>Avg: <b className="text-[#F0F0F0]">{stats.avgConf}%</b></span>
+            <span>Lines: <b className="text-[#F0F0F0]">{stats.total}</b></span>
+            <span>Edits: <b className="text-brand-400">Ready</b></span>
           </div>
         )}
 
         <Button
           variant="primary"
           className="w-full py-3 h-11 text-sm font-semibold shadow-md"
-          disabled={isProcessing || !metadata}
+          disabled={isProcessing || !metadata || subtitles.length === 0}
           onClick={handleDownload}
           icon={<Download size={16} />}
         >
-          DOWNLOAD .SRT
+          DOWNLOAD EDITED .SRT
         </Button>
       </div>
     </GlassPanel>

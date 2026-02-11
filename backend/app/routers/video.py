@@ -1,12 +1,14 @@
 import os
 import shutil
+import uuid
 import cv2
 import numpy as np
-from fastapi import APIRouter, UploadFile, HTTPException, File
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi import APIRouter, UploadFile, HTTPException, File, BackgroundTasks
+from fastapi.responses import StreamingResponse, FileResponse
 from io import BytesIO
 
 from services.video_manager import VideoManager
+from services.cleanup import cleanup_old_files
 from app.schemas import VideoMetadata, PreviewConfig
 
 router = APIRouter()
@@ -14,29 +16,49 @@ UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @router.post("/upload", response_model=VideoMetadata)
-async def upload_video(file: UploadFile = File(...)):
-    """Handles video upload and returns metadata."""
-    file_path = os.path.join(UPLOAD_DIR, file.filename)
+async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    """
+    Handles video upload, saves it with a secure name, and returns metadata.
+    Triggers a background cleanup task for old files.
+    """
 
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    # 1. Запускаем очистку в фоне (удаляем файлы старше 12 часов)
+    background_tasks.add_task(cleanup_old_files, max_age_hours=12)
 
+    # 2. Генерируем безопасное имя файла (UUID), сохраняя оригинальное расширение
+    filename, ext = os.path.splitext(file.filename)
+    if not ext:
+        ext = ".mp4" # Fallback, если расширение не определилось
+
+    safe_filename = f"{uuid.uuid4()}{ext}"
+    file_path = os.path.join(UPLOAD_DIR, safe_filename)
+
+    # 3. Сохраняем файл на диск
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {e}")
+
+    # 4. Проверяем валидность видео через OpenCV
     frame, total_frames = VideoManager.get_video_info(file_path)
 
     if frame is None:
-        os.remove(file_path)
-        raise HTTPException(status_code=400, detail="Invalid video format")
+        # Если OpenCV не смог прочитать файл (битый кодек или формат), удаляем его
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise HTTPException(status_code=400, detail="Invalid video format or codec. Please use standard MP4/MKV/AVI.")
 
     height, width, _ = frame.shape
 
-    # Simple estimation, normally retrieved from metadata
+    # 5. Извлекаем FPS и длительность
     cap = cv2.VideoCapture(file_path)
     fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
     duration = total_frames / fps
     cap.release()
 
     return VideoMetadata(
-        filename=file.filename,
+        filename=safe_filename,
         total_frames=total_frames,
         width=width,
         height=height,
@@ -44,10 +66,30 @@ async def upload_video(file: UploadFile = File(...)):
         duration=duration
     )
 
+@router.get("/download/{filename}")
+async def download_file(filename: str):
+    """
+    Forces file download for the given filename.
+    Useful for downloading original source files.
+    """
+    safe_filename = os.path.basename(filename)
+    file_path = os.path.join(UPLOAD_DIR, safe_filename)
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return FileResponse(
+        path=file_path,
+        filename=safe_filename,
+        media_type='application/octet-stream' # Force download
+    )
+
 @router.get("/frame/{filename}/{frame_index}")
 async def get_frame(filename: str, frame_index: int):
     """Retrieves a specific raw frame as a JPEG image."""
-    file_path = os.path.join(UPLOAD_DIR, filename)
+    safe_filename = os.path.basename(filename)
+    file_path = os.path.join(UPLOAD_DIR, safe_filename)
+
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -61,24 +103,17 @@ async def get_frame(filename: str, frame_index: int):
 
 @router.post("/preview")
 async def get_preview(config: PreviewConfig):
-    """Generates a processed preview frame based on settings."""
-    file_path = os.path.join(UPLOAD_DIR, config.filename)
+    """Generates a processed preview frame based on settings (CLAHE, Scale, ROI)."""
+    safe_filename = os.path.basename(config.filename)
+    file_path = os.path.join(UPLOAD_DIR, safe_filename)
+
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
-
-    # Mocking editor_data structure for compatibility or modify VideoManager to accept ROI list
-    # Assuming VideoManager refactor:
-    # preview = VideoManager.generate_preview_direct(..., roi=config.roi, ...)
-
-    # Adapting to current structure:
-    # ROI format expected by logic: [x, y, w, h]
-    # Current VideoManager expects 'editor_data' dict for Gradio.
-    # Logic needs to be adapted in VideoManager, but here is the interface:
 
     preview_image = VideoManager.generate_preview(
         video_path=file_path,
         frame_index=config.frame_index,
-        editor_data={"layers": [], "roi_override": config.roi}, # ROI override logic needed in service
+        editor_data={"layers": [], "roi_override": config.roi},
         clahe_val=config.clahe_limit,
         scale_factor=config.scale_factor
     )
