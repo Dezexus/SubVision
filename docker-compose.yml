@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  subvision:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: subvision_all_in_one
+    restart: unless-stopped
+    ports:
+      - "7860:7860"
+    volumes:
+      # Uploads persistence (Map host folder to container)
+      - ./backend/uploads:/app/backend/uploads
+      # Cache for PaddleOCR models
+      - paddle_models:/root/.paddleocr
+    environment:
+      - PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
+      - FLAGS_fraction_of_gpu_memory_to_use=0.9
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    shm_size: '8gb'
+
+volumes:
+  paddle_models:

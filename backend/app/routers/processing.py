@@ -1,9 +1,12 @@
 import os
 import asyncio
+import logging
 from fastapi import APIRouter, HTTPException
 from app.schemas import ProcessConfig
 from app.websocket_manager import manager
 from services.process_manager import ProcessManager
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 process_mgr = ProcessManager()
@@ -12,7 +15,8 @@ UPLOAD_DIR = "uploads"
 @router.post("/start")
 async def start_process(config: ProcessConfig):
     """Initializes and starts the background OCR worker."""
-    # CRITICAL FIX: Sanitize filename
+
+    # Sanitize filename
     safe_filename = os.path.basename(config.filename)
     file_path = os.path.join(UPLOAD_DIR, safe_filename)
 
@@ -43,22 +47,20 @@ async def start_process(config: ProcessConfig):
             langs=config.languages,
             step=config.step,
             conf_threshold=config.conf_threshold,
-            use_llm=config.use_llm,
             clahe_val=config.clahe_limit,
             scale_val=config.scale_factor,
             smart_skip=config.smart_skip,
             visual_cutoff=config.visual_cutoff,
-            llm_repo=config.llm_repo,
-            llm_file=config.llm_filename,
-            llm_prompt=config.llm_prompt,
             callbacks=callbacks
         )
         return {"status": "started", "job_id": config.client_id}
+
     except Exception as e:
+        logger.error(f"Error starting process: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/stop/{client_id}")
 async def stop_process(client_id: str):
     """Stops the active processing job for a client."""
-    success = process_mgr.stop_process(client_id)
+    process_mgr.stop_process(client_id)
     return {"status": "stopped"}

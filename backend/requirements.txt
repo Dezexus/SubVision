@@ -2,7 +2,7 @@ fastapi
 uvicorn[standard]
 python-multipart
 websockets
-opencv-python-headless
+opencv-contrib-python
 numpy
 Pillow
 paddleocr
