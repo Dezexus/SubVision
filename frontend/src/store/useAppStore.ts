@@ -30,7 +30,7 @@ interface AppState {
 
   addSubtitle: (sub: SubtitleItem) => void;
   updateSubtitle: (sub: SubtitleItem) => void;
-  deleteSubtitle: (id: number) => void; // NEW
+  deleteSubtitle: (id: number) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -47,7 +47,7 @@ export const useAppStore = create<AppState>((set) => ({
     clahe_limit: 2.0,
     scale_factor: 2.0,
     smart_skip: true,
-    use_llm: false,
+    visual_cutoff: true,
   },
 
   isProcessing: false,

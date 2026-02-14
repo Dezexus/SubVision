@@ -32,7 +32,4 @@ class ProcessConfig(BaseModel):
     scale_factor: float = 2.0
     smart_skip: bool = True
     visual_cutoff: bool = True
-    use_llm: bool = False
-    llm_repo: str = "bartowski/google_gemma-3-4b-it-GGUF"
-    llm_filename: str = "google_gemma-3-4b-it-Q4_K_M.gguf"
-    llm_prompt: Optional[str] = None
+    # LLM параметры удалены

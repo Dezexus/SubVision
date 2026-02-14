@@ -19,10 +19,6 @@ export interface ProcessConfig {
   scale_factor: number;
   smart_skip: boolean;
   visual_cutoff: boolean;
-  use_llm: boolean;
-  llm_repo: string;
-  llm_filename: string;
-  llm_prompt?: string;
 }
 
 export interface SubtitleItem {

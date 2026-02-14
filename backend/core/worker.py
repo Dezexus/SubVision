@@ -8,7 +8,7 @@ from collections.abc import Callable
 from typing import Any
 
 from .image_pipeline import ImagePipeline
-from .llm_engine import LLMFixer
+# from .llm_engine import LLMFixer  <-- УДАЛЕНО
 from .ocr_engine import PaddleWrapper
 from .presets import get_preset_config
 from .subtitle_aggregator import SubtitleAggregator
@@ -30,7 +30,6 @@ class OCRWorker(threading.Thread):
         self.producer_error: Exception | None = None
 
     def stop(self) -> None:
-        """Signals the worker to stop processing and clears the queue."""
         self.is_running = False
         try:
             while not self.frame_queue.empty():
@@ -39,7 +38,6 @@ class OCRWorker(threading.Thread):
             pass
 
     def _producer_loop(self, video: VideoProvider, pipeline: ImagePipeline) -> None:
-        """Reads frames and applies image processing in a separate thread."""
         try:
             for frame_idx, timestamp, frame in video:
                 if not self.is_running:
@@ -52,7 +50,6 @@ class OCRWorker(threading.Thread):
             self.frame_queue.put(SENTINEL)
 
     def run(self) -> None:
-        """Main execution loop handling OCR inference and aggregation."""
         srt_data: list[dict[str, Any]] = []
         video: VideoProvider | None = None
         ocr_engine: PaddleWrapper | None = None
@@ -120,8 +117,7 @@ class OCRWorker(threading.Thread):
             srt_data = aggregator.finalize()
             self._log(f"Smart Skip: {pipeline.skipped_count} frames")
 
-            if self.params.get("use_llm", False) and srt_data:
-                self._run_llm_fixer(srt_data)
+            # БЛОК LLM УДАЛЕН ЗДЕСЬ
 
             self._save_to_file(srt_data)
             self.cb.get("finish", lambda x: None)(True)
@@ -166,24 +162,9 @@ class OCRWorker(threading.Thread):
         if self.cb.get("subtitle"):
             self.cb["subtitle"](item)
 
-    def _emit_ai_update(self, item: dict[str, Any]) -> None:
-        if self.cb.get("ai_update"):
-            self.cb["ai_update"](item)
+    # _emit_ai_update УДАЛЕН
 
-    def _run_llm_fixer(self, srt_data: list[dict[str, Any]]) -> None:
-        self._log("--- AI Editing ---")
-        fixer = LLMFixer(self._log)
-        repo = str(self.params.get("llm_repo", "bartowski/google_gemma-3-4b-it-GGUF"))
-        fname = str(self.params.get("llm_filename", "google_gemma-3-4b-it-Q4_K_M.gguf"))
-        prompt = self.params.get("llm_prompt")
-
-        if fixer.load_model(repo, fname):
-            raw_langs = str(self.params.get("langs", "en"))
-            user_lang = raw_langs.replace(",", "+").split("+")[0].strip()
-            fixer.fix_subtitles(srt_data, lang=user_lang, prompt_template=prompt)
-            for item in srt_data:
-                self._emit_ai_update(item)
-            fixer.unload()
+    # _run_llm_fixer УДАЛЕН
 
     def _save_to_file(self, srt_data: list[dict[str, Any]]) -> None:
         output_path = str(self.params["output_path"])

@@ -31,7 +31,6 @@ export const AdvancedSettings = () => {
       />
 
       <div className="space-y-1 pt-2">
-        {/* ИЗМЕНЕНИЕ: CLAHE теперь переключатель */}
         <Switch
           label="Contrast Boost (CLAHE)"
           checked={(config.clahe_limit || 0) > 0}
@@ -48,12 +47,6 @@ export const AdvancedSettings = () => {
           label="Upscale (2x Resolution)"
           checked={(config.scale_factor || 1) > 1.5}
           onChange={(val) => updateConfig({ scale_factor: val ? 2.0 : 1.0 })}
-        />
-
-        <Switch
-          label="AI Correction (LLM)"
-          checked={config.use_llm ?? false}
-          onChange={(val) => updateConfig({ use_llm: val })}
         />
       </div>
     </div>

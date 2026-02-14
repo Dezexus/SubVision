@@ -20,14 +20,10 @@ class ProcessManager:
         langs: str,
         step: int,
         conf_threshold: float,
-        use_llm: bool,
         clahe_val: float,
         scale_val: float,
         smart_skip: bool,
         visual_cutoff: bool,
-        llm_repo: str,
-        llm_file: str,
-        llm_prompt: str | None,
         callbacks: dict[str, Callable[..., Any]],
     ) -> str:
         """Starts a new OCR processing task."""
@@ -56,14 +52,10 @@ class ProcessManager:
             "conf": 0.5,
             "min_conf": conf_threshold / 100.0,
             "roi": roi_state,
-            "use_llm": use_llm,
             "clip_limit": clahe_val,
             "scale_factor": scale_val,
             "smart_skip": smart_skip,
             "visual_cutoff": visual_cutoff,
-            "llm_repo": llm_repo,
-            "llm_filename": llm_file,
-            "llm_prompt": llm_prompt,
         }
 
         worker = OCRWorker(params, callbacks)
