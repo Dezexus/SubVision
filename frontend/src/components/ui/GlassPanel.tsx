@@ -1,3 +1,4 @@
+// A styled container component with a dark, panel-like theme.
 import React from 'react';
 import { cn } from '../../utils/cn';
 
@@ -10,10 +11,10 @@ export const GlassPanel = ({ children, className, ...props }: GlassPanelProps) =
     <div
       className={cn(
         "relative flex flex-col overflow-hidden",
-        "rounded-xl", // Более плавные углы
-        "bg-[#252526]", // Solid panel background
-        "border border-[#333333]", // Subtle border
-        "shadow-panel", // Deep shadow helps separation without harsh lines
+        "rounded-xl",
+        "bg-[#252526]",
+        "border border-[#333333]",
+        "shadow-panel",
         "text-txt-main",
         className
       )}

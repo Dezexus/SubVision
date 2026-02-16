@@ -1,23 +1,28 @@
+// Global state management for the application using Zustand.
 import { create } from 'zustand';
 import type { ProcessConfig, SubtitleItem, VideoMetadata } from '../types';
 
 interface AppState {
+  // Video & Playback State
   file: File | null;
   metadata: VideoMetadata | null;
   currentFrameIndex: number;
   isPlaying: boolean;
 
-  roi: [number, number, number, number];
-  preset: string;
-  config: Partial<ProcessConfig>;
+  // OCR & Editor Configuration
+  roi: [number, number, number, number]; // Region of Interest [x, y, w, h]
+  preset: string; // The selected processing preset ID
+  config: Partial<ProcessConfig>; // Fine-tuned settings
 
+  // Processing & Results State
   isProcessing: boolean;
   progress: { current: number; total: number; eta: string };
   subtitles: SubtitleItem[];
   logs: string[];
-  clientId: string;
+  clientId: string; // Unique ID for this browser session
 
-  setFile: (file: File) => void;
+  // Actions to update state
+  setFile: (file: File | null) => void;
   setMetadata: (meta: VideoMetadata) => void;
   setCurrentFrame: (index: number | ((prev: number) => number)) => void;
   setIsPlaying: (isPlaying: boolean) => void;
@@ -34,6 +39,7 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set) => ({
+  // --- Initial State ---
   file: null,
   metadata: null,
   currentFrameIndex: 0,
@@ -54,10 +60,11 @@ export const useAppStore = create<AppState>((set) => ({
   progress: { current: 0, total: 0, eta: '--:--' },
   subtitles: [],
   logs: [],
-  clientId: crypto.randomUUID(),
+  clientId: crypto.randomUUID(), // Generate a unique ID for the WebSocket connection
 
+  // --- Actions ---
   setFile: (file) => set({ file }),
-  setMetadata: (metadata) => set({ metadata, currentFrameIndex: 0 }),
+  setMetadata: (metadata) => set({ metadata, currentFrameIndex: 0 }), // Reset frame index on new video
   setCurrentFrame: (index) => set((state) => ({
     currentFrameIndex: typeof index === 'function' ? index(state.currentFrameIndex) : index
   })),
@@ -70,11 +77,9 @@ export const useAppStore = create<AppState>((set) => ({
   updateProgress: (current, total, eta) => set({ progress: { current, total, eta } }),
 
   addSubtitle: (sub) => set((state) => ({ subtitles: [...state.subtitles, sub] })),
-
   updateSubtitle: (updatedSub) => set((state) => ({
     subtitles: state.subtitles.map(sub => sub.id === updatedSub.id ? updatedSub : sub)
   })),
-
   deleteSubtitle: (id) => set((state) => ({
     subtitles: state.subtitles.filter(sub => sub.id !== id)
   })),

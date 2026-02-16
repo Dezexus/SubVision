@@ -1,8 +1,8 @@
+// Displays a real-time preview of the image after processing filters are applied.
 import React, { useEffect, useState } from 'react';
-import { Eye, Loader2, Cpu, ScanLine } from 'lucide-react';
+import { Cpu, Loader2, ScanLine } from 'lucide-react';
 import { useAppStore } from '../../../store/useAppStore';
 import { api } from '../../../services/api';
-import { cn } from '../../../utils/cn';
 
 export const FilterPreview = () => {
   const { metadata, roi, config, currentFrameIndex } = useAppStore();
@@ -12,6 +12,7 @@ export const FilterPreview = () => {
   useEffect(() => {
     if (!metadata || roi[2] === 0) return;
 
+    // Debounce API calls to prevent spamming while user adjusts settings
     const timer = setTimeout(async () => {
       setLoading(true);
       try {
@@ -21,7 +22,7 @@ export const FilterPreview = () => {
           roi: roi,
           clahe_limit: config.clahe_limit || 2.0,
           scale_factor: config.scale_factor || 1.0,
-          denoise: 3.0
+          denoise: 3.0 // Denoise is static for preview
         });
         setPreviewUrl(url);
       } catch (e) {
@@ -34,15 +35,13 @@ export const FilterPreview = () => {
     return () => clearTimeout(timer);
   }, [roi, config, currentFrameIndex, metadata]);
 
+  // Don't render if there's no valid ROI or video metadata
   if (!roi[2] || !metadata) return null;
-
-  // Вычисляем высоту на основе пропорций ROI, но не выше 150px (чтобы не съедало экран)
-  const aspectRatio = roi[2] / roi[3];
 
   return (
     <div className="bg-[#1e1e1e] border border-[#333333] rounded-xl p-3 shadow-xl w-full flex gap-4 items-center">
 
-      {/* Left: Controls / Info */}
+      {/* Left: Filter Info */}
       <div className="flex flex-col gap-2 min-w-[120px]">
         <div className="flex items-center gap-2 text-[#C5C5C5] mb-1">
           <Cpu size={16} />
@@ -50,7 +49,6 @@ export const FilterPreview = () => {
             Algo Input
           </span>
         </div>
-
         <div className="space-y-1">
            <div className="flex justify-between text-[10px] text-[#858585] uppercase">
              <span>CLAHE</span>
@@ -67,14 +65,13 @@ export const FilterPreview = () => {
         </div>
       </div>
 
-      {/* Right: Adaptive Image Container */}
+      {/* Right: Image Preview */}
       <div className="flex-1 bg-black rounded border border-[#333333] overflow-hidden flex items-center justify-center relative h-[100px]">
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
             <Loader2 className="animate-spin text-[#007acc]" size={20} />
           </div>
         )}
-
         {previewUrl ? (
           <img
             src={previewUrl}

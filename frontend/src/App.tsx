@@ -1,3 +1,4 @@
+// The root component of the application, responsible for the main layout.
 import React from 'react';
 import { SettingsPanel } from './features/settings/SettingsPanel';
 import { EditorPanel } from './features/editor/EditorPanel';
@@ -9,17 +10,17 @@ function App() {
 
   return (
     <div className="w-full h-screen bg-bg-main flex flex-col text-txt-main overflow-hidden">
-      {/* Header Line */}
+      {/* A simple brand-colored top border */}
       <div className="h-1 bg-brand-600 w-full" />
 
       <div className="flex h-full p-4 gap-4">
-        {/* Left: Settings (Скрываем или блокируем, если нет файла, но лучше скрыть для чистоты) */}
+        {/* Left: Settings Panel (hidden until a file is loaded) */}
         {file && <SettingsPanel />}
 
-        {/* Center: Editor OR Upload Screen */}
+        {/* Center: Main Editor or Welcome Screen */}
         <EditorPanel />
 
-        {/* Right: Results */}
+        {/* Right: Results Panel (hidden until a file is loaded) */}
         {file && <ResultsPanel />}
       </div>
     </div>

@@ -1,3 +1,4 @@
+// A header component that displays the real-time progress of the OCR processing.
 import React from 'react';
 import { Clock, Activity } from 'lucide-react';
 import { useAppStore } from '../../../store/useAppStore';
@@ -13,7 +14,7 @@ export const ProgressHeader = () => {
   return (
     <div className="p-4 border-b border-[#333333] bg-[#252526]">
 
-      {/* 1. Header: Status Text + ETA */}
+      {/* Header: Status Text and ETA */}
       <div className="flex justify-between items-end mb-3 font-sans">
         <div className="flex items-center gap-2">
           {isProcessing && <Activity size={14} className="text-[#007acc] animate-pulse" />}
@@ -24,7 +25,6 @@ export const ProgressHeader = () => {
             {isProcessing ? 'Processing...' : 'Ready'}
           </span>
         </div>
-
         {isProcessing && (
           <div className="flex items-center gap-1.5 text-xs text-[#858585] font-mono">
             <Clock size={12} />
@@ -33,19 +33,19 @@ export const ProgressHeader = () => {
         )}
       </div>
 
-      {/* 2. Progress Bar Container */}
+      {/* Main Progress Bar */}
       <div className="relative w-full h-1.5 bg-[#18181b] rounded-full overflow-hidden border border-[#333333]">
-        {/* Fill Bar */}
         <div
           className={cn(
             "h-full transition-all duration-300 ease-out rounded-full",
+            // Bar color changes based on processing state
             isProcessing ? "bg-[#007acc]" : percentage === 100 ? "bg-green-500" : "bg-[#333333]"
           )}
           style={{ width: `${percentage}%` }}
         />
       </div>
 
-      {/* 3. Footer: Count + Percent */}
+      {/* Footer: Frame Count and Percentage */}
       <div className="flex justify-between mt-1.5 text-[10px] font-mono text-[#858585] uppercase tracking-wider">
         <span>Frame: <span className="text-[#C5C5C5]">{progress.current}</span> / {progress.total}</span>
         <span className="font-bold text-[#F0F0F0]">{percentage}%</span>

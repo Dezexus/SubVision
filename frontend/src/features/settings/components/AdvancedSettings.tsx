@@ -1,3 +1,4 @@
+// A component for fine-tuning advanced OCR processing parameters.
 import React from 'react';
 import { Settings2 } from 'lucide-react';
 import { useAppStore } from '../../../store/useAppStore';
@@ -10,7 +11,7 @@ export const AdvancedSettings = () => {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-txt-muted mb-4">
-        <Settings2 size={14} /> 
+        <Settings2 size={14} />
         <span>Fine Tuning</span>
       </div>
 
@@ -36,13 +37,11 @@ export const AdvancedSettings = () => {
           checked={(config.clahe_limit || 0) > 0}
           onChange={(val) => updateConfig({ clahe_limit: val ? 2.0 : 0.0 })}
         />
-
         <Switch
           label="Smart Skip (Static Scenes)"
           checked={config.smart_skip ?? true}
           onChange={(val) => updateConfig({ smart_skip: val })}
         />
-
         <Switch
           label="Upscale (2x Resolution)"
           checked={(config.scale_factor || 1) > 1.5}

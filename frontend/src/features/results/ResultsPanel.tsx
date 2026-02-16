@@ -1,3 +1,4 @@
+// The main right-side panel for displaying processing results and final actions.
 import React, { useMemo } from 'react';
 import { Download } from 'lucide-react';
 import { GlassPanel } from '../../components/ui/GlassPanel';
@@ -11,14 +12,16 @@ const formatSrtTime = (seconds: number) => {
   const date = new Date(0);
   date.setSeconds(seconds);
   date.setMilliseconds((seconds % 1) * 1000);
+  // Format to HH:MM:SS,ms
   const iso = date.toISOString().substr(11, 12);
   return iso.replace('.', ',');
 };
 
 export const ResultsPanel = () => {
-  useSocket();
+  useSocket(); // Initializes the WebSocket connection
   const { isProcessing, metadata, subtitles } = useAppStore();
 
+  // Memoize statistics calculation for performance
   const stats = useMemo(() => {
     const total = subtitles.length;
     const lowConf = subtitles.filter(s => s.conf < 0.6).length;
@@ -31,6 +34,7 @@ export const ResultsPanel = () => {
   const handleDownload = () => {
     if (!metadata || subtitles.length === 0) return;
 
+    // Generate SRT content from the current subtitle state
     let srtContent = "";
     subtitles.forEach((sub, index) => {
       srtContent += `${index + 1}\n`;
@@ -38,20 +42,19 @@ export const ResultsPanel = () => {
       srtContent += `${sub.text}\n\n`;
     });
 
-    // ИСПРАВЛЕНИЕ: Используем 'application/octet-stream', чтобы браузер точно скачал файл
+    // Create a Blob and trigger a download via a temporary link element
     const blob = new Blob([srtContent], { type: 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
 
     const link = document.createElement('a');
     link.href = url;
-    // Убедимся, что имя файла корректное
     const safeName = metadata.filename.replace(/\.[^/.]+$/, "");
     link.download = `${safeName}_edited.srt`;
 
     document.body.appendChild(link);
     link.click();
 
-    // Чистим за собой
+    // Clean up the temporary link and Blob URL
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };

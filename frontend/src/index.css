@@ -1,24 +1,45 @@
+/* Imports Tailwind's base, components, and utilities. */
 @import "tailwindcss";
 
+/* Defines base global styles for the application. */
 @layer base {
   body {
     @apply m-0 p-0 font-sans antialiased overflow-hidden;
+    /* Sets default background and text color for the dark theme. */
     background-color: #1e1e1e;
-    color: #F0F0F0; /* High Contrast Main Text */
+    color: #F0F0F0;
     line-height: 1.6;
   }
 
-  /* Скроллбары */
-  ::-webkit-scrollbar { width: 10px; height: 10px; }
-  ::-webkit-scrollbar-track { background: #1e1e1e; }
-  ::-webkit-scrollbar-thumb { 
-    background: #424242; 
-    border: 2px solid #1e1e1e; 
+  /* Custom styles for webkit scrollbars to match the app's theme. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
   }
-  ::-webkit-scrollbar-thumb:hover { background: #4f4f4f; }
+  ::-webkit-scrollbar-track {
+    background: #1e1e1e;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #424242;
+    border: 2px solid #1e1e1e; /* Creates a gap between thumb and track */
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #4f4f4f;
+  }
+
+  /* Hides the scrollbar for elements with this class (used in specific panels). */
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none;    /* Firefox */
+  }
 }
 
+/* Overrides the default style for the react-image-crop selection. */
 .ReactCrop__crop-selection {
-  border: 2px solid #007acc;
+  border: 2px solid #007acc; /* Uses the app's primary brand color. */
+  /* Creates a dark overlay outside the selection area. */
   box-shadow: 0 0 0 9999em rgba(0, 0, 0, 0.6);
 }

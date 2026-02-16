@@ -1,3 +1,4 @@
+// A scrollable list that renders all subtitle items using SubtitleCard.
 import React, { useRef, useEffect } from 'react';
 import { useAppStore } from '../../../store/useAppStore';
 import { SubtitleCard } from './SubtitleCard';
@@ -6,11 +7,9 @@ export const SubtitleList = () => {
   const { subtitles } = useAppStore();
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom on new items
+  // Automatically scroll to the bottom when a new subtitle is added
   useEffect(() => {
-    if (bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [subtitles.length]);
 
   if (subtitles.length === 0) {
@@ -26,6 +25,7 @@ export const SubtitleList = () => {
       {subtitles.map((sub) => (
         <SubtitleCard key={sub.id} item={sub} />
       ))}
+      {/* Invisible element to mark the bottom for auto-scrolling */}
       <div ref={bottomRef} />
     </div>
   );

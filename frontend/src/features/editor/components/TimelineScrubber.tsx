@@ -1,11 +1,12 @@
+// A scrubber component that combines a slider with time displays for video navigation.
 import React, { useMemo } from 'react';
 import { useAppStore } from '../../../store/useAppStore';
 import { Slider } from '../../../components/ui/Slider';
-import { cn } from '../../../utils/cn';
 
 export const TimelineScrubber = () => {
   const { metadata, currentFrameIndex, setCurrentFrame } = useAppStore();
 
+  // Utility to format seconds into MM:SS:ms
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
@@ -13,6 +14,7 @@ export const TimelineScrubber = () => {
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}:${ms.toString().padStart(2, '0')}`;
   };
 
+  // Memoize time calculations to prevent re-computation on every render
   const timeDisplay = useMemo(() => {
     if (!metadata) return { current: "00:00:00", total: "00:00:00" };
     const currentSec = currentFrameIndex / metadata.fps;
@@ -36,9 +38,8 @@ export const TimelineScrubber = () => {
           max={metadata.total_frames - 1}
           value={currentFrameIndex}
           onChange={(e) => setCurrentFrame(Number(e.target.value))}
-          className="accent-brand-500"
+          className="accent-brand-500" // Use a simple accent color
         />
-        {/* Tooltip on hover logic could go here */}
       </div>
 
       <span className="text-xs font-mono text-gray-500 w-16">

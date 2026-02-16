@@ -1,3 +1,4 @@
+// A reusable, styled button component with multiple variants and loading states.
 import React from 'react';
 import { cn } from '../../utils/cn';
 import { Loader2 } from 'lucide-react';
@@ -18,19 +19,16 @@ export const Button = ({
   ...props
 }: ButtonProps) => {
 
+  // Style variants mapping
   const variants = {
     // VS Code Blue (Primary Action)
     primary: "bg-[#007acc] hover:bg-[#005fb8] text-white shadow-sm",
-
     // Green (Start / Confirm)
     success: "bg-[#16a34a] hover:bg-[#15803d] text-white shadow-sm",
-
     // Red (Destructive / Stop)
     danger: "bg-[#ef4444] hover:bg-[#dc2626] text-white shadow-sm",
-
     // Gray (Secondary) - VS Code Style
     secondary: "bg-[#3c3c3c] hover:bg-[#4b4b4b] text-white border border-[#454545]",
-
     // Ghost (Transparent)
     ghost: "bg-transparent hover:bg-[#2a2d2e] text-[#cccccc] hover:text-white",
   };

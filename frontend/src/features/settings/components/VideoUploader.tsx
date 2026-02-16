@@ -1,3 +1,4 @@
+// A drag-and-drop component for uploading the source video file.
 import React, { useCallback, useState } from 'react';
 import { Upload, FileVideo, X } from 'lucide-react';
 import { useAppStore } from '../../../store/useAppStore';
@@ -10,8 +11,9 @@ export const VideoUploader = () => {
   const [isUploading, setIsUploading] = useState(false);
 
   const handleFile = useCallback(async (selectedFile: File) => {
+    // Basic validation, more robust checks are in WelcomeScreen
     if (!selectedFile.type.startsWith('video/')) {
-      alert('Please upload a video file');
+      addLog('Error: Invalid file type.');
       return;
     }
 
@@ -26,7 +28,7 @@ export const VideoUploader = () => {
     } catch (error) {
       console.error(error);
       addLog('Error uploading video.');
-      setFile(null as any); // Reset on error
+      setFile(null as any); // Reset state on failure
     } finally {
       setIsUploading(false);
     }
@@ -40,6 +42,7 @@ export const VideoUploader = () => {
     }
   };
 
+  // View when a file is successfully loaded
   if (file) {
     return (
       <div className="relative p-4 rounded-xl bg-glass-200 border border-brand-500/30 flex items-center gap-4 group">
@@ -55,6 +58,7 @@ export const VideoUploader = () => {
         <button
           onClick={() => setFile(null as any)}
           className="p-2 hover:bg-white/10 rounded-full transition text-gray-400 hover:text-white"
+          title="Remove file"
         >
           <X size={16} />
         </button>
@@ -62,6 +66,7 @@ export const VideoUploader = () => {
     );
   }
 
+  // View for the empty drop zone
   return (
     <div
       onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
@@ -81,14 +86,14 @@ export const VideoUploader = () => {
         id="video-upload"
         onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
       />
-      <label htmlFor="video-upload" className="cursor-pointer w-full h-full flex flex-col items-center">
+      <label htmlFor="video-upload" className="cursor-pointer w-full h-full flex flex-col items-center justify-center">
         <div className="p-4 rounded-full bg-glass-200 text-brand-400 mb-4 group-hover:scale-110 transition-transform duration-300">
           <Upload size={24} />
         </div>
         <p className="font-medium text-gray-300 group-hover:text-white transition">
           Click or Drag video
         </p>
-        <p className="text-xs text-gray-500 mt-2">MP4, MKV, AVI</p>
+        <p className="text-xs text-gray-500 mt-2">MP4, MKV, AVI, etc.</p>
       </label>
     </div>
   );

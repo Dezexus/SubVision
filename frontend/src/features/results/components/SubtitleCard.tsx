@@ -1,3 +1,4 @@
+// A card component for displaying and editing a single subtitle item.
 import React from 'react';
 import { AlertCircle, Trash2, PlayCircle } from 'lucide-react';
 import type { SubtitleItem } from '../../../types';
@@ -8,7 +9,7 @@ const formatTime = (seconds: number) => {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   const ms = Math.floor((seconds % 1) * 100);
-  return `${m}:${s.toString().padStart(2, '0')}.${ms}`;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
 };
 
 export const SubtitleCard = ({ item }: { item: SubtitleItem }) => {
@@ -17,7 +18,7 @@ export const SubtitleCard = ({ item }: { item: SubtitleItem }) => {
   const isHighConf = item.conf > 0.85;
   const isLowConf = item.conf < 0.6;
 
-  // Jump video to subtitle start
+  // Seeks the video player to the start of this subtitle
   const handleJump = () => {
     if (metadata) {
       const frame = Math.round(item.start * metadata.fps);
@@ -29,12 +30,11 @@ export const SubtitleCard = ({ item }: { item: SubtitleItem }) => {
     <div className={cn(
       "group relative flex items-start gap-3 p-3 rounded-lg border transition-all duration-200",
       "bg-[#252526] hover:bg-[#2a2d2e]",
-      isLowConf ? "border-red-500/30" : "border-[#333333]"
+      isLowConf ? "border-red-500/30" : "border-[#333333]" // Highlight low confidence cards
     )}>
 
-      {/* 1. Controls & Meta */}
+      {/* Left: Controls and Metadata */}
       <div className="flex flex-col items-center gap-2 pt-1 min-w-[60px]">
-        {/* Play Button */}
         <button
           onClick={handleJump}
           className="text-[#858585] hover:text-[#007acc] transition-colors"
@@ -43,10 +43,7 @@ export const SubtitleCard = ({ item }: { item: SubtitleItem }) => {
           <PlayCircle size={16} />
         </button>
 
-        {/* Timestamp */}
-        <span className="text-[10px] font-mono text-[#858585]">
-          {formatTime(item.start)}
-        </span>
+        <span className="text-[10px] font-mono text-[#858585]">{formatTime(item.start)}</span>
 
         {/* Confidence Badge */}
         <span className={cn(
@@ -58,7 +55,7 @@ export const SubtitleCard = ({ item }: { item: SubtitleItem }) => {
         </span>
       </div>
 
-      {/* 2. Editable Text Area */}
+      {/* Center: Editable Text Area */}
       <div className="flex-1 min-w-0 relative">
         <textarea
           value={item.text}
@@ -74,7 +71,7 @@ export const SubtitleCard = ({ item }: { item: SubtitleItem }) => {
         )}
       </div>
 
-      {/* 3. Delete Action (Visible on Hover) */}
+      {/* Right: Delete Action (appears on hover) */}
       <button
         onClick={() => deleteSubtitle(item.id)}
         className="opacity-0 group-hover:opacity-100 p-1.5 text-[#858585] hover:text-red-400 hover:bg-red-500/10 rounded transition-all absolute top-2 right-2"
