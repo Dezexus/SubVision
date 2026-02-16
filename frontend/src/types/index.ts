@@ -32,6 +32,7 @@ export interface SubtitleItem {
   end: number;   // in seconds
   text: string;
   conf: number;  // confidence score (0.0 to 1.0)
+  isEdited?: boolean;
   is_corrected?: boolean; // Optional flag for UI state
 }
 

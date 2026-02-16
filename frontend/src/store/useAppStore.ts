@@ -77,9 +77,16 @@ export const useAppStore = create<AppState>((set) => ({
   updateProgress: (current, total, eta) => set({ progress: { current, total, eta } }),
 
   addSubtitle: (sub) => set((state) => ({ subtitles: [...state.subtitles, sub] })),
+
   updateSubtitle: (updatedSub) => set((state) => ({
-    subtitles: state.subtitles.map(sub => sub.id === updatedSub.id ? updatedSub : sub)
+    subtitles: state.subtitles.map(sub =>
+      sub.id === updatedSub.id
+        // When updating, automatically mark the subtitle as manually edited
+        ? { ...updatedSub, isEdited: true }
+        : sub
+    )
   })),
+
   deleteSubtitle: (id) => set((state) => ({
     subtitles: state.subtitles.filter(sub => sub.id !== id)
   })),
