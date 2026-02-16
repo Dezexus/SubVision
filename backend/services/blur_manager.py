@@ -37,9 +37,12 @@ class BlurManager:
         y_pos = int(blur_settings.get('y', height - 50))
         font_scale = float(blur_settings.get('font_scale', 1.0))
         padding_x = int(blur_settings.get('padding_x', 20))
-        padding_y = int(blur_settings.get('padding_y', 10))
-        sigma = int(blur_settings.get('sigma', 15))
-        feather = int(blur_settings.get('feather', 0))
+
+        # Padding Y is now a float multiplier
+        padding_y_factor = float(blur_settings.get('padding_y', 0.2))
+
+        sigma = int(blur_settings.get('sigma', 100))
+        feather = int(blur_settings.get('feather', 30))
 
         ksize = (sigma * 2 + 1, sigma * 2 + 1)
         font_face = cv2.FONT_HERSHEY_SIMPLEX
@@ -54,13 +57,16 @@ class BlurManager:
 
             (text_w, text_h), baseline = cv2.getTextSize(text, font_face, font_scale, thickness)
 
+            # Calculate Y padding based on font height
+            padding_y_px = int(text_h * padding_y_factor)
+
             x = (width - text_w) // 2
             y = y_pos - text_h
 
             final_x = max(0, x - padding_x)
-            final_y = max(0, y - padding_y)
+            final_y = max(0, y - padding_y_px)
             final_w = min(width - final_x, text_w + (padding_x * 2))
-            final_h = min(height - final_y, text_h + (padding_y * 2))
+            final_h = min(height - final_y, text_h + (padding_y_px * 2))
 
             roi = (final_x, final_y, final_w, final_h)
 
@@ -89,7 +95,6 @@ class BlurManager:
                         blurred_roi = cv2.GaussianBlur(roi_img, ksize, 0)
 
                         if feather > 0:
-                            # Обеспечиваем, что хотя бы 35% центра остается сплошным
                             safe_feather_w = int(bw * 0.35)
                             safe_feather_h = int(bh * 0.35)
                             eff_feather = min(feather, safe_feather_w, safe_feather_h)
@@ -98,8 +103,6 @@ class BlurManager:
                                 frame[by:by+bh, bx:bx+bw] = blurred_roi
                             else:
                                 mask = np.zeros((bh, bw), dtype=np.float32)
-
-                                # Рисуем белый прямоугольник в центре
                                 cv2.rectangle(
                                     mask,
                                     (eff_feather, eff_feather),
@@ -107,9 +110,6 @@ class BlurManager:
                                     1.0,
                                     -1
                                 )
-
-                                # Размываем маску менее агрессивно, чтобы сохранить белый центр
-                                # Используем ядро чуть больше размера пера, но не в 2 раза
                                 mask_ksize_val = eff_feather + (1 if eff_feather % 2 == 0 else 0)
                                 if mask_ksize_val % 2 == 0: mask_ksize_val += 1
                                 mask_ksize = (mask_ksize_val, mask_ksize_val)

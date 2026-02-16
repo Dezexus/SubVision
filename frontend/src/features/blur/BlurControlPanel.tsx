@@ -19,6 +19,8 @@ export const BlurControlPanel = () => {
     roi
   } = useAppStore();
 
+  const videoHeight = metadata?.height || 1080;
+
   useEffect(() => {
     if (metadata && blurSettings.y === 900 && roi[1] > 0) {
         setBlurSettings({ y: roi[1] + roi[3] });
@@ -59,10 +61,13 @@ export const BlurControlPanel = () => {
 
       <div className="space-y-4">
         <Slider
-          label="Vertical Position (Baseline)"
-          max={metadata?.height || 1080}
-          value={blurSettings.y}
-          onChange={(e) => setBlurSettings({ y: Number(e.target.value) })}
+          label="Vertical Position (Elevation)"
+          max={videoHeight}
+          // INVERTED: Display (Height - Y). 0 on slider = Bottom of screen.
+          value={videoHeight - blurSettings.y}
+          valueDisplay={videoHeight - blurSettings.y}
+          // INVERTED: Convert slider value back to Y-coordinate
+          onChange={(e) => setBlurSettings({ y: videoHeight - Number(e.target.value) })}
         />
 
         <div className="h-px bg-[#333333] my-4" />
@@ -81,18 +86,21 @@ export const BlurControlPanel = () => {
           onChange={(e) => setBlurSettings({ font_scale: Number(e.target.value) })}
         />
 
-        {/* Располагаем вертикально, чтобы слайдеры не сжимались */}
         <div className="space-y-4">
             <Slider
               label="Padding X"
               max={100}
               value={blurSettings.padding_x}
+              valueDisplay={`${blurSettings.padding_x}px`}
               onChange={(e) => setBlurSettings({ padding_x: Number(e.target.value) })}
             />
             <Slider
-              label="Padding Y"
-              max={100}
+              label="Padding Y (Relative)"
+              min={0}
+              max={3.0}
+              step={0.1}
               value={blurSettings.padding_y}
+              valueDisplay={`${blurSettings.padding_y.toFixed(1)}x`} // Display as multiplier
               onChange={(e) => setBlurSettings({ padding_y: Number(e.target.value) })}
             />
         </div>
@@ -105,8 +113,9 @@ export const BlurControlPanel = () => {
 
         <Slider
           label="Blur Strength"
-          max={50}
+          max={100}
           value={blurSettings.sigma}
+          valueDisplay={`${blurSettings.sigma}%`}
           onChange={(e) => setBlurSettings({ sigma: Number(e.target.value) })}
         />
 
@@ -114,6 +123,7 @@ export const BlurControlPanel = () => {
           label="Edge Softness (Feather)"
           max={50}
           value={blurSettings.feather}
+          valueDisplay={`${blurSettings.feather}px`}
           onChange={(e) => setBlurSettings({ feather: Number(e.target.value) })}
         />
       </div>

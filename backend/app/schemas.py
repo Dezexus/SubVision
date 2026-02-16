@@ -34,9 +34,10 @@ class BlurSettings(BaseModel):
     y: int = 900
     font_scale: float = 1.2
     padding_x: int = 20
-    padding_y: int = 10
-    sigma: int = 15
-    feather: int = 10
+    # Changed to float for relative calculation (multiplier of font height)
+    padding_y: float = 0.2
+    sigma: int = 40
+    feather: int = 30
 
     # Legacy fields
     x: Optional[int] = 0

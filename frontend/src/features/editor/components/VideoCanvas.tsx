@@ -75,18 +75,20 @@ export const VideoCanvas = () => {
       const textWidth = textToMeasure.length * estimatedCharWidth;
       const textHeight = estimatedFontSize;
 
+      // NEW: Calculate Y padding in pixels based on the multiplier
+      const paddingYPx = textHeight * blurSettings.padding_y;
+
       const x = (metadata.width - textWidth) / 2;
       const y = blurSettings.y - textHeight;
 
       const finalX = x - blurSettings.padding_x;
-      const finalY = y - blurSettings.padding_y;
+      const finalY = y - paddingYPx; // Use calculated pixels
       const finalW = textWidth + (blurSettings.padding_x * 2);
-      const finalH = textHeight + (blurSettings.padding_y * 2);
+      const finalH = textHeight + (paddingYPx * 2); // Use calculated pixels
 
-      // ИСПРАВЛЕНИЕ: Ограничиваем feather, чтобы он не перекрывал весь блок
       const feather = blurSettings.feather || 0;
-      const safeFeatherX = Math.min(feather, finalW / 2);
-      const safeFeatherY = Math.min(feather, finalH / 2);
+      const safeFeatherX = Math.min(feather, finalW * 0.35);
+      const safeFeatherY = Math.min(feather, finalH * 0.35);
 
       const container: React.CSSProperties = {
           position: 'absolute',
@@ -103,15 +105,16 @@ export const VideoCanvas = () => {
           boxSizing: 'border-box',
       };
 
+      const blurRadius = Math.max(1, blurSettings.sigma * 0.6);
+
       if (feather > 0) {
-          // ИСПРАВЛЕНИЕ: Используем safeFeather для генерации валидного градиента
           const mask = `
             linear-gradient(to right, transparent, black ${safeFeatherX}px, black calc(100% - ${safeFeatherX}px), transparent),
             linear-gradient(to bottom, transparent, black ${safeFeatherY}px, black calc(100% - ${safeFeatherY}px), transparent)
           `;
 
-          container.backdropFilter = `blur(${Math.max(1, blurSettings.sigma / 3)}px)`;
-          container.WebkitBackdropFilter = `blur(${Math.max(1, blurSettings.sigma / 3)}px)`;
+          container.backdropFilter = `blur(${blurRadius}px)`;
+          container.WebkitBackdropFilter = `blur(${blurRadius}px)`;
 
           // @ts-ignore
           container.maskImage = mask;
@@ -122,8 +125,8 @@ export const VideoCanvas = () => {
           // @ts-ignore
           container.WebkitMaskComposite = 'source-in';
       } else {
-          container.backdropFilter = `blur(${Math.max(1, blurSettings.sigma / 3)}px)`;
-          container.WebkitBackdropFilter = `blur(${Math.max(1, blurSettings.sigma / 3)}px)`;
+          container.backdropFilter = `blur(${blurRadius}px)`;
+          container.WebkitBackdropFilter = `blur(${blurRadius}px)`;
       }
 
       const inner: React.CSSProperties = {

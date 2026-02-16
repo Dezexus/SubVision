@@ -67,9 +67,9 @@ export const useAppStore = create<AppState>((set) => ({
     y: 900,
     font_scale: 1.2,
     padding_x: 20,
-    padding_y: 10,
-    sigma: 15,
-    feather: 20 // Default soft edge
+    padding_y: 0.2, // Default to 20% of font height
+    sigma: 40,    // Updated default to 85%
+    feather: 30
   },
 
   isProcessing: false,
