@@ -1,3 +1,8 @@
+"""
+This module provides a static utility class, VideoManager, for handling
+video-related operations such as conversion, metadata extraction,
+and generating processed frame previews.
+"""
 import logging
 import os
 import subprocess
@@ -19,20 +24,28 @@ logger = logging.getLogger(__name__)
 
 
 class VideoManager:
-    """Utilities for video conversion, metadata extraction, and preview generation."""
+    """A collection of static methods for video conversion, metadata, and previews."""
 
     @staticmethod
     def convert_video_to_h264(input_path: str) -> str | None:
-        """Converts video to standard MP4 (H.264) using FFmpeg."""
+        """
+        Converts a video to a standard MP4 (H.264) format using FFmpeg
+        to ensure compatibility.
+
+        Args:
+            input_path: The path to the source video file.
+
+        Returns:
+            The path to the converted MP4 file, or None if conversion fails.
+        """
         if not input_path:
             return None
 
-        output_path = f"{input_path}_converted.mp4"
+        output_path = f"{os.path.splitext(input_path)[0]}_converted.mp4"
         if os.path.exists(output_path):
             return output_path
 
-        logger.info(f"Converting {input_path} to compatible format...")
-
+        logger.info(f"Attempting to convert {input_path} to a compatible format...")
         cmd = [
             "ffmpeg", "-y", "-i", input_path, "-c:v", "libx264",
             "-preset", "ultrafast", "-crf", "23", "-c:a", "copy",
@@ -40,22 +53,28 @@ class VideoManager:
         ]
         try:
             subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            logger.info("Conversion successful.")
             return output_path
-        except subprocess.CalledProcessError:
-            logger.error("FFmpeg conversion failed.")
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            logger.error("FFmpeg conversion failed. Ensure FFmpeg is installed and in your system's PATH.")
             return None
 
     @staticmethod
     def get_video_info(video_path: str | None) -> tuple[np.ndarray | None, int]:
-        """Returns the first frame and total frame count."""
-        os.environ["DISABLE_MODEL_SOURCE_CHECK"] = "1"
-        os.environ["OPENCV_LOG_LEVEL"] = "OFF"
+        """
+        Extracts the total frame count and the first valid frame from a video.
 
-        if video_path is None:
+        Args:
+            video_path: The path to the video file.
+
+        Returns:
+            A tuple containing the first frame as an RGB NumPy array and the
+            total number of frames. Returns (None, 1) on failure.
+        """
+        if not video_path:
             return None, 1
 
-        cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_NONE])
-
+        cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG)
         if not cap.isOpened():
             return None, 1
 
@@ -67,24 +86,24 @@ class VideoManager:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 10)
                 ok, frame = cap.read()
 
-            if not ok or frame is None:
-                return None, 1
-
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            return frame_rgb, total
-
-        except cv2.error:
-            return None, 1
+            return (cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), total) if ok else (None, 1)
         finally:
             cap.release()
 
     @staticmethod
     def get_frame_image(video_path: str, frame_index: int) -> np.ndarray | None:
-        """Returns the frame at the specified index in RGB format."""
+        """
+        Retrieves a specific frame from a video by its index.
+
+        Args:
+            video_path: The path to the video file.
+            frame_index: The numerical index of the frame to retrieve.
+
+        Returns:
+            The requested frame as an RGB NumPy array, or None if it cannot be read.
+        """
         frame = extract_frame_cv2(video_path, frame_index)
-        if frame is None:
-            return None
-        return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) if frame is not None else None
 
     @staticmethod
     def generate_preview(
@@ -94,41 +113,48 @@ class VideoManager:
         clahe_val: float,
         scale_factor: float,
     ) -> Image.Image | None:
-        """Generates a processed preview image with filters applied."""
-        if video_path is None:
+        """
+        Generates a processed preview image for a specific frame, applying all
+        configured image enhancement filters.
+
+        Args:
+            video_path: The path to the video file.
+            frame_index: The index of the frame to process.
+            editor_data: UI data, potentially containing an ROI mask.
+            clahe_val: The clip limit for CLAHE enhancement.
+            scale_factor: The scaling factor for resizing.
+
+        Returns:
+            A processed PIL Image in RGB format, or None on failure.
+        """
+        if not video_path:
             return None
 
         frame_bgr = extract_frame_cv2(video_path, frame_index)
         if frame_bgr is None:
             return None
 
-        if editor_data and "roi_override" in editor_data:
-            roi = editor_data["roi_override"]
-        else:
-            roi = calculate_roi_from_mask(editor_data)
+        roi = editor_data.get("roi_override") or calculate_roi_from_mask(editor_data)
 
-        if len(roi) == 4 and roi[2] > 0:
+        if len(roi) == 4 and roi[2] > 0 and roi[3] > 0:
             h_img, w_img = frame_bgr.shape[:2]
-            x = min(max(0, roi[0]), w_img)
-            y = min(max(0, roi[1]), h_img)
-            w = min(roi[2], w_img - x)
-            h = min(roi[3], h_img - y)
+            x, y, w, h = roi
             frame_roi = frame_bgr[y : y + h, x : x + w]
         else:
             frame_roi = frame_bgr
 
+        if frame_roi.size == 0:
+            return None
+
         denoised = denoise_frame(frame_roi, strength=3.0)
         processed = apply_clahe(denoised, clip_limit=clahe_val)
 
-        if scale_factor > 1.0:
-            processed_resized = cv2.resize(
-                processed, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC
-            )
+        if scale_factor > 1.0 and processed is not None:
+            processed_resized = cv2.resize(processed, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC)
         else:
             processed_resized = processed
 
         final = apply_sharpening(processed_resized)
-
         if final is None:
             return None
 

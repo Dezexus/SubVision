@@ -32,4 +32,3 @@ class ProcessConfig(BaseModel):
     scale_factor: float = 2.0
     smart_skip: bool = True
     visual_cutoff: bool = True
-    # LLM параметры удалены

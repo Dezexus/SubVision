@@ -1,3 +1,8 @@
+"""
+This module contains a collection of image processing utility functions
+leveraging OpenCV. It provides optional CUDA (GPU) acceleration for
+several operations where available.
+"""
 from typing import Any
 import cv2
 import numpy as np
@@ -9,12 +14,12 @@ except AttributeError:
     HAS_CUDA = False
 
 def apply_clahe(frame: np.ndarray | None, clip_limit: float = 2.0, tile_grid_size: tuple[int, int] = (8, 8)) -> np.ndarray | None:
-    """Applies CLAHE with GPU fallback."""
-    if frame is None:
-        return None
-
-    # ИЗМЕНЕНИЕ: Если лимит <= 0, считаем функцию отключенной и возвращаем оригинал
-    if clip_limit <= 0:
+    """
+    Applies Contrast Limited Adaptive Histogram Equalization (CLAHE) to an
+    image, with a fallback to CPU if CUDA is not available. If clip_limit is
+    zero or less, the original frame is returned.
+    """
+    if frame is None or clip_limit <= 0:
         return frame
 
     if HAS_CUDA:
@@ -39,7 +44,10 @@ def apply_clahe(frame: np.ndarray | None, clip_limit: float = 2.0, tile_grid_siz
     return cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
 
 def denoise_frame(frame: np.ndarray | None, strength: float) -> np.ndarray | None:
-    """Applies Non-Local Means Denoising with GPU fallback."""
+    """
+    Applies Non-Local Means Denoising to a color image.
+    Uses CUDA if available, otherwise falls back to CPU.
+    """
     if frame is None or strength <= 0:
         return frame
 
@@ -57,7 +65,10 @@ def denoise_frame(frame: np.ndarray | None, strength: float) -> np.ndarray | Non
     return cv2.fastNlMeansDenoisingColored(frame, None, h_val, h_val, 7, 21)
 
 def apply_scaling(frame: np.ndarray | None, scale_factor: float) -> np.ndarray | None:
-    """Resizes frame using cubic interpolation with GPU fallback."""
+    """
+    Resizes a frame by a given scale factor using cubic interpolation.
+    Uses CUDA for resizing if available.
+    """
     if frame is None or scale_factor == 1.0:
         return frame
 
@@ -75,7 +86,10 @@ def apply_scaling(frame: np.ndarray | None, scale_factor: float) -> np.ndarray |
     return cv2.resize(frame, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC)
 
 def apply_sharpening(frame: np.ndarray | None) -> np.ndarray | None:
-    """Applies sharpening kernel with GPU fallback."""
+    """
+    Applies a sharpening kernel to the frame.
+    Uses a CUDA-based filter if available.
+    """
     if frame is None:
         return None
 
@@ -94,10 +108,11 @@ def apply_sharpening(frame: np.ndarray | None) -> np.ndarray | None:
     return cv2.filter2D(frame, -1, kernel)
 
 def calculate_image_diff(img1: np.ndarray | None, img2: np.ndarray | None) -> float:
-    """Calculates normalized MSE between images."""
-    if img1 is None or img2 is None:
-        return 1.0
-    if img1.shape != img2.shape:
+    """
+    Calculates the normalized Mean Squared Error (MSE) between two images
+    after converting them to grayscale and resizing for efficiency.
+    """
+    if img1 is None or img2 is None or img1.shape != img2.shape:
         return 1.0
 
     g1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
@@ -114,7 +129,10 @@ def calculate_image_diff(img1: np.ndarray | None, img2: np.ndarray | None) -> fl
     return float(err / 65025.0)
 
 def extract_frame_cv2(video_path: str, frame_index: int) -> np.ndarray | None:
-    """Extracts a single frame by index."""
+    """
+    Extracts a single frame from a video file at a specific index
+    using OpenCV.
+    """
     if not video_path:
         return None
 
@@ -128,7 +146,10 @@ def extract_frame_cv2(video_path: str, frame_index: int) -> np.ndarray | None:
         cap.release()
 
 def calculate_roi_from_mask(image_dict: dict[str, Any] | None) -> list[int]:
-    """Parses Gradio mask to ROI coordinates."""
+    """
+    Parses a dictionary (typically from a UI component like Gradio's image editor)
+    to find a mask and calculates its bounding box to define a Region of Interest (ROI).
+    """
     if not image_dict:
         return [0, 0, 0, 0]
 

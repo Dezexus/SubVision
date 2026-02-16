@@ -1,3 +1,8 @@
+"""
+This module defines processing presets and helper functions for the OCR configuration.
+It provides a default configuration and deltas for different performance/quality trade-offs.
+"""
+
 ConfigType = dict[str, int | float | bool]
 
 DEFAULT_CONFIG: ConfigType = {
@@ -26,18 +31,23 @@ PRESETS_DELTAS: dict[str, ConfigType] = {
 }
 
 def get_preset_config(preset_name: str) -> ConfigType:
-    """Returns full configuration dictionary for a preset."""
+    """
+    Returns a full configuration dictionary for a given preset name by merging
+    the default config with the preset's specific overrides.
+    """
     config = DEFAULT_CONFIG.copy()
     delta = PRESETS_DELTAS.get(preset_name, {})
     config.update(delta)
     return config
 
 def get_preset_choices() -> list[str]:
-    """Returns list of available presets."""
+    """Returns a list of available preset names."""
     return list(PRESETS_DELTAS.keys())
 
 def get_preset_values(preset_name: str) -> tuple[int, int, float, bool, bool, bool]:
-    """Returns tuple values for UI compatibility."""
+    """
+    Returns a tuple of specific values from a preset's config for UI compatibility.
+    """
     cfg = get_preset_config(preset_name)
     is_upscale = float(cfg["scale_factor"]) > 1.0
     return (

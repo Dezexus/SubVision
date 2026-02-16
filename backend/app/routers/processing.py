@@ -1,3 +1,7 @@
+"""
+This module defines API endpoints for managing OCR processing tasks.
+It includes routes to start and stop the background processing worker.
+"""
 import os
 import asyncio
 import logging
@@ -14,9 +18,11 @@ UPLOAD_DIR = "uploads"
 
 @router.post("/start")
 async def start_process(config: ProcessConfig):
-    """Initializes and starts the background OCR worker."""
-
-    # Sanitize filename
+    """
+    Initializes and starts a background OCR worker based on the provided configuration.
+    It validates the file path, sets up websocket callbacks for real-time updates,
+    and then starts the process via the ProcessManager.
+    """
     safe_filename = os.path.basename(config.filename)
     file_path = os.path.join(UPLOAD_DIR, safe_filename)
 
@@ -61,6 +67,8 @@ async def start_process(config: ProcessConfig):
 
 @router.post("/stop/{client_id}")
 async def stop_process(client_id: str):
-    """Stops the active processing job for a client."""
+    """
+    Stops the active processing job for a specific client ID.
+    """
     process_mgr.stop_process(client_id)
     return {"status": "stopped"}

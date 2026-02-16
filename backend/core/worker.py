@@ -1,3 +1,8 @@
+"""
+This module defines the OCRWorker, a threaded class responsible for orchestrating
+the entire video-to-subtitle process, from frame extraction and image processing
+to OCR inference and subtitle aggregation.
+"""
 import gc
 import logging
 import queue
@@ -8,7 +13,6 @@ from collections.abc import Callable
 from typing import Any
 
 from .image_pipeline import ImagePipeline
-# from .llm_engine import LLMFixer  <-- УДАЛЕНО
 from .ocr_engine import PaddleWrapper
 from .presets import get_preset_config
 from .subtitle_aggregator import SubtitleAggregator
@@ -19,9 +23,20 @@ logger = logging.getLogger(__name__)
 SENTINEL = object()
 
 class OCRWorker(threading.Thread):
-    """Orchestrates video processing, OCR, and subtitle generation."""
+    """
+    Orchestrates the entire OCR process in a separate thread. It manages a
+    producer-consumer pattern where one thread reads and processes video frames,
+    and the main worker thread performs OCR on them.
+    """
 
     def __init__(self, params: dict[str, Any], callbacks: dict[str, Callable[..., Any]]) -> None:
+        """
+        Initializes the worker thread.
+
+        Args:
+            params: A dictionary of operational parameters.
+            callbacks: A dictionary of callback functions for progress, logs, and results.
+        """
         super().__init__()
         self.params = params
         self.cb = callbacks
@@ -30,6 +45,7 @@ class OCRWorker(threading.Thread):
         self.producer_error: Exception | None = None
 
     def stop(self) -> None:
+        """Signals the worker to stop processing."""
         self.is_running = False
         try:
             while not self.frame_queue.empty():
@@ -38,6 +54,10 @@ class OCRWorker(threading.Thread):
             pass
 
     def _producer_loop(self, video: VideoProvider, pipeline: ImagePipeline) -> None:
+        """
+        Reads frames from the video, applies the image processing pipeline,
+        and puts the results into a queue for the consumer.
+        """
         try:
             for frame_idx, timestamp, frame in video:
                 if not self.is_running:
@@ -50,16 +70,16 @@ class OCRWorker(threading.Thread):
             self.frame_queue.put(SENTINEL)
 
     def run(self) -> None:
-        srt_data: list[dict[str, Any]] = []
+        """The main execution method of the worker thread."""
         video: VideoProvider | None = None
         ocr_engine: PaddleWrapper | None = None
         producer_thread: threading.Thread | None = None
 
         try:
             self._log("--- START OCR (Parallel Pipeline) ---")
+
             preset_name = str(self.params.get("preset_name", "⚖️ Balance"))
             config = get_preset_config(preset_name)
-
             config.update({
                 "step": self.params.get("step", config["step"]),
                 "clahe": self.params.get("clip_limit", config["clahe"]),
@@ -68,10 +88,8 @@ class OCRWorker(threading.Thread):
                 "min_conf": self.params.get("min_conf", 0.80),
             })
 
-            video_path = str(self.params["video_path"])
-            video = VideoProvider(video_path, step=int(config["step"]))
-            roi = self.params.get("roi", [0, 0, 0, 0])
-            pipeline = ImagePipeline(roi=roi, config=config)
+            video = VideoProvider(str(self.params["video_path"]), step=int(config["step"]))
+            pipeline = ImagePipeline(roi=self.params.get("roi", [0, 0, 0, 0]), config=config)
             ocr_engine = PaddleWrapper(lang=str(self.params.get("langs", "en")))
             aggregator = SubtitleAggregator(min_conf=float(config["min_conf"]), fps=video.fps)
             aggregator.on_new_subtitle = self._emit_subtitle
@@ -116,15 +134,14 @@ class OCRWorker(threading.Thread):
 
             srt_data = aggregator.finalize()
             self._log(f"Smart Skip: {pipeline.skipped_count} frames")
-
-            # БЛОК LLM УДАЛЕН ЗДЕСЬ
-
             self._save_to_file(srt_data)
-            self.cb.get("finish", lambda x: None)(True)
+            if self.cb.get("finish"):
+                self.cb["finish"](True)
 
         except Exception as e:
             self._log(f"CRITICAL: {e}\n{traceback.format_exc()}")
-            self.cb.get("finish", lambda x: None)(False)
+            if self.cb.get("finish"):
+                self.cb["finish"](False)
         finally:
             self.is_running = False
             if video:
@@ -140,33 +157,30 @@ class OCRWorker(threading.Thread):
             try:
                 import paddle
                 paddle.device.cuda.empty_cache()
-            except ImportError:
+            except (ImportError, AttributeError):
                 pass
 
     def _update_progress(self, current: int, total: int, start_time: float) -> None:
-        if self.cb.get("progress"):
+        """Calculates ETA and triggers the progress callback."""
+        if self.cb.get("progress") and current > 0:
             elapsed = time.time() - start_time
-            eta_str = "--:--"
-            if current > 0:
-                avg_time = elapsed / current
-                remain = total - current
-                eta_sec = int(remain * avg_time)
-                eta_str = f"{eta_sec // 60:02d}:{eta_sec % 60:02d}"
+            avg_time = elapsed / current
+            eta_sec = int((total - current) * avg_time)
+            eta_str = f"{eta_sec // 60:02d}:{eta_sec % 60:02d}"
             self.cb["progress"](current, total, eta_str)
 
     def _log(self, msg: str) -> None:
+        """Sends a log message via callback."""
         if self.cb.get("log"):
             self.cb["log"](msg)
 
     def _emit_subtitle(self, item: dict[str, Any]) -> None:
+        """Emits a newly generated subtitle item via callback."""
         if self.cb.get("subtitle"):
             self.cb["subtitle"](item)
 
-    # _emit_ai_update УДАЛЕН
-
-    # _run_llm_fixer УДАЛЕН
-
     def _save_to_file(self, srt_data: list[dict[str, Any]]) -> None:
+        """Saves the final subtitle data to an SRT file."""
         output_path = str(self.params["output_path"])
         try:
             with open(output_path, "w", encoding="utf-8") as f:
@@ -179,3 +193,4 @@ class OCRWorker(threading.Thread):
             self._log(f"Saved: {output_path}")
         except OSError as e:
             self._log(f"Error saving file: {e}")
+

@@ -1,3 +1,7 @@
+"""
+This module provides API endpoints for video file management, including
+uploading, downloading, frame extraction, and preview generation.
+"""
 import os
 import shutil
 import uuid
@@ -18,40 +22,33 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 @router.post("/upload", response_model=VideoMetadata)
 async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     """
-    Handles video upload, saves it with a secure name, and returns metadata.
-    Triggers a background cleanup task for old files.
+    Handles video upload, saves it with a secure name, extracts metadata,
+    and schedules a background task to clean up old files.
     """
-
-    # 1. Запускаем очистку в фоне (удаляем файлы старше 12 часов)
     background_tasks.add_task(cleanup_old_files, max_age_hours=12)
 
-    # 2. Генерируем безопасное имя файла (UUID), сохраняя оригинальное расширение
     filename, ext = os.path.splitext(file.filename)
     if not ext:
-        ext = ".mp4" # Fallback, если расширение не определилось
+        ext = ".mp4"
 
     safe_filename = f"{uuid.uuid4()}{ext}"
     file_path = os.path.join(UPLOAD_DIR, safe_filename)
 
-    # 3. Сохраняем файл на диск
     try:
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save file: {e}")
 
-    # 4. Проверяем валидность видео через OpenCV
     frame, total_frames = VideoManager.get_video_info(file_path)
 
     if frame is None:
-        # Если OpenCV не смог прочитать файл (битый кодек или формат), удаляем его
         if os.path.exists(file_path):
             os.remove(file_path)
         raise HTTPException(status_code=400, detail="Invalid video format or codec. Please use standard MP4/MKV/AVI.")
 
     height, width, _ = frame.shape
 
-    # 5. Извлекаем FPS и длительность
     cap = cv2.VideoCapture(file_path)
     fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
     duration = total_frames / fps
@@ -69,8 +66,7 @@ async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = Fil
 @router.get("/download/{filename}")
 async def download_file(filename: str):
     """
-    Forces file download for the given filename.
-    Useful for downloading original source files.
+    Provides a download link for the specified raw video file.
     """
     safe_filename = os.path.basename(filename)
     file_path = os.path.join(UPLOAD_DIR, safe_filename)
@@ -81,12 +77,14 @@ async def download_file(filename: str):
     return FileResponse(
         path=file_path,
         filename=safe_filename,
-        media_type='application/octet-stream' # Force download
+        media_type='application/octet-stream'
     )
 
 @router.get("/frame/{filename}/{frame_index}")
 async def get_frame(filename: str, frame_index: int):
-    """Retrieves a specific raw frame as a JPEG image."""
+    """
+    Retrieves a specific raw frame from the video and returns it as a JPEG image.
+    """
     safe_filename = os.path.basename(filename)
     file_path = os.path.join(UPLOAD_DIR, safe_filename)
 
@@ -103,7 +101,10 @@ async def get_frame(filename: str, frame_index: int):
 
 @router.post("/preview")
 async def get_preview(config: PreviewConfig):
-    """Generates a processed preview frame based on settings (CLAHE, Scale, ROI)."""
+    """
+    Generates a processed preview frame based on client-side settings
+    (e.g., CLAHE, scale, ROI) and returns it as a JPEG image.
+    """
     safe_filename = os.path.basename(config.filename)
     file_path = os.path.join(UPLOAD_DIR, safe_filename)
 
