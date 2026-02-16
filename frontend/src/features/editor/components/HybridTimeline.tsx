@@ -1,8 +1,8 @@
-// A hybrid timeline combining a frame-accurate scrubber with a visual subtitle block editor.
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ChevronLeft, ChevronRight, SkipBack, SkipForward } from 'lucide-react';
 import { useAppStore } from '../../../store/useAppStore';
 import { cn } from '../../../utils/cn';
+import { formatTimeDisplay } from '../../../utils/format';
 import type { SubtitleItem } from '../../../types';
 
 type ProcessedSubtitle = SubtitleItem & { track: number };
@@ -11,38 +11,25 @@ export const HybridTimeline = () => {
   const { metadata, subtitles, currentFrameIndex, setCurrentFrame } = useAppStore();
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // --- LOCAL STATE for smooth interaction ---
   const [localFrame, setLocalFrame] = useState(currentFrameIndex);
   const [isDragging, setIsDragging] = useState(false);
   const [hoveredSub, setHoveredSub] = useState<ProcessedSubtitle | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
 
-  // --- HOOKS & MEMOS ---
-
-  // Sync local frame state with global state when not dragging
   useEffect(() => {
     if (!isDragging) {
       setLocalFrame(currentFrameIndex);
     }
   }, [currentFrameIndex, isDragging]);
 
-  // Memoized time calculations
   const { currentTime, totalTime } = useMemo(() => {
-    if (!metadata) return { currentTime: "00:00:00", totalTime: "00:00:00" };
-    const format = (frame: number) => {
-      const secs = frame / metadata.fps;
-      const m = Math.floor(secs / 60);
-      const s = Math.floor(secs % 60);
-      const ms = Math.floor((secs % 1) * 100);
-      return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
-    };
+    if (!metadata) return { currentTime: "00:00:00.00", totalTime: "00:00:00.00" };
     return {
-      currentTime: format(localFrame),
-      totalTime: format(metadata.total_frames)
+      currentTime: formatTimeDisplay(localFrame / metadata.fps),
+      totalTime: formatTimeDisplay(metadata.duration)
     };
   }, [metadata, localFrame]);
 
-  // Algorithm to assign tracks to overlapping subtitles
   const processedSubtitles = useMemo((): ProcessedSubtitle[] => {
     const sortedSubs = [...subtitles].sort((a, b) => a.start - b.start);
     const lanes: number[] = [];
@@ -55,8 +42,6 @@ export const HybridTimeline = () => {
       return { ...sub, track: assignedTrack };
     });
   }, [subtitles]);
-
-  // --- HANDLERS ---
 
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setIsDragging(true);
@@ -94,9 +79,6 @@ export const HybridTimeline = () => {
 
   if (!metadata) return null;
 
-  // --- RENDER ---
-
-  const totalLanes = Math.max(1, ...processedSubtitles.map(s => s.track + 1));
   const percentage = Math.min(Math.max(((localFrame) / (metadata.total_frames - 1)) * 100, 0), 100);
 
   return (
@@ -107,7 +89,6 @@ export const HybridTimeline = () => {
         onMouseLeave={() => setHoveredSub(null)}
         className="flex items-center gap-4"
       >
-        {/* Current Time Display */}
         <div className="flex flex-col items-end w-20">
           <span className={cn("text-sm font-mono font-bold leading-none", isDragging ? "text-white" : "text-[#007acc]")}>
             {currentTime}
@@ -117,15 +98,12 @@ export const HybridTimeline = () => {
           </span>
         </div>
 
-        {/* Navigation Buttons */}
         <div className="flex items-center gap-1">
           <button onClick={handlePrevSub} title="Previous subtitle" className="p-2 rounded-full hover:bg-[#333333] text-[#C5C5C5] hover:text-white transition"><SkipBack size={16} /></button>
           <button onClick={() => setCurrentFrame(f => Math.max(0, f - 1))} title="Previous frame" className="p-2 rounded-full hover:bg-[#333333] text-[#C5C5C5] hover:text-white transition"><ChevronLeft size={18} /></button>
         </div>
 
-        {/* The Combined Timeline/Slider */}
         <div className="relative flex-1 h-12 flex items-center group">
-          {/* Invisible <input> for scrubbing logic */}
           <input
             type="range"
             min={0}
@@ -137,10 +115,8 @@ export const HybridTimeline = () => {
             className="w-full absolute z-30 opacity-0 cursor-pointer h-full appearance-none bg-transparent"
           />
 
-          {/* Visual Track Container */}
           <div className="w-full h-4 bg-[#18181b] rounded-full border border-[#333333] relative z-10 pointer-events-none shadow-inner" />
 
-          {/* Subtitle Blocks */}
           <div className="absolute w-full h-full top-0 left-0 pointer-events-none z-20 p-2">
             {processedSubtitles.map((sub) => {
               const startPercent = (sub.start / metadata.duration) * 100;
@@ -158,7 +134,7 @@ export const HybridTimeline = () => {
                   style={{
                     left: `${startPercent}%`,
                     width: `${Math.max(durationPercent, 0.2)}%`,
-                    top: `${sub.track * 4 + 2}px`, // Stagger overlapping subs
+                    top: `${sub.track * 4 + 2}px`,
                     height: "3px"
                   }}
                 >
@@ -168,27 +144,23 @@ export const HybridTimeline = () => {
             })}
           </div>
 
-          {/* Visual Thumb (Playhead) */}
           <div
             className="absolute h-5 w-5 bg-[#F0F0F0] border-2 border-[#1e1e1e] rounded-full shadow-lg z-20 pointer-events-none transition-transform duration-75 ease-out group-hover:scale-110"
             style={{ left: `calc(${percentage}% - 10px)` }}
           />
         </div>
 
-        {/* More Navigation Buttons */}
         <div className="flex items-center gap-1">
           <button onClick={() => setCurrentFrame(f => Math.min(metadata.total_frames - 1, f + 1))} title="Next frame" className="p-2 rounded-full hover:bg-[#333333] text-[#C5C5C5] hover:text-white transition"><ChevronRight size={18} /></button>
           <button onClick={handleNextSub} title="Next subtitle" className="p-2 rounded-full hover:bg-[#333333] text-[#C5C5C5] hover:text-white transition"><SkipForward size={16} /></button>
         </div>
 
-        {/* Total Time Display */}
         <div className="flex flex-col items-start w-20">
           <span className="text-sm font-mono text-[#F0F0F0] font-medium leading-none">{totalTime}</span>
           <span className="text-[10px] text-[#858585] font-mono mt-0.5">TOTAL</span>
         </div>
       </div>
 
-      {/* Tooltip */}
       {hoveredSub && (
         <div
           className="fixed z-50 p-2 text-xs text-white bg-black/80 border border-white/20 rounded-md shadow-lg pointer-events-none max-w-xs"
