@@ -1,8 +1,7 @@
-from typing import List, Optional
+from typing import List, Optional, Any
 from pydantic import BaseModel
 
 class VideoMetadata(BaseModel):
-    """Data model for video file information."""
     filename: str
     total_frames: int
     width: int
@@ -11,7 +10,6 @@ class VideoMetadata(BaseModel):
     duration: float
 
 class PreviewConfig(BaseModel):
-    """Configuration for generating a frame preview."""
     filename: str
     frame_index: int
     roi: List[int]
@@ -20,7 +18,6 @@ class PreviewConfig(BaseModel):
     denoise: float
 
 class ProcessConfig(BaseModel):
-    """Configuration for starting the OCR process."""
     filename: str
     client_id: str
     roi: List[int]
@@ -32,3 +29,22 @@ class ProcessConfig(BaseModel):
     scale_factor: float = 2.0
     smart_skip: bool = True
     visual_cutoff: bool = True
+
+class BlurSettings(BaseModel):
+    y: int = 900
+    font_scale: float = 1.2
+    padding_x: int = 20
+    padding_y: int = 10
+    sigma: int = 15
+    feather: int = 10
+
+    # Legacy fields
+    x: Optional[int] = 0
+    w: Optional[int] = 0
+    h: Optional[int] = 0
+
+class RenderConfig(BaseModel):
+    filename: str
+    client_id: str
+    subtitles: List[dict]
+    blur_settings: BlurSettings

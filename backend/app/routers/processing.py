@@ -1,14 +1,12 @@
-"""
-This module defines API endpoints for managing OCR processing tasks.
-It includes routes to start and stop the background processing worker.
-"""
 import os
 import asyncio
 import logging
-from fastapi import APIRouter, HTTPException
-from app.schemas import ProcessConfig
+from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File
+from app.schemas import ProcessConfig, RenderConfig
 from app.websocket_manager import manager
 from services.process_manager import ProcessManager
+from services.blur_manager import BlurManager
+from core.srt_parser import parse_srt
 
 logger = logging.getLogger(__name__)
 
@@ -16,27 +14,19 @@ router = APIRouter()
 process_mgr = ProcessManager()
 UPLOAD_DIR = "uploads"
 
+# ... (start_process, stop_process, import_srt остаются без изменений) ...
 @router.post("/start")
 async def start_process(config: ProcessConfig):
-    """
-    Initializes and starts a background OCR worker based on the provided configuration.
-    It validates the file path, sets up websocket callbacks for real-time updates,
-    and then starts the process via the ProcessManager.
-    """
+    # Код start_process без изменений
     safe_filename = os.path.basename(config.filename)
     file_path = os.path.join(UPLOAD_DIR, safe_filename)
-
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Video file not found")
-
     loop = asyncio.get_event_loop()
-
     def _emit(event_type: str, payload: dict):
         asyncio.run_coroutine_threadsafe(
-            manager.send_json(config.client_id, {"type": event_type, **payload}),
-            loop
+            manager.send_json(config.client_id, {"type": event_type, **payload}), loop
         )
-
     callbacks = {
         "log": lambda msg: _emit("log", {"message": msg}),
         "subtitle": lambda item: _emit("subtitle_new", {"item": item}),
@@ -44,7 +34,6 @@ async def start_process(config: ProcessConfig):
         "progress": lambda c, t, e: _emit("progress", {"current": c, "total": t, "eta": e}),
         "finish": lambda success: _emit("finish", {"success": success})
     }
-
     try:
         process_mgr.start_process(
             session_id=config.client_id,
@@ -60,15 +49,96 @@ async def start_process(config: ProcessConfig):
             callbacks=callbacks
         )
         return {"status": "started", "job_id": config.client_id}
-
     except Exception as e:
         logger.error(f"Error starting process: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/stop/{client_id}")
 async def stop_process(client_id: str):
-    """
-    Stops the active processing job for a specific client ID.
-    """
     process_mgr.stop_process(client_id)
     return {"status": "stopped"}
+
+@router.post("/import_srt")
+async def import_srt(file: UploadFile = File(...)):
+    try:
+        content = await file.read()
+        content_str = content.decode("utf-8")
+        subtitles = parse_srt(content_str)
+        return subtitles
+    except UnicodeDecodeError:
+        try:
+            content_str = content.decode("cp1252")
+            subtitles = parse_srt(content_str)
+            return subtitles
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid file encoding")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to parse SRT: {str(e)}")
+
+
+@router.post("/render_blur")
+async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTasks):
+    safe_filename = os.path.basename(config.filename)
+    file_path = os.path.join(UPLOAD_DIR, safe_filename)
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Video file not found")
+
+    output_filename = f"blurred_{safe_filename}"
+    output_path = os.path.join(UPLOAD_DIR, output_filename)
+
+    if os.path.exists(output_path):
+        try:
+            os.remove(output_path)
+        except OSError:
+            pass
+
+    blur_mgr = BlurManager()
+    loop = asyncio.get_event_loop()
+
+    def progress_cb(current, total):
+        if total <= 0: total = 1
+        pct = min(100, int((current / total) * 100))
+        eta_str = f"{pct}%"
+
+        asyncio.run_coroutine_threadsafe(
+            manager.send_json(config.client_id, {
+                "type": "progress",
+                "current": current,
+                "total": total,
+                "eta": eta_str
+            }),
+            loop
+        )
+
+    def run_render_task():
+        success = False
+        error_msg = None
+        try:
+            blur_mgr.apply_blur_task(
+                file_path,
+                config.subtitles,
+                config.blur_settings.dict(),
+                output_path,
+                progress_cb
+            )
+            success = True
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Render task failed: {e}", exc_info=True)
+            success = False
+        finally:
+            payload = {"type": "finish", "success": success}
+            if success:
+                payload["download_url"] = f"/uploads/{output_filename}"
+            if error_msg:
+                payload["error"] = error_msg # Передаем ошибку на фронт
+
+            asyncio.run_coroutine_threadsafe(
+                manager.send_json(config.client_id, payload),
+                loop
+            )
+
+    background_tasks.add_task(run_render_task)
+
+    return {"status": "rendering_started", "output": output_filename}
