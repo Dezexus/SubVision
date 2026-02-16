@@ -1,30 +1,32 @@
+# Runs the SubVision application stack in a single container with GPU support.
 version: '3.8'
 
 services:
   subvision:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     container_name: subvision_all_in_one
     restart: unless-stopped
     ports:
       - "7860:7860"
     volumes:
-      # Uploads persistence (Map host folder to container)
+      # Persist user uploads on host & cache ML models in a named volume.
       - ./backend/uploads:/app/backend/uploads
-      # Cache for PaddleOCR models
       - paddle_models:/root/.paddleocr
     environment:
+      # Pre-allocate 90% of GPU memory for PaddlePaddle performance.
       - PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
       - FLAGS_fraction_of_gpu_memory_to_use=0.9
     deploy:
+      # Grant access to one NVIDIA GPU.
       resources:
         reservations:
           devices:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    # Increase shared memory to prevent crashes with ML frameworks.
     shm_size: '8gb'
 
 volumes:
+  # Named volume for caching downloaded PaddleOCR models.
   paddle_models:
