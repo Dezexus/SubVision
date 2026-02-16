@@ -1,14 +1,13 @@
 // The main layout component that orchestrates the editor's different panels.
 import React from 'react';
-import { VideoControls } from './components/VideoControls';
 import { VideoCanvas } from './components/VideoCanvas';
 import { FilterPreview } from './components/FilterPreview';
 import { WelcomeScreen } from './components/WelcomeScreen';
-import { SubtitleTimeline } from './components/SubtitleTimeline';
+import { HybridTimeline } from './components/HybridTimeline'; // <-- ИМПОРТИРУЕМ НОВЫЙ КОМПОНЕНТ
 import { useAppStore } from '../../store/useAppStore';
 
 export const EditorPanel = () => {
-  const { file, roi, subtitles } = useAppStore();
+  const { file, roi } = useAppStore();
 
   // If no file is loaded, show the welcome screen
   if (!file) {
@@ -34,16 +33,9 @@ export const EditorPanel = () => {
         </div>
       )}
 
-      {/* 3. Middle: Subtitle visualization timeline, shown only if subtitles exist */}
-      {subtitles.length > 0 && (
-        <div className="flex-none px-4">
-          <SubtitleTimeline />
-        </div>
-      )}
-
-      {/* 4. Bottom: Frame navigation controls */}
+      {/* 3. Bottom: The new unified timeline */}
       <div className="flex-none px-4 pb-4">
-         <VideoControls />
+         <HybridTimeline />
       </div>
     </div>
   );
