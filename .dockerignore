@@ -1,0 +1,39 @@
+# Git
+.git
+.gitignore
+
+# Python / Backend
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+.env
+pip-log.txt
+
+# Node / Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+.npm
+*.log
+
+# Application Data & Cache
+backend/uploads/*
+!backend/uploads/.gitkeep
+paddle_cache/
+hf_cache/
+paddle_models/
+model_cache/
+
+# IDE & OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
