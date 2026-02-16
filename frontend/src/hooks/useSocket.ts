@@ -1,11 +1,9 @@
-// A custom hook to manage WebSocket communication and update the global state.
 import { useEffect } from 'react';
 import useWebSocket from 'react-use-websocket';
 import { useAppStore } from '../store/useAppStore';
 import type { WebSocketMessage } from '../types';
 import { API_BASE } from '../services/api';
 
-// Dynamically construct the WebSocket URL from the base API URL
 const getSocketUrl = () => {
   const url = new URL(API_BASE);
   const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -21,11 +19,12 @@ export const useSocket = () => {
     updateProgress,
     addSubtitle,
     updateSubtitle,
-    setProcessing
+    setProcessing,
+    setRenderedVideoUrl
   } = useAppStore();
 
   const { lastJsonMessage } = useWebSocket(`${SOCKET_URL}/${clientId}`, {
-    shouldReconnect: () => true, // Always attempt to reconnect on disconnect
+    shouldReconnect: () => true,
     reconnectInterval: 3000,
   });
 
@@ -34,7 +33,6 @@ export const useSocket = () => {
 
     const msg = lastJsonMessage as WebSocketMessage;
 
-    // Process incoming messages based on their type
     switch (msg.type) {
       case 'log':
         addLog(msg.message);
@@ -46,15 +44,24 @@ export const useSocket = () => {
         addSubtitle(msg.item);
         break;
       case 'subtitle_update':
-        // This case might not be used frequently but is available for real-time AI edits
         updateSubtitle(msg.item);
         break;
       case 'finish':
         setProcessing(false);
-        addLog(msg.success ? '--- Process Completed Successfully ---' : '--- Process Failed ---');
+        if (msg.success) {
+            addLog('--- Process Completed Successfully ---');
+            if (msg.download_url) {
+                setRenderedVideoUrl(msg.download_url);
+            }
+        } else {
+            addLog('--- Process Failed ---');
+            if (msg.error) {
+                addLog(`Error details: ${msg.error}`);
+            }
+        }
         break;
       default:
         console.warn('Unknown WebSocket message type:', msg);
     }
-  }, [lastJsonMessage, addLog, updateProgress, addSubtitle, updateSubtitle, setProcessing]);
+  }, [lastJsonMessage, addLog, updateProgress, addSubtitle, updateSubtitle, setProcessing, setRenderedVideoUrl]);
 };

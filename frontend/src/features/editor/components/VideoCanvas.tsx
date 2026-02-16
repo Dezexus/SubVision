@@ -1,25 +1,31 @@
-// The main canvas for displaying video frames and handling ROI cropping.
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop';
-import 'react-image-crop/dist/ReactCrop.css'; // Import base styles
+import 'react-image-crop/dist/ReactCrop.css';
 import { useAppStore } from '../../../store/useAppStore';
 import { api } from '../../../services/api';
 import { Loader2, ImageOff } from 'lucide-react';
 
 export const VideoCanvas = () => {
-  const { metadata, currentFrameIndex, setRoi, file } = useAppStore();
+  const {
+    metadata,
+    currentFrameIndex,
+    setRoi,
+    file,
+    isBlurMode,
+    blurSettings,
+    subtitles
+  } = useAppStore();
+
   const [crop, setCrop] = useState<Crop>();
   const [imgSrc, setImgSrc] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
 
-  // Maintain the video's original aspect ratio for the canvas container
   const aspectRatio = useMemo(() => {
     if (!metadata || metadata.height === 0) return 16 / 9;
     return metadata.width / metadata.height;
   }, [metadata]);
 
-  // Fetch the current frame's image whenever the frame index changes
   useEffect(() => {
     if (!metadata) return;
     setIsLoading(true);
@@ -34,7 +40,6 @@ export const VideoCanvas = () => {
     img.onerror = () => setIsLoading(false);
   }, [currentFrameIndex, metadata]);
 
-  // Convert the visual crop selection (in pixels) to real video coordinates
   const onCropComplete = (crop: PixelCrop) => {
     if (!imgRef.current || !metadata) return;
     const image = imgRef.current;
@@ -47,13 +52,91 @@ export const VideoCanvas = () => {
     setRoi([realX, realY, realW, realH]);
   };
 
-  // Reset the canvas state when a new file is uploaded
   useEffect(() => {
     setCrop(undefined);
     setImgSrc(null);
   }, [file]);
 
-  // Placeholder view when no video is loaded
+  const activeSubtitle = useMemo(() => {
+    if (!isBlurMode || !metadata) return null;
+    const currentTime = currentFrameIndex / metadata.fps;
+    return subtitles.find(sub => currentTime >= sub.start && currentTime <= sub.end);
+  }, [isBlurMode, currentFrameIndex, subtitles, metadata]);
+
+  // --- Dynamic Style Calculation ---
+  const { containerStyle, innerBoxStyle } = useMemo(() => {
+      if (!metadata) return { containerStyle: { display: 'none' }, innerBoxStyle: {} };
+
+      const textToMeasure = activeSubtitle ? activeSubtitle.text : "Preview Text Size";
+
+      const estimatedFontSize = 22 * blurSettings.font_scale;
+      const estimatedCharWidth = estimatedFontSize * 0.55;
+
+      const textWidth = textToMeasure.length * estimatedCharWidth;
+      const textHeight = estimatedFontSize;
+
+      const x = (metadata.width - textWidth) / 2;
+      const y = blurSettings.y - textHeight;
+
+      const finalX = x - blurSettings.padding_x;
+      const finalY = y - blurSettings.padding_y;
+      const finalW = textWidth + (blurSettings.padding_x * 2);
+      const finalH = textHeight + (blurSettings.padding_y * 2);
+
+      // ИСПРАВЛЕНИЕ: Ограничиваем feather, чтобы он не перекрывал весь блок
+      const feather = blurSettings.feather || 0;
+      const safeFeatherX = Math.min(feather, finalW / 2);
+      const safeFeatherY = Math.min(feather, finalH / 2);
+
+      const container: React.CSSProperties = {
+          position: 'absolute',
+          left: `${(finalX / metadata.width) * 100}%`,
+          top: `${(finalY / metadata.height) * 100}%`,
+          width: `${(finalW / metadata.width) * 100}%`,
+          height: `${(finalH / metadata.height) * 100}%`,
+          zIndex: 30,
+          pointerEvents: 'none',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          border: activeSubtitle ? '1px dashed rgba(255, 100, 100, 0.7)' : '1px dashed rgba(255, 255, 255, 0.3)',
+          boxSizing: 'border-box',
+      };
+
+      if (feather > 0) {
+          // ИСПРАВЛЕНИЕ: Используем safeFeather для генерации валидного градиента
+          const mask = `
+            linear-gradient(to right, transparent, black ${safeFeatherX}px, black calc(100% - ${safeFeatherX}px), transparent),
+            linear-gradient(to bottom, transparent, black ${safeFeatherY}px, black calc(100% - ${safeFeatherY}px), transparent)
+          `;
+
+          container.backdropFilter = `blur(${Math.max(1, blurSettings.sigma / 3)}px)`;
+          container.WebkitBackdropFilter = `blur(${Math.max(1, blurSettings.sigma / 3)}px)`;
+
+          // @ts-ignore
+          container.maskImage = mask;
+          // @ts-ignore
+          container.WebkitMaskImage = mask;
+          // @ts-ignore
+          container.maskComposite = 'intersect';
+          // @ts-ignore
+          container.WebkitMaskComposite = 'source-in';
+      } else {
+          container.backdropFilter = `blur(${Math.max(1, blurSettings.sigma / 3)}px)`;
+          container.WebkitBackdropFilter = `blur(${Math.max(1, blurSettings.sigma / 3)}px)`;
+      }
+
+      const inner: React.CSSProperties = {
+          width: `calc(100% - ${safeFeatherX * 2}px)`,
+          height: `calc(100% - ${safeFeatherY * 2}px)`,
+          border: '1px solid rgba(100, 255, 100, 0.8)',
+          borderRadius: '2px',
+          boxSizing: 'border-box',
+      };
+
+      return { containerStyle: container, innerBoxStyle: inner };
+  }, [blurSettings, metadata, activeSubtitle]);
+
   if (!file || !metadata) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-[#555]">
@@ -76,20 +159,56 @@ export const VideoCanvas = () => {
           )}
 
           {imgSrc && (
-            <ReactCrop
-              crop={crop}
-              onChange={(c) => setCrop(c)}
-              onComplete={onCropComplete}
-              className="w-full h-full block"
-            >
-              <img
-                ref={imgRef}
-                src={imgSrc}
-                alt={`Frame ${currentFrameIndex}`}
-                className="w-full h-full object-contain select-none block"
-                onDragStart={(e) => e.preventDefault()}
-              />
-            </ReactCrop>
+              <>
+                {!isBlurMode && (
+                    <ReactCrop
+                        crop={crop}
+                        onChange={(c) => setCrop(c)}
+                        onComplete={onCropComplete}
+                        className="w-full h-full block"
+                    >
+                        <img
+                            ref={imgRef}
+                            src={imgSrc}
+                            alt={`Frame ${currentFrameIndex}`}
+                            className="w-full h-full object-contain select-none block"
+                            onDragStart={(e) => e.preventDefault()}
+                        />
+                    </ReactCrop>
+                )}
+
+                {isBlurMode && (
+                    <div className="relative w-full h-full">
+                        <img
+                            src={imgSrc}
+                            alt={`Frame ${currentFrameIndex}`}
+                            className="w-full h-full object-contain select-none block"
+                        />
+
+                        <div style={containerStyle}></div>
+
+                        <div style={{
+                             ...containerStyle,
+                             backdropFilter: 'none',
+                             WebkitBackdropFilter: 'none',
+                             maskImage: 'none',
+                             WebkitMaskImage: 'none',
+                             background: 'transparent',
+                             border: activeSubtitle ? '1px dashed rgba(255, 50, 50, 0.8)' : '1px dashed rgba(255, 255, 255, 0.3)'
+                        }}>
+                             {(blurSettings.feather || 0) > 0 && (
+                                <div style={innerBoxStyle} />
+                             )}
+
+                             {!activeSubtitle && (
+                                <span className="absolute -top-6 text-[10px] text-white/70 bg-black/60 px-1 rounded whitespace-nowrap">
+                                    Placement Preview
+                                </span>
+                             )}
+                        </div>
+                    </div>
+                )}
+              </>
           )}
       </div>
     </div>

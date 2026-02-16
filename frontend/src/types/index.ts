@@ -1,16 +1,12 @@
-// Defines the core data structures and types used throughout the application.
-
-/** Represents the essential metadata extracted from an uploaded video file. */
 export interface VideoMetadata {
   filename: string;
   total_frames: number;
   width: number;
   height: number;
   fps: number;
-  duration: number; // in seconds
+  duration: number;
 }
 
-/** Defines the complete configuration sent to the backend to start a processing job. */
 export interface ProcessConfig {
   filename: string;
   client_id: string;
@@ -25,21 +21,39 @@ export interface ProcessConfig {
   visual_cutoff: boolean;
 }
 
-/** Represents a single, discrete subtitle block with its timing, text, and confidence. */
-export interface SubtitleItem {
-  id: number;
-  start: number; // in seconds
-  end: number;   // in seconds
-  text: string;
-  conf: number;  // confidence score (0.0 to 1.0)
-  isEdited?: boolean;
-  is_corrected?: boolean; // Optional flag for UI state
+export interface BlurSettings {
+  y: number;
+  font_scale: number;
+  padding_x: number;
+  padding_y: number;
+  sigma: number;
+  feather: number; // New field
+
+  // Legacy
+  x?: number;
+  w?: number;
+  h?: number;
 }
 
-/** A union type representing all possible messages received from the WebSocket server. */
+export interface RenderConfig {
+  filename: string;
+  client_id: string;
+  subtitles: SubtitleItem[];
+  blur_settings: BlurSettings;
+}
+
+export interface SubtitleItem {
+  id: number;
+  start: number;
+  end: number;
+  text: string;
+  conf: number;
+  isEdited?: boolean;
+}
+
 export type WebSocketMessage =
   | { type: 'log'; message: string }
   | { type: 'progress'; current: number; total: number; eta: string }
   | { type: 'subtitle_new'; item: SubtitleItem }
   | { type: 'subtitle_update'; item: SubtitleItem }
-  | { type: 'finish'; success: boolean };
+  | { type: 'finish'; success: boolean; download_url?: string; error?: string };

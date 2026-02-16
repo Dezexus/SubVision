@@ -1,27 +1,27 @@
-// Global state management for the application using Zustand.
 import { create } from 'zustand';
-import type { ProcessConfig, SubtitleItem, VideoMetadata } from '../types';
+import type { ProcessConfig, SubtitleItem, VideoMetadata, BlurSettings } from '../types';
 
 interface AppState {
-  // Video & Playback State
   file: File | null;
   metadata: VideoMetadata | null;
   currentFrameIndex: number;
   isPlaying: boolean;
 
-  // OCR & Editor Configuration
-  roi: [number, number, number, number]; // Region of Interest [x, y, w, h]
-  preset: string; // The selected processing preset ID
-  config: Partial<ProcessConfig>; // Fine-tuned settings
+  roi: [number, number, number, number];
+  preset: string;
+  config: Partial<ProcessConfig>;
 
-  // Processing & Results State
+  isBlurMode: boolean;
+  blurSettings: BlurSettings;
+
   isProcessing: boolean;
   progress: { current: number; total: number; eta: string };
   subtitles: SubtitleItem[];
   logs: string[];
-  clientId: string; // Unique ID for this browser session
+  clientId: string;
 
-  // Actions to update state
+  renderedVideoUrl: string | null;
+
   setFile: (file: File | null) => void;
   setMetadata: (meta: VideoMetadata) => void;
   setCurrentFrame: (index: number | ((prev: number) => number)) => void;
@@ -29,17 +29,23 @@ interface AppState {
 
   setRoi: (roi: [number, number, number, number]) => void;
   updateConfig: (updates: Partial<ProcessConfig>) => void;
+
+  setBlurMode: (isActive: boolean) => void;
+  setBlurSettings: (settings: Partial<BlurSettings>) => void;
+
   setProcessing: (isProcessing: boolean) => void;
   addLog: (msg: string) => void;
   updateProgress: (current: number, total: number, eta: string) => void;
 
   addSubtitle: (sub: SubtitleItem) => void;
+  setSubtitles: (subs: SubtitleItem[]) => void;
   updateSubtitle: (sub: SubtitleItem) => void;
   deleteSubtitle: (id: number) => void;
+
+  setRenderedVideoUrl: (url: string | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  // --- Initial State ---
   file: null,
   metadata: null,
   currentFrameIndex: 0,
@@ -56,38 +62,68 @@ export const useAppStore = create<AppState>((set) => ({
     visual_cutoff: true,
   },
 
+  isBlurMode: false,
+  blurSettings: {
+    y: 900,
+    font_scale: 1.2,
+    padding_x: 20,
+    padding_y: 10,
+    sigma: 15,
+    feather: 20 // Default soft edge
+  },
+
   isProcessing: false,
   progress: { current: 0, total: 0, eta: '--:--' },
   subtitles: [],
   logs: [],
-  clientId: crypto.randomUUID(), // Generate a unique ID for the WebSocket connection
+  clientId: crypto.randomUUID(),
+  renderedVideoUrl: null,
 
-  // --- Actions ---
-  setFile: (file) => set({ file }),
-  setMetadata: (metadata) => set({ metadata, currentFrameIndex: 0 }), // Reset frame index on new video
+  setFile: (file) => set({
+    file,
+    subtitles: [],
+    logs: [],
+    renderedVideoUrl: null,
+    currentFrameIndex: 0
+  }),
+
+  setMetadata: (metadata) => set({ metadata, currentFrameIndex: 0 }),
+
   setCurrentFrame: (index) => set((state) => ({
     currentFrameIndex: typeof index === 'function' ? index(state.currentFrameIndex) : index
   })),
+
   setIsPlaying: (isPlaying) => set({ isPlaying }),
 
   setRoi: (roi) => set({ roi }),
+
   updateConfig: (updates) => set((state) => ({ config: { ...state.config, ...updates } })),
+
+  setBlurMode: (isActive) => set({ isBlurMode: isActive }),
+
+  setBlurSettings: (updates) => set((state) => ({
+    blurSettings: { ...state.blurSettings, ...updates }
+  })),
+
   setProcessing: (isProcessing) => set({ isProcessing }),
+
   addLog: (msg) => set((state) => ({ logs: [...state.logs, msg] })),
+
   updateProgress: (current, total, eta) => set({ progress: { current, total, eta } }),
 
   addSubtitle: (sub) => set((state) => ({ subtitles: [...state.subtitles, sub] })),
 
+  setSubtitles: (subs) => set({ subtitles: subs }),
+
   updateSubtitle: (updatedSub) => set((state) => ({
     subtitles: state.subtitles.map(sub =>
-      sub.id === updatedSub.id
-        // When updating, automatically mark the subtitle as manually edited
-        ? { ...updatedSub, isEdited: true }
-        : sub
+      sub.id === updatedSub.id ? { ...updatedSub, isEdited: true } : sub
     )
   })),
 
   deleteSubtitle: (id) => set((state) => ({
     subtitles: state.subtitles.filter(sub => sub.id !== id)
   })),
+
+  setRenderedVideoUrl: (url) => set({ renderedVideoUrl: url }),
 }));
