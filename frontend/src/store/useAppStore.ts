@@ -43,6 +43,7 @@ interface AppState {
   setSubtitles: (subs: SubtitleItem[]) => void;
   updateSubtitle: (sub: SubtitleItem) => void;
   deleteSubtitle: (id: number) => void;
+  mergeSubtitles: (index: number) => void; // <--- NEW ACTION
 
   setRenderedVideoUrl: (url: string | null) => void;
 }
@@ -67,14 +68,12 @@ export const useAppStore = create<AppState>((set) => ({
   isBlurMode: false,
   blurSettings: {
     type: 'box',
-    y: 912,           // 1080 - 168 (from bottom)
-
-    // --- DAVINCI RESOLVE "LIGHT MATTE" PRESETS ---
+    y: 912,
     font_size: 22,
     padding_x: 60,
     padding_y: 2.0,
-    sigma: 10,        // Low intensity (10%) for subtle effect
-    feather: 40       // Soft edges (40px)
+    sigma: 10,
+    feather: 40
   },
   blurPreviewUrl: null,
 
@@ -135,6 +134,29 @@ export const useAppStore = create<AppState>((set) => ({
   deleteSubtitle: (id) => set((state) => ({
     subtitles: state.subtitles.filter(sub => sub.id !== id)
   })),
+
+  // --- NEW MERGE LOGIC ---
+  mergeSubtitles: (index) => set((state) => {
+    const subs = [...state.subtitles];
+    // Check if we can merge (need current and next)
+    if (index < 0 || index >= subs.length - 1) return { subtitles: subs };
+
+    const current = subs[index];
+    const next = subs[index + 1];
+
+    const merged: SubtitleItem = {
+      ...current,
+      end: next.end, // Extend end time
+      text: `${current.text} ${next.text}`, // Combine text
+      conf: (current.conf + next.conf) / 2, // Average confidence
+      isEdited: true
+    };
+
+    // Remove the two old ones and insert the new one
+    subs.splice(index, 2, merged);
+
+    return { subtitles: subs };
+  }),
 
   setRenderedVideoUrl: (url) => set({ renderedVideoUrl: url }),
 }));

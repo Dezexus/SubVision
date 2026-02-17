@@ -22,8 +22,8 @@ export const SubtitleList = () => {
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-hide">
-      {subtitles.map((sub) => (
-        <SubtitleCard key={sub.id} item={sub} />
+      {subtitles.map((sub, idx) => (
+        <SubtitleCard key={sub.id} item={sub} index={idx} />
       ))}
       {/* Invisible element to mark the bottom for auto-scrolling */}
       <div ref={bottomRef} />

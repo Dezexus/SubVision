@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { useAppStore } from '../../../store/useAppStore';
 import { api } from '../../../services/api';
-import { Loader2, ImageOff, Eye, EyeOff } from 'lucide-react';
+import { Loader2, ImageOff, Eye, EyeOff, MoveVertical, ArrowLeftRight, ArrowUpDown } from 'lucide-react';
+import { cn } from '../../../utils/cn';
 
 export const VideoCanvas = () => {
   const {
@@ -13,6 +14,7 @@ export const VideoCanvas = () => {
     file,
     isBlurMode,
     blurSettings,
+    setBlurSettings,
     subtitles,
     blurPreviewUrl
   } = useAppStore();
@@ -20,11 +22,14 @@ export const VideoCanvas = () => {
   const [crop, setCrop] = useState<Crop>();
   const [imgSrc, setImgSrc] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-
-  // State to toggle visibility of guide boxes
   const [showGuides, setShowGuides] = useState(true);
 
+  // --- DRAG STATE ---
+  const [isDragging, setIsDragging] = useState<'none' | 'move-y' | 'resize-x' | 'resize-y'>('none');
+  const dragStartRef = useRef<{ y: number, x: number, initialY: number, initialPadX: number, initialPadY: number }>({ y: 0, x: 0, initialY: 0, initialPadX: 0, initialPadY: 0 });
+
   const imgRef = useRef<HTMLImageElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const aspectRatio = useMemo(() => {
     if (!metadata || metadata.height === 0) return 16 / 9;
@@ -45,6 +50,7 @@ export const VideoCanvas = () => {
     img.onerror = () => setIsLoading(false);
   }, [currentFrameIndex, metadata]);
 
+  // Handle standard ROI crop
   const onCropComplete = (crop: PixelCrop) => {
     if (!imgRef.current || !metadata) return;
     const image = imgRef.current;
@@ -68,69 +74,125 @@ export const VideoCanvas = () => {
     return subtitles.find(sub => currentTime >= sub.start && currentTime <= sub.end);
   }, [isBlurMode, currentFrameIndex, subtitles, metadata]);
 
-  // --- Visual Boxes Calculation ---
-  const { greenBoxStyle, redBoxStyle } = useMemo(() => {
-      if (!metadata) return { greenBoxStyle: { display: 'none' }, redBoxStyle: { display: 'none' } };
+  // --- GEOMETRY CALCULATION ---
+  const geometry = useMemo(() => {
+    if (!metadata) return null;
 
-      const textToMeasure = activeSubtitle ? activeSubtitle.text : "Preview Text Size";
+    const textToMeasure = activeSubtitle ? activeSubtitle.text : "Preview Text Size";
+    const fontSizePx = blurSettings.font_size;
+    const charAspectRatio = 0.52;
+    const textWidth = Math.floor(textToMeasure.length * fontSizePx * charAspectRatio);
+    const textHeight = fontSizePx + 4;
+    const paddingYPx = Math.floor(textHeight * blurSettings.padding_y);
 
-      const fontSizePx = blurSettings.font_size;
-      const charAspectRatio = 0.52;
+    // Calc Video Coordinates
+    const x = Math.floor((metadata.width - textWidth) / 2);
+    const y = blurSettings.y - textHeight; // Bottom anchored
 
-      const textWidth = Math.floor(textToMeasure.length * fontSizePx * charAspectRatio);
+    // Green Box (Target)
+    const greenX = x;
+    const greenY = y;
+    const greenW = textWidth;
+    const greenH = textHeight;
 
-      // Add 4px buffer to match Backend logic
-      const textHeight = fontSizePx + 4;
+    // Red Box (Blur)
+    const redX = Math.max(0, x - blurSettings.padding_x);
+    const redY = Math.max(0, y - paddingYPx);
+    const rawRedW = textWidth + (blurSettings.padding_x * 2);
+    const rawRedH = textHeight + (paddingYPx * 2);
+    const redW = Math.min(metadata.width - redX, rawRedW);
+    const redH = Math.min(metadata.height - redY, rawRedH);
 
-      const paddingYPx = Math.floor(textHeight * blurSettings.padding_y);
-
-      // Position logic
-      const x = Math.floor((metadata.width - textWidth) / 2);
-      const y = blurSettings.y - textHeight; // Bottom anchored
-
-      // 1. Green Box (Text Target)
-      const greenX = x;
-      const greenY = y;
-      const greenW = textWidth;
-      const greenH = textHeight;
-
-      // 2. Red Box (Blur Coverage)
-      const redX = Math.max(0, x - blurSettings.padding_x);
-      const redY = Math.max(0, y - paddingYPx);
-
-      const rawRedW = textWidth + (blurSettings.padding_x * 2);
-      const rawRedH = textHeight + (paddingYPx * 2);
-
-      const redW = Math.min(metadata.width - redX, rawRedW);
-      const redH = Math.min(metadata.height - redY, rawRedH);
-
-      const green: React.CSSProperties = {
-          position: 'absolute',
-          left: `${(greenX / metadata.width) * 100}%`,
-          top: `${(greenY / metadata.height) * 100}%`,
-          width: `${(greenW / metadata.width) * 100}%`,
-          height: `${(greenH / metadata.height) * 100}%`,
-          zIndex: 35,
-          pointerEvents: 'none',
-          border: '1px solid rgba(0, 255, 0, 0.9)',
-          backgroundColor: 'rgba(0, 255, 0, 0.15)',
-          boxSizing: 'border-box',
-      };
-
-      const red: React.CSSProperties = {
-          position: 'absolute',
-          left: `${(redX / metadata.width) * 100}%`,
-          top: `${(redY / metadata.height) * 100}%`,
-          width: `${(redW / metadata.width) * 100}%`,
-          height: `${(redH / metadata.height) * 100}%`,
-          zIndex: 34,
-          pointerEvents: 'none',
-          border: '1px dashed rgba(255, 50, 50, 0.8)',
-          boxSizing: 'border-box',
-      };
-
-      return { greenBoxStyle: green, redBoxStyle: red };
+    return {
+        green: { x: greenX, y: greenY, w: greenW, h: greenH },
+        red: { x: redX, y: redY, w: redW, h: redH },
+        textHeight, // Used for scaling logic
+        paddingYPx
+    };
   }, [blurSettings, metadata, activeSubtitle]);
+
+
+  // --- INTERACTION HANDLERS ---
+  const getScale = () => {
+    if (!containerRef.current || !metadata) return { x: 1, y: 1 };
+    const rect = containerRef.current.getBoundingClientRect();
+    return {
+        x: metadata.width / rect.width,
+        y: metadata.height / rect.height
+    };
+  };
+
+  const handleMouseDown = (e: React.MouseEvent, type: 'move-y' | 'resize-x' | 'resize-y') => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragging(type);
+      dragStartRef.current = {
+          y: e.clientY,
+          x: e.clientX,
+          initialY: blurSettings.y,
+          initialPadX: blurSettings.padding_x,
+          initialPadY: blurSettings.padding_y
+      };
+  };
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+      if (isDragging === 'none' || !geometry) return;
+
+      const scale = getScale();
+      const deltaY = (e.clientY - dragStartRef.current.y) * scale.y;
+      const deltaX = (e.clientX - dragStartRef.current.x) * scale.x;
+
+      if (isDragging === 'move-y') {
+          // Moving Green Box UP/DOWN changes 'y' (which is bottom anchor)
+          // Since Y is bottom anchor: Moving Mouse DOWN (+Y) should increase Y value
+          setBlurSettings({ y: Math.round(dragStartRef.current.initialY + deltaY) });
+      }
+      else if (isDragging === 'resize-x') {
+          // Dragging Red Box Side changes padding_x (symmetric)
+          // Moving Right (+X) increases padding
+          // Since we might drag left side, we use abs(delta) relative to center, but simpler:
+          // Just assume dragging right edge for now.
+          const newPadX = Math.max(0, Math.round(dragStartRef.current.initialPadX + (deltaX * 0.5))); // 0.5 because padding applies both sides
+          setBlurSettings({ padding_x: newPadX });
+      }
+      else if (isDragging === 'resize-y') {
+          // Dragging Red Box Top/Bottom changes padding_y
+          // Dragging Down (+Y) increases height
+          // Calculate pixels to padding_y ratio
+          const pixelsChanged = deltaY * 0.5; // Apply half
+          const newHeightPx = (geometry.textHeight * dragStartRef.current.initialPadY) + pixelsChanged;
+          const newPadY = Math.max(0, newHeightPx / geometry.textHeight);
+          setBlurSettings({ padding_y: parseFloat(newPadY.toFixed(2)) });
+      }
+
+  }, [isDragging, geometry, setBlurSettings]);
+
+  const handleMouseUp = useCallback(() => {
+      setIsDragging('none');
+  }, []);
+
+  useEffect(() => {
+      if (isDragging !== 'none') {
+          window.addEventListener('mousemove', handleMouseMove);
+          window.addEventListener('mouseup', handleMouseUp);
+      }
+      return () => {
+          window.removeEventListener('mousemove', handleMouseMove);
+          window.removeEventListener('mouseup', handleMouseUp);
+      };
+  }, [isDragging, handleMouseMove, handleMouseUp]);
+
+
+  // Helper to convert internal video coords to CSS %
+  const toCss = (rect: {x: number, y: number, w: number, h: number}) => {
+      if (!metadata) return {};
+      return {
+          left: `${(rect.x / metadata.width) * 100}%`,
+          top: `${(rect.y / metadata.height) * 100}%`,
+          width: `${(rect.w / metadata.width) * 100}%`,
+          height: `${(rect.h / metadata.height) * 100}%`
+      };
+  };
 
   if (!file || !metadata) {
     return (
@@ -144,7 +206,8 @@ export const VideoCanvas = () => {
   return (
     <div className="w-full h-full flex items-center justify-center p-4">
       <div
-        className="relative shadow-2xl shadow-black/50 border border-[#333333] rounded-xl overflow-hidden bg-black group/canvas"
+        ref={containerRef}
+        className="relative shadow-2xl shadow-black/50 border border-[#333333] rounded-xl overflow-hidden bg-black group/canvas select-none"
         style={{ aspectRatio, maxHeight: '100%', maxWidth: '100%' }}
       >
           {isLoading && (
@@ -155,12 +218,11 @@ export const VideoCanvas = () => {
 
           {imgSrc && (
               <>
-                {/* Toggle Guide Button (Visible only in Blur Mode) */}
+                {/* Toggle Guide Button */}
                 {isBlurMode && (
                     <button
                         onClick={() => setShowGuides(!showGuides)}
                         className="absolute top-4 right-4 z-50 p-2 bg-black/60 hover:bg-black/90 text-white/80 hover:text-white rounded-full transition-all border border-white/10 shadow-lg backdrop-blur-sm"
-                        title={showGuides ? "Hide Guides" : "Show Guides"}
                     >
                         {showGuides ? <Eye size={18} /> : <EyeOff size={18} />}
                     </button>
@@ -176,7 +238,7 @@ export const VideoCanvas = () => {
                         <img
                             ref={imgRef}
                             src={imgSrc}
-                            alt={`Frame ${currentFrameIndex}`}
+                            alt="Frame"
                             className="w-full h-full object-contain select-none block"
                             onDragStart={(e) => e.preventDefault()}
                         />
@@ -185,25 +247,57 @@ export const VideoCanvas = () => {
 
                 {isBlurMode && (
                     <div className="relative w-full h-full">
-                        {/* 1. Base Image (Preview from API or Raw) */}
                         <img
                             src={blurPreviewUrl || imgSrc}
-                            alt={`Frame ${currentFrameIndex}`}
+                            alt="Frame"
                             className="w-full h-full object-contain select-none block"
+                            onDragStart={(e) => e.preventDefault()}
                         />
 
-                        {/* 2. Visual Guides (Conditionally Rendered) */}
-                        {showGuides && (
+                        {/* INTERACTIVE LAYER */}
+                        {showGuides && geometry && (
                             <>
-                                <div style={greenBoxStyle} title="Target Text Area"></div>
-                                <div style={redBoxStyle} title="Blur Coverage"></div>
-
-                                {!activeSubtitle && (
-                                <div style={{...greenBoxStyle, top: '50%', left: '50%', transform: 'translate(-50%, -50%)', border: 'none', background: 'none'}}>
-                                        <span className="text-[10px] text-white/70 bg-black/60 px-1 rounded whitespace-nowrap">
-                                            Placement Preview
-                                        </span>
+                                {/* RED BOX (BLUR) */}
+                                <div
+                                    className="absolute border border-dashed border-red-500/80 z-30"
+                                    style={toCss(geometry.red)}
+                                >
+                                    {/* Resize Handles */}
+                                    <div
+                                        className="absolute -right-1 top-0 bottom-0 w-3 cursor-ew-resize hover:bg-red-500/20"
+                                        onMouseDown={(e) => handleMouseDown(e, 'resize-x')}
+                                        title="Drag to adjust Width (Padding X)"
+                                    />
+                                    <div
+                                        className="absolute -top-1 left-0 right-0 h-3 cursor-ns-resize hover:bg-red-500/20"
+                                        onMouseDown={(e) => handleMouseDown(e, 'resize-y')}
+                                        title="Drag to adjust Height (Padding Y)"
+                                    />
+                                     <div
+                                        className="absolute -bottom-1 left-0 right-0 h-3 cursor-ns-resize hover:bg-red-500/20"
+                                        onMouseDown={(e) => handleMouseDown(e, 'resize-y')}
+                                    />
                                 </div>
+
+                                {/* GREEN BOX (TARGET) */}
+                                <div
+                                    className="absolute bg-green-500/10 border border-green-500/90 z-40 cursor-grab active:cursor-grabbing group/green"
+                                    style={toCss(geometry.green)}
+                                    onMouseDown={(e) => handleMouseDown(e, 'move-y')}
+                                    title="Drag to Move Vertical Position"
+                                >
+                                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/green:opacity-100 transition-opacity">
+                                        <MoveVertical size={16} className="text-green-400 drop-shadow-md" />
+                                    </div>
+                                </div>
+
+                                {/* Tooltip for Dragging */}
+                                {isDragging !== 'none' && (
+                                    <div className="absolute top-4 left-4 bg-black/80 text-white text-xs px-2 py-1 rounded border border-white/20 z-50 font-mono">
+                                        {isDragging === 'move-y' && `Y: ${blurSettings.y}`}
+                                        {isDragging === 'resize-x' && `Pad X: ${blurSettings.padding_x}`}
+                                        {isDragging === 'resize-y' && `Pad Y: ${blurSettings.padding_y}`}
+                                    </div>
                                 )}
                             </>
                         )}

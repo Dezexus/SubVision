@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
-import { Copy, Trash2 } from 'lucide-react';
+import { Copy, Trash2, ArrowDownToLine } from 'lucide-react';
 import type { SubtitleItem } from '../../../types';
 import { useAppStore } from '../../../store/useAppStore';
 import { cn } from '../../../utils/cn';
 import { formatTimeDisplay } from '../../../utils/format';
 
-export const SubtitleCard = ({ item }: { item: SubtitleItem }) => {
-  const { updateSubtitle, deleteSubtitle, setCurrentFrame, metadata } = useAppStore();
+export const SubtitleCard = ({ item, index }: { item: SubtitleItem, index: number }) => {
+  const { updateSubtitle, deleteSubtitle, mergeSubtitles, setCurrentFrame, metadata, subtitles } = useAppStore();
   const [isCopied, setIsCopied] = useState(false);
 
   const isHighConf = item.conf > 0.85;
   const isLowConf = item.conf < 0.6;
+  const hasNext = index < subtitles.length - 1;
 
   const handleJump = () => {
     if (metadata) {
@@ -33,6 +34,7 @@ export const SubtitleCard = ({ item }: { item: SubtitleItem }) => {
       isLowConf ? "border-red-500/30" : "border-[#333333]"
     )}>
 
+      {/* Main Text Input */}
       <textarea
         value={item.text}
         onChange={(e) => updateSubtitle({ ...item, text: e.target.value })}
@@ -41,9 +43,9 @@ export const SubtitleCard = ({ item }: { item: SubtitleItem }) => {
         spellCheck={false}
       />
 
+      {/* Footer Info */}
       <div className="flex items-center justify-between text-xs text-[#858585]">
         <div className="flex items-center gap-3">
-          {/* ИСПРАВЛЕНИЕ: Используем новый форматтер */}
           <span
             onClick={handleJump}
             className="font-mono cursor-pointer hover:text-[#007acc] transition-colors"
@@ -62,17 +64,23 @@ export const SubtitleCard = ({ item }: { item: SubtitleItem }) => {
         </div>
 
         <div className="flex items-center gap-2">
-            <div className={cn(
-              "w-1.5 h-1.5 rounded-full bg-[#007acc] transition-opacity duration-300",
-              item.isEdited ? 'opacity-100' : 'opacity-0'
-            )} title="Manually Edited" />
-            <span className={cn(item.isEdited ? "opacity-100" : "opacity-0", "transition-opacity duration-300")}>
-              Edited
-            </span>
+            {item.isEdited && (
+                 <span className="text-[9px] bg-blue-500/10 text-blue-400 px-1 rounded">EDITED</span>
+            )}
         </div>
       </div>
 
+      {/* Action Buttons (Top Right) */}
       <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+        {hasNext && (
+            <button
+                onClick={() => mergeSubtitles(index)}
+                className="p-1.5 text-[#858585] hover:text-[#007acc] hover:bg-[#007acc]/10 rounded"
+                title="Merge with Next"
+            >
+                <ArrowDownToLine size={14} />
+            </button>
+        )}
         <button
           onClick={handleCopy}
           className="p-1.5 text-[#858585] hover:text-white hover:bg-white/10 rounded"
