@@ -1,0 +1,112 @@
+"""
+This module defines classes for tracking and aggregating OCR results
+into coherent subtitle blocks based on text similarity and timing.
+"""
+from collections.abc import Callable
+from typing import Any
+from .utils import is_similar
+
+SubtitleItem = dict[str, Any]
+
+class SubtitleEvent:
+    """Represents a single, continuous subtitle event being tracked over several frames."""
+
+    def __init__(self, text: str, start: float, end: float, conf: float) -> None:
+        """
+        Initializes a new subtitle event.
+
+        Args:
+            text: The initial recognized text.
+            start: The start timestamp of the event.
+            end: The end timestamp of the event.
+            conf: The confidence score of the initial recognition.
+        """
+        self.text: str = text
+        self.start: float = start
+        self.end: float = end
+        self.max_conf: float = conf
+        self.gap_frames: int = 0
+
+    def extend(self, text: str, end: float, conf: float) -> None:
+        """
+        Extends the current event with data from a new frame. It updates the
+        end time and resets the gap counter. The event's text is updated if
+        the new recognition has a higher confidence or is longer at the same
+        confidence.
+        """
+        self.end = end
+        self.gap_frames = 0
+        if conf > self.max_conf or (conf == self.max_conf and len(text) > len(self.text)):
+            self.text = text
+            self.max_conf = conf
+
+class SubtitleAggregator:
+    """
+    Manages the process of merging continuous OCR results from video frames
+    into discrete, logical subtitle blocks.
+    """
+
+    def __init__(self, min_conf: float, gap_tolerance: int = 5, fps: float = 25.0) -> None:
+        """
+        Initializes the aggregator.
+
+        Args:
+            min_conf: The minimum confidence score required to consider an OCR result valid.
+            gap_tolerance: The number of consecutive empty frames to tolerate before ending an event.
+            fps: The frames per second of the source video, used to calculate timestamps.
+        """
+        self.srt_data: list[SubtitleItem] = []
+        self.active_event: SubtitleEvent | None = None
+        self.min_conf: float = min_conf
+        self.gap_tolerance: int = gap_tolerance
+        self.on_new_subtitle: Callable[[SubtitleItem], None] | None = None
+        self.frame_duration = 1.0 / fps if fps > 0 else 0.04
+
+    def add_result(self, text: str, conf: float, timestamp: float) -> None:
+        """
+        Processes a new OCR result from a frame. It decides whether to start a new
+        event, extend the current one, or commit the current one if a gap is detected.
+        """
+        is_valid = bool(text and conf >= self.min_conf)
+        frame_end_time = timestamp + self.frame_duration
+
+        if is_valid:
+            if self.active_event:
+                if is_similar(self.active_event.text, text, 0.6):
+                    self.active_event.extend(text, frame_end_time, conf)
+                else:
+                    self._commit_event()
+                    self.active_event = SubtitleEvent(text, timestamp, frame_end_time, conf)
+            else:
+                self.active_event = SubtitleEvent(text, timestamp, frame_end_time, conf)
+        else:
+            if self.active_event:
+                self.active_event.gap_frames += 1
+                if self.active_event.gap_frames > self.gap_tolerance:
+                    self._commit_event()
+
+    def _commit_event(self) -> None:
+        """
+        Finalizes the currently active subtitle event and adds it to the list of
+        subtitles. It also triggers a callback if one is registered.
+        """
+        if self.active_event:
+            item: SubtitleItem = {
+                "id": len(self.srt_data) + 1,
+                "start": self.active_event.start,
+                "end": self.active_event.end,
+                "text": self.active_event.text,
+                "conf": self.active_event.max_conf,
+            }
+            self.srt_data.append(item)
+            if self.on_new_subtitle:
+                self.on_new_subtitle(item)
+            self.active_event = None
+
+    def finalize(self) -> list[SubtitleItem]:
+        """
+        Commits any pending active event and returns the complete list of
+        generated subtitle data.
+        """
+        self._commit_event()
+        return self.srt_data

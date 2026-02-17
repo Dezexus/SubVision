@@ -1,0 +1,36 @@
+{
+  // TypeScript compiler configuration for the Vite application.
+  "compilerOptions": {
+    // Internal cache file for incremental builds.
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+
+    // --- Core JavaScript Settings ---
+    "target": "ES2022", // Compile to modern JavaScript.
+    "useDefineForClassFields": true, // Use standard class field definition.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"], // Available APIs (ECMAScript + Browser).
+    "module": "ESNext", // Use modern module syntax (import/export).
+    "types": ["vite/client"], // Include Vite-specific environment types.
+    "skipLibCheck": true, // Speeds up compilation by not checking library files.
+
+    // --- Bundler & Module Resolution ---
+    "moduleResolution": "bundler", // How TypeScript resolves modules, optimized for bundlers like Vite.
+    "allowImportingTsExtensions": true, // Allows importing .ts files directly.
+    "verbatimModuleSyntax": true, // Enforces consistent import/export syntax.
+    "moduleDetection": "force", // Treat all files as modules.
+    "noEmit": true, // TypeScript only performs type checking; Vite handles the build.
+    "jsx": "react-jsx", // Use React's modern JSX transform.
+
+    // --- Linting Rules - Strictness Disabled ---
+    "strict": false, // Disables all strict type-checking options.
+    "noUnusedLocals": false, // Allows unused local variables.
+    "noUnusedParameters": false, // Allows unused function parameters.
+    // Prevents certain syntax that might not be erasable at transpile time.
+    "erasableSyntaxOnly": true,
+    // Prevents accidental fall-through in switch statements.
+    "noFallthroughCasesInSwitch": true,
+    // Warns if an import is only used for its side effects.
+    "noUncheckedSideEffectImports": true
+  },
+  // Specifies the root directory of files to be included in the compilation.
+  "include": ["src"]
+}
