@@ -43,10 +43,14 @@ class OCRWorker(threading.Thread):
         self.is_running = True
         self.frame_queue: queue.Queue[Any] = queue.Queue(maxsize=30)
         self.producer_error: Exception | None = None
+        self._stop_event = threading.Event()
 
     def stop(self) -> None:
-        """Signals the worker to stop processing."""
+        """Signals the worker to stop processing immediately."""
         self.is_running = False
+        self._stop_event.set()
+
+        # Drain the queue to unblock the producer if it's waiting to put
         try:
             while not self.frame_queue.empty():
                 self.frame_queue.get_nowait()
@@ -60,10 +64,19 @@ class OCRWorker(threading.Thread):
         """
         try:
             for frame_idx, timestamp, frame in video:
-                if not self.is_running:
+                if not self.is_running or self._stop_event.is_set():
                     break
+
                 final_img, skipped = pipeline.process(frame)
-                self.frame_queue.put((frame_idx, timestamp, final_img, skipped))
+
+                if not self.is_running: break
+
+                try:
+                    self.frame_queue.put((frame_idx, timestamp, final_img, skipped), timeout=1.0)
+                except queue.Full:
+                    if not self.is_running: break
+                    continue
+
             self.frame_queue.put(SENTINEL)
         except Exception as e:
             self.producer_error = e
@@ -90,6 +103,9 @@ class OCRWorker(threading.Thread):
 
             video = VideoProvider(str(self.params["video_path"]), step=int(config["step"]))
             pipeline = ImagePipeline(roi=self.params.get("roi", [0, 0, 0, 0]), config=config)
+
+            if not self.is_running: return
+
             ocr_engine = PaddleWrapper(lang=str(self.params.get("langs", "en")))
             aggregator = SubtitleAggregator(min_conf=float(config["min_conf"]), fps=video.fps)
             aggregator.on_new_subtitle = self._emit_subtitle
@@ -101,11 +117,11 @@ class OCRWorker(threading.Thread):
             start_time = time.time()
             total_frames = video.total_frames
 
-            while self.is_running:
+            while self.is_running and not self._stop_event.is_set():
                 try:
-                    item = self.frame_queue.get(timeout=2.0)
+                    item = self.frame_queue.get(timeout=0.5)
                 except queue.Empty:
-                    if not producer_thread.is_alive():
+                    if producer_thread and not producer_thread.is_alive():
                         break
                     continue
 
@@ -115,12 +131,16 @@ class OCRWorker(threading.Thread):
                     break
 
                 frame_idx, timestamp, final_img, skipped = item
+
+                if not self.is_running: break
+
                 self._update_progress(frame_idx, total_frames, start_time)
 
                 if skipped:
                     text, conf = last_ocr_result
                 elif final_img is not None:
                     try:
+                        if not self.is_running: break
                         res = ocr_engine.predict(final_img)
                         text, conf = PaddleWrapper.parse_results(res, self.params.get("conf", 0.5))
                     except Exception:
@@ -129,14 +149,25 @@ class OCRWorker(threading.Thread):
                 else:
                     text, conf = "", 0.0
 
+                if not self.is_running: break
+
                 aggregator.add_result(text, conf, timestamp)
                 self.frame_queue.task_done()
 
-            srt_data = aggregator.finalize()
-            self._log(f"Smart Skip: {pipeline.skipped_count} frames")
-            self._save_to_file(srt_data)
-            if self.cb.get("finish"):
-                self.cb["finish"](True)
+            # --- ИСПРАВЛЕННЫЙ БЛОК ---
+            if self.is_running and not self._stop_event.is_set():
+                # Успешное завершение
+                srt_data = aggregator.finalize()
+                self._log(f"Smart Skip: {pipeline.skipped_count} frames")
+                self._save_to_file(srt_data)
+                if self.cb.get("finish"):
+                    self.cb["finish"](True)
+            else:
+                # Ручная остановка
+                self._log("Process stopped by user.")
+                # ВАЖНО: Отправляем сигнал finish(False), чтобы разблокировать кнопку на фронтенде
+                if self.cb.get("finish"):
+                    self.cb["finish"](False)
 
         except Exception as e:
             self._log(f"CRITICAL: {e}\n{traceback.format_exc()}")
@@ -144,19 +175,25 @@ class OCRWorker(threading.Thread):
                 self.cb["finish"](False)
         finally:
             self.is_running = False
+            self._stop_event.set()
+
             if video:
                 video.release()
+
             if ocr_engine:
                 del ocr_engine
+
             try:
                 while not self.frame_queue.empty():
                     self.frame_queue.get_nowait()
             except Exception:
                 pass
+
             gc.collect()
             try:
                 import paddle
-                paddle.device.cuda.empty_cache()
+                if paddle.is_compiled_with_cuda():
+                    paddle.device.cuda.empty_cache()
             except (ImportError, AttributeError):
                 pass
 
@@ -193,4 +230,3 @@ class OCRWorker(threading.Thread):
             self._log(f"Saved: {output_path}")
         except OSError as e:
             self._log(f"Error saving file: {e}")
-
