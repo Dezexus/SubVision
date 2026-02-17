@@ -1,7 +1,6 @@
 """
 This module contains a collection of image processing utility functions
-leveraging OpenCV. It provides optional CUDA (GPU) acceleration for
-several operations where available.
+leveraging OpenCV.
 """
 from typing import Any
 import cv2
@@ -14,11 +13,6 @@ except AttributeError:
     HAS_CUDA = False
 
 def apply_clahe(frame: np.ndarray | None, clip_limit: float = 2.0, tile_grid_size: tuple[int, int] = (8, 8)) -> np.ndarray | None:
-    """
-    Applies Contrast Limited Adaptive Histogram Equalization (CLAHE) to an
-    image, with a fallback to CPU if CUDA is not available. If clip_limit is
-    zero or less, the original frame is returned.
-    """
     if frame is None or clip_limit <= 0:
         return frame
 
@@ -44,10 +38,6 @@ def apply_clahe(frame: np.ndarray | None, clip_limit: float = 2.0, tile_grid_siz
     return cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
 
 def denoise_frame(frame: np.ndarray | None, strength: float) -> np.ndarray | None:
-    """
-    Applies Non-Local Means Denoising to a color image.
-    Uses CUDA if available, otherwise falls back to CPU.
-    """
     if frame is None or strength <= 0:
         return frame
 
@@ -65,10 +55,6 @@ def denoise_frame(frame: np.ndarray | None, strength: float) -> np.ndarray | Non
     return cv2.fastNlMeansDenoisingColored(frame, None, h_val, h_val, 7, 21)
 
 def apply_scaling(frame: np.ndarray | None, scale_factor: float) -> np.ndarray | None:
-    """
-    Resizes a frame by a given scale factor using cubic interpolation.
-    Uses CUDA for resizing if available.
-    """
     if frame is None or scale_factor == 1.0:
         return frame
 
@@ -86,10 +72,6 @@ def apply_scaling(frame: np.ndarray | None, scale_factor: float) -> np.ndarray |
     return cv2.resize(frame, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC)
 
 def apply_sharpening(frame: np.ndarray | None) -> np.ndarray | None:
-    """
-    Applies a sharpening kernel to the frame.
-    Uses a CUDA-based filter if available.
-    """
     if frame is None:
         return None
 
@@ -107,32 +89,46 @@ def apply_sharpening(frame: np.ndarray | None) -> np.ndarray | None:
 
     return cv2.filter2D(frame, -1, kernel)
 
-def calculate_image_diff(img1: np.ndarray | None, img2: np.ndarray | None) -> float:
+def detect_change_absolute(img1: np.ndarray | None, img2: np.ndarray | None) -> bool:
     """
-    Calculates the normalized Mean Squared Error (MSE) between two images
-    after converting them to grayscale and resizing for efficiency.
+    Robust Change Detection V5.
+
+    Strategy:
+    1. Blur inputs to kill single-pixel noise (grain).
+    2. Check absolute brightness difference.
+    3. Count exact number of changed pixels.
+
+    If > 15 pixels changed intensity by > 15 units -> It's a change.
+    This works regardless of image size (ROI 1880px vs 100px).
     """
     if img1 is None or img2 is None or img1.shape != img2.shape:
-        return 1.0
+        return True
 
+    # 1. Gray
     g1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
     g2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
 
-    g1_small = cv2.resize(g1, (128, 128))
-    g2_small = cv2.resize(g2, (128, 128))
+    # 2. Blur (Essential to ignore video compression grain)
+    # A 5x5 blur blends grain but keeps text structures intact enough for detection.
+    b1 = cv2.GaussianBlur(g1, (5, 5), 0)
+    b2 = cv2.GaussianBlur(g2, (5, 5), 0)
 
-    g1_float = g1_small.astype("float")
-    g2_float = g2_small.astype("float")
+    # 3. Diff
+    diff = cv2.absdiff(b1, b2)
 
-    err = np.sum((g1_float - g2_float) ** 2)
-    err /= float(g1_small.shape[0] * g1_small.shape[1])
-    return float(err / 65025.0)
+    # 4. Threshold
+    # Intensity 15/255. Text (white on black) usually has delta > 100.
+    # Shadow/Compression usually < 10. 15 is a safe "sensitivity" margin.
+    _, thresh = cv2.threshold(diff, 15, 255, cv2.THRESH_BINARY)
+
+    # 5. Absolute Pixel Count
+    # We don't care about ratio. We care if ~15 pixels (size of a period/dot) changed.
+    count = cv2.countNonZero(thresh)
+
+    # Trigger if more than 15 pixels changed.
+    return count > 15
 
 def extract_frame_cv2(video_path: str, frame_index: int) -> np.ndarray | None:
-    """
-    Extracts a single frame from a video file at a specific index
-    using OpenCV.
-    """
     if not video_path:
         return None
 
@@ -146,10 +142,6 @@ def extract_frame_cv2(video_path: str, frame_index: int) -> np.ndarray | None:
         cap.release()
 
 def calculate_roi_from_mask(image_dict: dict[str, Any] | None) -> list[int]:
-    """
-    Parses a dictionary (typically from a UI component like Gradio's image editor)
-    to find a mask and calculates its bounding box to define a Region of Interest (ROI).
-    """
     if not image_dict:
         return [0, 0, 0, 0]
 
