@@ -38,7 +38,7 @@ WORKDIR /app
 
 # 3. Установка PaddlePaddle GPU (самый тяжелый слой)
 RUN python -m pip install --no-cache-dir --upgrade pip && \
-    python -m pip install --no-cache-dir paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
+    python -m pip install --no-cache-dir paddlepaddle-gpu==3.2.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
 
 # 4. Установка зависимостей Python
 COPY backend/requirements.txt ./backend/requirements.txt
