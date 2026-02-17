@@ -43,11 +43,11 @@ pnpm-debug.log*
 *.lock
 *.log
 
-# === Uploaded user data (persist on host but not commit) ===
+# === Uploaded user data (CRITICAL: Do not commit user files) ===
 backend/uploads/*
 !backend/uploads/.gitkeep
 
-# === ML model caches ===
+# === ML model caches (Large files) ===
 paddle_cache/
 paddle_models/
 hf_cache/
@@ -77,7 +77,7 @@ tmp/
 temp/
 *.tmp
 
-# === Media / large binaries (if any) ===
+# === Media / large binaries ===
 *.mp4
 *.mov
 *.avi
