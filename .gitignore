@@ -1,0 +1,92 @@
+# === Git internals ===
+.git
+.gitignore
+
+# === Environment / secrets ===
+.env
+.env.*.local
+.vscode/.env.local
+
+# === Python virtual envs ===
+backend/venv/
+venv/
+.venv/
+env/
+
+# === Python bytecode / cache ===
+**/__pycache__/
+**/*.py[cod]
+**/*.pyo
+**/*.pyd
+
+# === Python packaging / build artifacts ===
+*.egg-info/
+dist/
+build/
+pip-wheel-metadata/
+*.egg
+
+# === Node / frontend ===
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.vite-temp/
+frontend/coverage/
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# === Frontend cache / local files ===
+*.local
+*.lock
+*.log
+
+# === Uploaded user data (persist on host but not commit) ===
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# === ML model caches ===
+paddle_cache/
+paddle_models/
+hf_cache/
+.vcache/
+
+# === Docker / build artifacts ===
+docker-compose.override.yml
+**/.env.docker
+*.tgz
+*.tar.gz
+
+# === IDEs & editors ===
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# === OS files ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === Logs & temporary files ===
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+
+# === Media / large binaries (if any) ===
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.exe
+*.dll
+
+# === Other generated / system files ===
+*.pyc
+*.pdb
+*.sqlite
+*.sqlite3
