@@ -51,7 +51,9 @@ export const useSocket = () => {
         if (msg.success) {
             addLog('--- Process Completed Successfully ---');
             if (msg.download_url) {
-                setRenderedVideoUrl(msg.download_url);
+                // CACHE BUSTING: Append timestamp to force re-download
+                const uniqueUrl = `${msg.download_url}?t=${Date.now()}`;
+                setRenderedVideoUrl(uniqueUrl);
             }
         } else {
             addLog('--- Process Failed ---');

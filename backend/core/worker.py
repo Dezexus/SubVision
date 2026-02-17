@@ -154,18 +154,16 @@ class OCRWorker(threading.Thread):
                 aggregator.add_result(text, conf, timestamp)
                 self.frame_queue.task_done()
 
-            # --- ИСПРАВЛЕННЫЙ БЛОК ---
             if self.is_running and not self._stop_event.is_set():
-                # Успешное завершение
+                # Normal finish
                 srt_data = aggregator.finalize()
                 self._log(f"Smart Skip: {pipeline.skipped_count} frames")
                 self._save_to_file(srt_data)
                 if self.cb.get("finish"):
                     self.cb["finish"](True)
             else:
-                # Ручная остановка
+                # Stopped by user
                 self._log("Process stopped by user.")
-                # ВАЖНО: Отправляем сигнал finish(False), чтобы разблокировать кнопку на фронтенде
                 if self.cb.get("finish"):
                     self.cb["finish"](False)
 
