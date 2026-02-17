@@ -1,6 +1,7 @@
 import os
 import asyncio
 import logging
+import threading
 from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File
 from fastapi.responses import StreamingResponse
 from io import BytesIO
@@ -18,8 +19,13 @@ router = APIRouter()
 process_mgr = ProcessManager()
 UPLOAD_DIR = "uploads"
 
+# Registry to keep track of active renders so we can stop them
+render_registry: dict[str, BlurManager] = {}
+render_lock = threading.Lock()
+
 @router.post("/start")
 async def start_process(config: ProcessConfig):
+    # (Код без изменений, см. предыдущий шаг, просто убедитесь, что он там есть)
     safe_filename = os.path.basename(config.filename)
     file_path = os.path.join(UPLOAD_DIR, safe_filename)
     if not os.path.exists(file_path):
@@ -55,13 +61,26 @@ async def start_process(config: ProcessConfig):
         logger.error(f"Error starting process: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.post("/stop/{client_id}")
 async def stop_process(client_id: str):
-    process_mgr.stop_process(client_id)
-    return {"status": "stopped"}
+    # 1. Stop OCR if running
+    ocr_stopped = process_mgr.stop_process(client_id)
+
+    # 2. Stop Render if running
+    render_stopped = False
+    with render_lock:
+        if client_id in render_registry:
+            render_registry[client_id].stop()
+            # We don't remove it immediately; the background task cleans it up
+            render_stopped = True
+
+    return {"status": "stopped", "ocr_stopped": ocr_stopped, "render_stopped": render_stopped}
+
 
 @router.post("/import_srt")
 async def import_srt(file: UploadFile = File(...)):
+    # (Без изменений)
     try:
         content = await file.read()
         content_str = content.decode("utf-8")
@@ -77,8 +96,10 @@ async def import_srt(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to parse SRT: {str(e)}")
 
+
 @router.post("/preview_blur")
 async def preview_blur_frame(config: BlurPreviewConfig):
+    # (Без изменений, используется только статический метод, состояние не нужно)
     safe_filename = os.path.basename(config.filename)
     file_path = os.path.join(UPLOAD_DIR, safe_filename)
 
@@ -86,7 +107,6 @@ async def preview_blur_frame(config: BlurPreviewConfig):
         raise HTTPException(status_code=404, detail="Video file not found")
 
     blur_mgr = BlurManager()
-
     try:
         preview_image = blur_mgr.generate_preview(
             video_path=file_path,
@@ -94,7 +114,6 @@ async def preview_blur_frame(config: BlurPreviewConfig):
             settings=config.blur_settings.dict(),
             text=config.subtitle_text
         )
-
         if preview_image is None:
             raise HTTPException(status_code=500, detail="Failed to generate preview")
 
@@ -105,6 +124,7 @@ async def preview_blur_frame(config: BlurPreviewConfig):
     except Exception as e:
         logger.error(f"Preview generation failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/render_blur")
 async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTasks):
@@ -123,7 +143,11 @@ async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTa
         except OSError:
             pass
 
+    # Create instance and register it
     blur_mgr = BlurManager()
+    with render_lock:
+        render_registry[config.client_id] = blur_mgr
+
     loop = asyncio.get_event_loop()
 
     def progress_cb(current, total):
@@ -153,11 +177,19 @@ async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTa
                 progress_cb
             )
             success = True
+        except InterruptedError:
+            error_msg = "Stopped by user"
+            success = False
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Render task failed: {e}", exc_info=True)
             success = False
         finally:
+            # Cleanup registry
+            with render_lock:
+                if config.client_id in render_registry:
+                    del render_registry[config.client_id]
+
             payload = {"type": "finish", "success": success}
             if success:
                 payload["download_url"] = f"/uploads/{output_filename}"
