@@ -44,29 +44,6 @@ def ensure_cpu(frame: FrameType) -> np.ndarray:
     if type(frame).__name__ == "GpuMat": return frame.download()
     return frame
 
-def apply_clahe(frame: FrameType | None, clip_limit: float = 2.0, tile_grid_size: tuple[int, int] = (8, 8)) -> FrameType | None:
-    """Applies CLAHE (Contrast Limited Adaptive Histogram Equalization)."""
-    if frame is None or clip_limit <= 0: return frame
-    if HAS_CUDA:
-        try:
-            gpu_mat = ensure_gpu(frame)
-            gpu_lab = cv2.cuda.cvtColor(gpu_mat, cv2.COLOR_BGR2LAB)
-            l_gpu, a_gpu, b_gpu = cv2.cuda.split(gpu_lab)
-            clahe = cv2.cuda.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
-            l_gpu_cl = clahe.apply(l_gpu)
-            gpu_lab_cl = cv2.cuda.merge([l_gpu_cl, a_gpu, b_gpu])
-            result = cv2.cuda.cvtColor(gpu_lab_cl, cv2.COLOR_LAB2BGR)
-            if type(frame).__name__ == "GpuMat": return result
-            return result.download()
-        except cv2.error: pass
-    cpu_frame = ensure_cpu(frame)
-    lab = cv2.cvtColor(cpu_frame, cv2.COLOR_BGR2LAB)
-    l_channel, a_channel, b_channel = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
-    cl = clahe.apply(l_channel)
-    limg = cv2.merge((cl, a_channel, b_channel))
-    return cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
-
 def denoise_frame(frame: FrameType | None, strength: float) -> FrameType | None:
     """Applies Fast Non-Local Means Denoising."""
     if frame is None or strength <= 0: return frame

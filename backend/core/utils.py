@@ -1,9 +1,8 @@
 """
 This module provides a collection of utility functions for text and time
-formatting, comparison, and cleaning.
+formatting and comparison.
 """
 import difflib
-import re
 from datetime import timedelta
 
 
@@ -44,41 +43,3 @@ def is_similar(text1: str | None, text2: str | None, threshold: float = 0.5) -> 
     if not text1 or not text2:
         return False
     return difflib.SequenceMatcher(None, text1, text2).ratio() > threshold
-
-
-def is_better_quality(new_text: str, old_text: str) -> bool:
-    """
-    Determines if a new text string is of 'better quality' than an old one,
-    defined as having more words or the same number of words but greater length.
-
-    Args:
-        new_text: The new text to evaluate.
-        old_text: The old text to compare against.
-
-    Returns:
-        True if the new text is considered better quality.
-    """
-    spaces_new = new_text.count(" ")
-    spaces_old = old_text.count(" ")
-    if spaces_new > spaces_old:
-        return True
-    if spaces_new == spaces_old and len(new_text) > len(old_text):
-        return True
-    return False
-
-
-def clean_llm_text(text: str) -> str:
-    """
-    Removes common formatting artifacts and markdown-like syntax often
-    produced by Large Language Models.
-
-    Args:
-        text: The input string to clean.
-
-    Returns:
-        The cleaned string.
-    """
-    text = text.replace("**", "")
-    text = re.sub(r"\\(.*?\\)", "", text)
-    text = re.sub(r"\\[.*?\]", "", text)
-    return text.strip()

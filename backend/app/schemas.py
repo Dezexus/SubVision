@@ -1,4 +1,4 @@
-from typing import List, Optional, Any
+from typing import List, Optional
 from pydantic import BaseModel
 
 class VideoMetadata(BaseModel):
@@ -38,9 +38,6 @@ class BlurSettings(BaseModel):
     padding_y: float = 2.0
     sigma: int = 40
     feather: int = 30
-    x: Optional[int] = 0
-    w: Optional[int] = 0
-    h: Optional[int] = 0
 
 class RenderConfig(BaseModel):
     filename: str
