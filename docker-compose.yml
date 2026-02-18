@@ -16,6 +16,8 @@ services:
       # Pre-allocate 90% of GPU memory for PaddlePaddle performance.
       - PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
       - FLAGS_fraction_of_gpu_memory_to_use=0.9
+      # Expose video capabilities for NVDEC/NVENC
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
     deploy:
       # Grant access to one NVIDIA GPU.
       resources:
@@ -23,7 +25,8 @@ services:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [gpu]
+              # Ensure video capability is present for hardware encoding/decoding
+              capabilities: [compute, utility, video]
     # Increase shared memory to prevent crashes with ML frameworks.
     shm_size: '8gb'
 

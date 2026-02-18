@@ -24,9 +24,7 @@ SENTINEL = object()
 
 class OCRWorker(threading.Thread):
     """
-    Orchestrates the entire OCR process in a separate thread. It manages a
-    producer-consumer pattern where one thread reads and processes video frames,
-    and the main worker thread performs OCR on them.
+    Orchestrates the entire OCR process in a separate thread.
     """
 
     def __init__(self, params: dict[str, Any], callbacks: dict[str, Callable[..., Any]]) -> None:
@@ -35,7 +33,7 @@ class OCRWorker(threading.Thread):
 
         Args:
             params: A dictionary of operational parameters.
-            callbacks: A dictionary of callback functions for progress, logs, and results.
+            callbacks: A dictionary of callback functions.
         """
         super().__init__()
         self.params = params
@@ -49,8 +47,6 @@ class OCRWorker(threading.Thread):
         """Signals the worker to stop processing immediately."""
         self.is_running = False
         self._stop_event.set()
-
-        # Drain the queue to unblock the producer if it's waiting to put
         try:
             while not self.frame_queue.empty():
                 self.frame_queue.get_nowait()
@@ -89,7 +85,7 @@ class OCRWorker(threading.Thread):
         producer_thread: threading.Thread | None = None
 
         try:
-            self._log("--- START OCR (Parallel Pipeline) ---")
+            self._log("--- START OCR (GPU-Accelerated Pipeline) ---")
 
             preset_name = str(self.params.get("preset_name", "⚖️ Balance"))
             config = get_preset_config(preset_name)
@@ -106,7 +102,8 @@ class OCRWorker(threading.Thread):
 
             if not self.is_running: return
 
-            ocr_engine = PaddleWrapper(lang=str(self.params.get("langs", "en")))
+            ocr_engine = PaddleWrapper(lang=str(self.params.get("langs", "en")), use_gpu=True)
+
             aggregator = SubtitleAggregator(min_conf=float(config["min_conf"]), fps=video.fps)
             aggregator.on_new_subtitle = self._emit_subtitle
 
@@ -155,20 +152,18 @@ class OCRWorker(threading.Thread):
                 self.frame_queue.task_done()
 
             if self.is_running and not self._stop_event.is_set():
-                # Normal finish
                 srt_data = aggregator.finalize()
                 self._log(f"Smart Skip: {pipeline.skipped_count} frames")
                 self._save_to_file(srt_data)
                 if self.cb.get("finish"):
                     self.cb["finish"](True)
             else:
-                # Stopped by user
                 self._log("Process stopped by user.")
                 if self.cb.get("finish"):
                     self.cb["finish"](False)
 
         except Exception as e:
-            self._log(f"CRITICAL: {e}\n{traceback.format_exc()}")
+            self._log(f"CRITICAL ERROR: {e}")
             if self.cb.get("finish"):
                 self.cb["finish"](False)
         finally:
@@ -192,11 +187,10 @@ class OCRWorker(threading.Thread):
                 import paddle
                 if paddle.is_compiled_with_cuda():
                     paddle.device.cuda.empty_cache()
-            except (ImportError, AttributeError):
+            except ImportError:
                 pass
 
     def _update_progress(self, current: int, total: int, start_time: float) -> None:
-        """Calculates ETA and triggers the progress callback."""
         if self.cb.get("progress") and current > 0:
             elapsed = time.time() - start_time
             avg_time = elapsed / current
@@ -205,17 +199,14 @@ class OCRWorker(threading.Thread):
             self.cb["progress"](current, total, eta_str)
 
     def _log(self, msg: str) -> None:
-        """Sends a log message via callback."""
         if self.cb.get("log"):
             self.cb["log"](msg)
 
     def _emit_subtitle(self, item: dict[str, Any]) -> None:
-        """Emits a newly generated subtitle item via callback."""
         if self.cb.get("subtitle"):
             self.cb["subtitle"](item)
 
     def _save_to_file(self, srt_data: list[dict[str, Any]]) -> None:
-        """Saves the final subtitle data to an SRT file."""
         output_path = str(self.params["output_path"])
         try:
             with open(output_path, "w", encoding="utf-8") as f:

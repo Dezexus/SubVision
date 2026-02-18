@@ -1,3 +1,7 @@
+"""
+This module manages the video blurring process, including ROI calculation,
+frame processing using CUDA (if available), and final video encoding.
+"""
 import cv2
 import numpy as np
 import logging
@@ -9,24 +13,47 @@ from typing import Optional, Tuple, List, Dict
 
 logger = logging.getLogger(__name__)
 
+try:
+    count = cv2.cuda.getCudaEnabledDeviceCount()
+    HAS_CUDA = count > 0
+except AttributeError:
+    HAS_CUDA = False
+
 class BlurManager:
+    """
+    Manages the application of blur filters to video regions based on subtitle timestamps.
+    Supports CPU and GPU (CUDA) processing.
+    """
+
     def __init__(self):
+        """Initializes the BlurManager with thread synchronization events."""
         self._stop_event = threading.Event()
         self._is_running = False
 
     def stop(self):
-        """Signals the rendering process to abort."""
+        """Signals the rendering process to abort immediately."""
         self._is_running = False
         self._stop_event.set()
 
     def _calculate_roi(self, text: str, width: int, height: int, settings: dict) -> Tuple[int, int, int, int]:
+        """
+        Calculates the Region of Interest (ROI) for blurring based on text length and settings.
+
+        Args:
+            text: The subtitle text to cover.
+            width: Video width.
+            height: Video height.
+            settings: Blur configuration (position, padding, font size).
+
+        Returns:
+            A tuple (x, y, w, h) defining the blur area.
+        """
         if not text:
             return 0, 0, 0, 0
 
         y_pos = int(settings.get('y', height - 50))
         font_size_px = int(settings.get('font_size', 21))
 
-        # Open Sans / Arial Approximation
         char_aspect_ratio = 0.52
         text_h = font_size_px + 4
         text_w = int(len(text) * font_size_px * char_aspect_ratio)
@@ -50,6 +77,18 @@ class BlurManager:
         return final_x, final_y, final_w, final_h
 
     def _apply_blur_to_frame(self, frame: np.ndarray, roi: Tuple[int, int, int, int], settings: dict) -> np.ndarray:
+        """
+        Applies a box blur with optional feathering to the specified ROI.
+        Uses CUDA acceleration if available.
+
+        Args:
+            frame: The input video frame.
+            roi: The region to blur (x, y, w, h).
+            settings: Blur parameters (sigma, feather).
+
+        Returns:
+            The processed frame.
+        """
         bx, by, bw, bh = roi
         if bw <= 0 or bh <= 0:
             return frame
@@ -57,9 +96,72 @@ class BlurManager:
         sigma = int(settings.get('sigma', 40))
         feather = int(settings.get('feather', 30))
 
+        if HAS_CUDA:
+            try:
+                gpu_frame = cv2.cuda_GpuMat()
+                gpu_frame.upload(frame)
+
+                gpu_roi = cv2.cuda_GpuMat(gpu_frame, (bx, by, bw, bh))
+
+                k_size = sigma * 2 + 1
+                box_filter = cv2.cuda.createBoxFilter(gpu_roi.type(), -1, (k_size, k_size))
+
+                processed_roi = box_filter.apply(gpu_roi)
+                processed_roi = box_filter.apply(processed_roi)
+                processed_roi = box_filter.apply(processed_roi)
+
+                if feather > 0:
+                    safe_feather_w = int(bw * 0.45)
+                    safe_feather_h = int(bh * 0.45)
+                    eff_feather = min(feather, safe_feather_w, safe_feather_h)
+
+                    if eff_feather < 1:
+                        processed_roi.copyTo(gpu_roi)
+                    else:
+                        mask = np.zeros((bh, bw), dtype=np.float32)
+                        cv2.rectangle(
+                            mask,
+                            (eff_feather, eff_feather),
+                            (bw - eff_feather, bh - eff_feather),
+                            1.0,
+                            -1
+                        )
+                        mask_ksize_val = eff_feather + (1 if eff_feather % 2 == 0 else 0)
+                        if mask_ksize_val % 2 == 0: mask_ksize_val += 1
+
+                        mask = cv2.GaussianBlur(mask, (mask_ksize_val, mask_ksize_val), 0)
+
+                        gpu_mask = cv2.cuda_GpuMat()
+                        gpu_mask.upload(mask)
+
+                        gpu_mask_3ch = cv2.cuda_GpuMat()
+                        cv2.cuda.merge([gpu_mask, gpu_mask, gpu_mask], gpu_mask_3ch)
+
+                        gpu_roi_float = cv2.cuda_GpuMat()
+                        gpu_blur_float = cv2.cuda_GpuMat()
+
+                        gpu_roi.convertTo(cv2.CV_32FC3, gpu_roi_float)
+                        processed_roi.convertTo(cv2.CV_32FC3, gpu_blur_float)
+
+                        blended = cv2.cuda.multiply(gpu_blur_float, gpu_mask_3ch)
+
+                        gpu_ones = cv2.cuda_GpuMat(gpu_mask_3ch.size(), gpu_mask_3ch.type(), (1.0, 1.0, 1.0, 0.0))
+                        inverse_mask = cv2.cuda.subtract(gpu_ones, gpu_mask_3ch)
+
+                        original_part = cv2.cuda.multiply(gpu_roi_float, inverse_mask)
+
+                        final_float = cv2.cuda.add(blended, original_part)
+                        final_float.convertTo(cv2.CV_8UC3, gpu_roi)
+                else:
+                    processed_roi.copyTo(gpu_roi)
+
+                return gpu_frame.download()
+
+            except cv2.error:
+                pass
+
         roi_img = frame[by:by+bh, bx:bx+bw]
 
-        # --- SOFT BOX BLUR ALGORITHM ---
         k_size = sigma * 2 + 1
         processed_roi = cv2.boxFilter(roi_img, -1, (k_size, k_size))
         processed_roi = cv2.boxFilter(processed_roi, -1, (k_size, k_size))
@@ -98,8 +200,19 @@ class BlurManager:
         return frame
 
     def generate_preview(self, video_path: str, frame_index: int, settings: dict, text: str) -> Optional[np.ndarray]:
-        """Stateless preview generation (doesn't use stop_event)."""
-        cap = cv2.VideoCapture(video_path)
+        """
+        Generates a single preview frame with the blur applied.
+
+        Args:
+            video_path: Path to the video.
+            frame_index: Frame number to extract.
+            settings: Blur settings.
+            text: Text to calculate ROI.
+
+        Returns:
+            The preview image as a numpy array.
+        """
+        cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY])
         if not cap.isOpened():
             return None
         try:
@@ -121,13 +234,24 @@ class BlurManager:
             output_path: str,
             progress_callback=None
     ):
+        """
+        Executes the full video processing task: reads video, applies blur based on subtitles,
+        writes temporary video, and merges audio.
+
+        Args:
+            video_path: Input video path.
+            subtitles: List of subtitle objects with timing and text.
+            blur_settings: Configuration for the blur effect.
+            output_path: Final destination for the processed video.
+            progress_callback: Function to call with progress updates.
+        """
         self._is_running = True
         self._stop_event.clear()
 
         base_name, ext = os.path.splitext(output_path)
         temp_video_path = f"{base_name}_temp{ext}"
 
-        cap = cv2.VideoCapture(video_path)
+        cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY])
         if not cap.isOpened():
             raise ValueError("Could not open video file")
 
@@ -136,11 +260,9 @@ class BlurManager:
         fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        # Use mp4v for speed during processing, we transcode to H.264 later
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         writer = cv2.VideoWriter(temp_video_path, fourcc, fps, (width, height))
 
-        # Pre-calculate active ranges
         frame_blur_map: Dict[int, Tuple[int, int, int, int]] = {}
         for sub in subtitles:
             text = sub.get('text', '').strip()
@@ -148,18 +270,15 @@ class BlurManager:
             roi = self._calculate_roi(text, width, height, blur_settings)
             start_f = int(sub['start'] * fps)
             end_f = int(sub['end'] * fps)
-            # Add small padding to ensure coverage
             start_f = max(0, start_f - 1)
             end_f = min(total_frames + 5, end_f + 1)
             for f_idx in range(start_f, end_f):
                 frame_blur_map[f_idx] = roi
 
-        # Threading queues
         read_queue = queue.Queue(maxsize=30)
         write_queue = queue.Queue(maxsize=30)
         exception_queue = queue.Queue()
 
-        # Internal stop event for the threads in this specific task
         task_stop = threading.Event()
 
         def reader_thread():
@@ -220,7 +339,6 @@ class BlurManager:
             t_proc.start()
             t_write.start()
 
-            # Wait for writer to finish (which implies others finished)
             while t_write.is_alive():
                 t_write.join(timeout=0.5)
                 if self._stop_event.is_set():
@@ -229,7 +347,6 @@ class BlurManager:
                 if not exception_queue.empty():
                     raise exception_queue.get()
 
-            # Final progress
             if progress_callback and not self._stop_event.is_set():
                 progress_callback(total_frames, total_frames)
 
@@ -242,18 +359,12 @@ class BlurManager:
             cap.release()
             writer.release()
 
-            # Clean up queues to release references
             while not read_queue.empty(): read_queue.get_nowait()
             while not write_queue.empty(): write_queue.get_nowait()
 
-        # If we got here without exception, and not stopped, merge audio
         if not self._stop_event.is_set():
             try:
                 logger.info("Transcoding to H.264 and merging audio...")
-                # -c:v libx264 ensures browser compatibility
-                # -pix_fmt yuv420p ensures QuickTime compatibility
-                # -crf 23 gives a good balance of quality/size
-                # -preset veryfast speeds up the encoding
                 command = [
                     "ffmpeg", "-y",
                     "-i", temp_video_path,
@@ -274,13 +385,11 @@ class BlurManager:
                 return output_path
             except Exception as e:
                 logger.error(f"FFmpeg failed: {e}")
-                # Fallback: Just rename the mp4v file if transcoding fails (better than nothing)
                 if os.path.exists(temp_video_path):
                     if os.path.exists(output_path): os.remove(output_path)
                     os.rename(temp_video_path, output_path)
                 raise e
         else:
-            # Cleanup temp if stopped
             if os.path.exists(temp_video_path):
                 os.remove(temp_video_path)
             raise InterruptedError("Render stopped by user")
