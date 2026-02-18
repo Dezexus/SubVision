@@ -34,17 +34,19 @@ export const SubtitleCard = ({ item, index }: { item: SubtitleItem, index: numbe
       isLowConf ? "border-red-500/30" : "border-[#333333]"
     )}>
 
-      {/* Main Text Input */}
+      {/* Main Text Input
+          pr-16: Добавлен отступ справа, чтобы текст не наезжал на кнопки
+      */}
       <textarea
         value={item.text}
         onChange={(e) => updateSubtitle({ ...item, text: e.target.value })}
-        className="w-full bg-transparent text-sm text-[#F0F0F0] resize-none focus:outline-none focus:ring-1 focus:ring-[#007acc] rounded px-1 leading-snug min-h-[40px] scrollbar-hide"
+        className="w-full bg-transparent text-sm text-[#F0F0F0] resize-none focus:outline-none focus:ring-1 focus:ring-[#007acc] rounded px-1 pr-16 leading-snug min-h-[40px] scrollbar-hide"
         rows={2}
         spellCheck={false}
       />
 
       {/* Footer Info */}
-      <div className="flex items-center justify-between text-xs text-[#858585]">
+      <div className="flex items-center justify-between text-xs text-[#858585] mt-1">
         <div className="flex items-center gap-3">
           <span
             onClick={handleJump}
@@ -64,30 +66,33 @@ export const SubtitleCard = ({ item, index }: { item: SubtitleItem, index: numbe
         </div>
 
         <div className="flex items-center gap-2">
+            {/* NEW MERGE BUTTON LOCATION: Always visible in footer */}
+            {hasNext && (
+                <button
+                    onClick={() => mergeSubtitles(index)}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#333333] hover:bg-[#007acc] text-[#C5C5C5] hover:text-white transition-colors text-[10px] font-bold"
+                    title="Merge with Next Line"
+                >
+                    <ArrowDownToLine size={12} />
+                    MERGE
+                </button>
+            )}
+
             {item.isEdited && (
-                 <span className="text-[9px] bg-blue-500/10 text-blue-400 px-1 rounded">EDITED</span>
+                 <span className="text-[9px] bg-blue-500/10 text-blue-400 px-1 rounded border border-blue-500/20">EDITED</span>
             )}
         </div>
       </div>
 
-      {/* Action Buttons (Top Right) */}
-      <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-        {hasNext && (
-            <button
-                onClick={() => mergeSubtitles(index)}
-                className="p-1.5 text-[#858585] hover:text-[#007acc] hover:bg-[#007acc]/10 rounded"
-                title="Merge with Next"
-            >
-                <ArrowDownToLine size={14} />
-            </button>
-        )}
+      {/* Action Buttons (Top Right) - Only Admin Actions (Copy/Delete) */}
+      <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-[#252526]/80 backdrop-blur-sm rounded-bl-lg pl-2 pb-1">
         <button
           onClick={handleCopy}
           className="p-1.5 text-[#858585] hover:text-white hover:bg-white/10 rounded"
           title="Copy Text"
         >
           <Copy size={14} />
-          {isCopied && <span className="absolute -top-5 right-0 text-xs bg-black p-1 rounded">Copied!</span>}
+          {isCopied && <span className="absolute -top-5 right-0 text-xs bg-black p-1 rounded text-white">Copied!</span>}
         </button>
         <button
           onClick={() => deleteSubtitle(item.id)}
