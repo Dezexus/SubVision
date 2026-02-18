@@ -13,7 +13,6 @@ import numpy as np
 from PIL import Image
 
 from core.image_ops import (
-    apply_clahe,
     apply_sharpening,
     calculate_roi_from_mask,
     denoise_frame,
@@ -110,7 +109,6 @@ class VideoManager:
         video_path: str,
         frame_index: int,
         editor_data: dict[str, Any] | None,
-        clahe_val: float,
         scale_factor: float,
     ) -> Image.Image | None:
         """
@@ -121,7 +119,7 @@ class VideoManager:
             video_path: The path to the video file.
             frame_index: The index of the frame to process.
             editor_data: UI data, potentially containing an ROI mask.
-            clahe_val: The clip limit for CLAHE enhancement.
+            clahe_val: The clip limit for CLAHE enhancement (IGNORED NOW).
             scale_factor: The scaling factor for resizing.
 
         Returns:
@@ -147,7 +145,9 @@ class VideoManager:
             return None
 
         denoised = denoise_frame(frame_roi, strength=3.0)
-        processed = apply_clahe(denoised, clip_limit=clahe_val)
+
+        # CLAHE REMOVED
+        processed = denoised
 
         if scale_factor > 1.0 and processed is not None:
             processed_resized = cv2.resize(processed, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC)

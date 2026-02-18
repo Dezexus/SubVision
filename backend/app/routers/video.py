@@ -103,7 +103,7 @@ async def get_frame(filename: str, frame_index: int):
 async def get_preview(config: PreviewConfig):
     """
     Generates a processed preview frame based on client-side settings
-    (e.g., CLAHE, scale, ROI) and returns it as a JPEG image.
+    (e.g., scale, ROI) and returns it as a JPEG image.
     """
     safe_filename = os.path.basename(config.filename)
     file_path = os.path.join(UPLOAD_DIR, safe_filename)
@@ -115,7 +115,6 @@ async def get_preview(config: PreviewConfig):
         video_path=file_path,
         frame_index=config.frame_index,
         editor_data={"layers": [], "roi_override": config.roi},
-        clahe_val=config.clahe_limit,
         scale_factor=config.scale_factor
     )
 

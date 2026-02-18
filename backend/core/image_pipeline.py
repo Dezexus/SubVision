@@ -6,7 +6,7 @@ from typing import Any
 import numpy as np
 import cv2
 from .image_ops import (
-    apply_clahe, apply_scaling, apply_sharpening,
+    apply_scaling, apply_sharpening,
     detect_change_absolute, denoise_frame,
     detect_change_paddle, apply_scaling_paddle, apply_sharpening_paddle
 )
@@ -85,7 +85,6 @@ class ImagePipeline:
 
         # 3. Processing Pipeline (Hybrid GPU/CPU)
         denoise_str = float(self.config.get("denoise_strength", 3))
-        clahe_limit = float(self.config.get("clahe", 2.0))
         scale_factor = float(self.config.get("scale_factor", 2.0))
 
         if is_tensor:
@@ -103,7 +102,7 @@ class ImagePipeline:
             working_img = cv2.cvtColor(cpu_img_rgb, cv2.COLOR_RGB2BGR)
 
             denoised = denoise_frame(working_img, strength=denoise_str)
-            processed = apply_clahe(denoised, clip_limit=clahe_limit)
+            processed = denoised
 
             if scale_factor > 1.0:
                 try:
@@ -125,7 +124,8 @@ class ImagePipeline:
 
         else:
             denoised = denoise_frame(frame_roi, strength=denoise_str)
-            processed = apply_clahe(denoised, clip_limit=clahe_limit)
+            processed = denoised
+
             scaled = apply_scaling(processed, scale_factor=scale_factor)
             final = apply_sharpening(scaled)
             return final, False

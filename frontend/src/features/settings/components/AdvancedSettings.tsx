@@ -33,11 +33,6 @@ export const AdvancedSettings = () => {
 
       <div className="space-y-1 pt-2">
         <Switch
-          label="Contrast Boost (CLAHE)"
-          checked={(config.clahe_limit || 0) > 0}
-          onChange={(val) => updateConfig({ clahe_limit: val ? 2.0 : 0.0 })}
-        />
-        <Switch
           label="Smart Skip (Static Scenes)"
           checked={config.smart_skip ?? true}
           onChange={(val) => updateConfig({ smart_skip: val })}

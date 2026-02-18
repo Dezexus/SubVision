@@ -51,10 +51,6 @@ export const FilterPreview = () => {
         </div>
         <div className="space-y-1">
            <div className="flex justify-between text-[10px] text-[#858585] uppercase">
-             <span>CLAHE</span>
-             <span className="text-[#F0F0F0] font-mono">{config.clahe_limit}</span>
-           </div>
-           <div className="flex justify-between text-[10px] text-[#858585] uppercase">
              <span>Scale</span>
              <span className="text-[#F0F0F0] font-mono">{config.scale_factor}x</span>
            </div>
