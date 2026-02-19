@@ -1,5 +1,5 @@
 """
-Process manager for handling background OCR worker threads safely.
+Process manager for handling background OCR worker threads safely using per-session locks.
 """
 import os
 import logging
@@ -13,12 +13,19 @@ from core.worker import OCRWorker
 logger = logging.getLogger(__name__)
 
 class ProcessManager:
-    """Manages lifecycle and thread synchronization for OCR processing tasks."""
+    """Manages lifecycle and fine-grained thread synchronization for OCR processing tasks."""
 
     def __init__(self) -> None:
-        """Initializes the manager and thread lock."""
         self.workers_registry: dict[str, OCRWorker] = {}
-        self._lock = threading.Lock()
+        self._session_locks: dict[str, threading.Lock] = {}
+        self._registry_lock = threading.Lock()
+
+    def _get_session_lock(self, session_id: str) -> threading.Lock:
+        """Retrieves or creates a dedicated threading lock for a specific session."""
+        with self._registry_lock:
+            if session_id not in self._session_locks:
+                self._session_locks[session_id] = threading.Lock()
+            return self._session_locks[session_id]
 
     def start_process(
         self,
@@ -34,9 +41,14 @@ class ProcessManager:
         visual_cutoff: bool,
         callbacks: dict[str, Callable[..., Any]],
     ) -> str:
-        """Starts a new OCR worker thread safely after stopping any existing one."""
-        with self._lock:
-            if session_id in self.workers_registry:
+        """Starts a new OCR worker thread for a session without blocking other clients."""
+        session_lock = self._get_session_lock(session_id)
+
+        with session_lock:
+            with self._registry_lock:
+                has_active_worker = session_id in self.workers_registry
+
+            if has_active_worker:
                 self._stop_worker_sync(session_id)
 
             roi_state = editor_data.get("roi_override") if editor_data else None
@@ -67,19 +79,24 @@ class ProcessManager:
             }
 
             worker = OCRWorker(params, callbacks)
-            self.workers_registry[session_id] = worker
+
+            with self._registry_lock:
+                self.workers_registry[session_id] = worker
+
             worker.start()
 
             return output_srt
 
     def stop_process(self, session_id: str) -> bool:
-        """Safely stops and unregisters an active OCR worker thread."""
-        with self._lock:
+        """Safely stops and unregisters an active OCR worker thread for a specific session."""
+        session_lock = self._get_session_lock(session_id)
+        with session_lock:
             return self._stop_worker_sync(session_id)
 
     def _stop_worker_sync(self, session_id: str) -> bool:
-        """Internally stops a worker using a multi-attempt join strategy."""
-        worker = self.workers_registry.pop(session_id, None)
+        """Internally stops a worker using a multi-attempt join strategy, assuming session lock is held."""
+        with self._registry_lock:
+            worker = self.workers_registry.pop(session_id, None)
 
         if worker:
             if worker.is_alive():
