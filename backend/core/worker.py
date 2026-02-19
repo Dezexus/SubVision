@@ -1,5 +1,5 @@
 """
-Background worker thread orchestrating the video OCR pipeline.
+Background worker thread orchestrating the batched video OCR pipeline.
 """
 import gc
 import logging
@@ -9,6 +9,7 @@ import time
 import os
 from collections.abc import Callable
 from typing import Any
+import numpy as np
 
 from .image_pipeline import ImagePipeline
 from .ocr_engine import PaddleWrapper, get_paddle_engine
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 SENTINEL = object()
 
 class OCRWorker(threading.Thread):
-    """Worker thread executing frame extraction, processing, and OCR inference."""
+    """Worker thread executing frame extraction, processing, and batch OCR inference."""
 
     def __init__(self, params: dict[str, Any], callbacks: dict[str, Callable[..., Any]]) -> None:
         super().__init__()
@@ -31,6 +32,7 @@ class OCRWorker(threading.Thread):
         self.frame_queue: queue.Queue[Any] = queue.Queue(maxsize=30)
         self.producer_error: Exception | None = None
         self._stop_event = threading.Event()
+        self.last_ocr_result = ("", 0.0)
 
     def stop(self) -> None:
         """Signals the worker to stop processing immediately."""
@@ -64,13 +66,46 @@ class OCRWorker(threading.Thread):
             self.producer_error = e
             self.frame_queue.put(SENTINEL)
 
+    def _process_batch(self, pending_items: list[Any], valid_frames: list[np.ndarray], ocr_engine: Any, aggregator: Any, total_frames: int, start_time: float) -> None:
+        """Processes accumulated frames in a single batch to maximize GPU utilization."""
+        if valid_frames:
+            try:
+                batch_results = ocr_engine.predict_batch(valid_frames)
+            except Exception as e:
+                logger.error(f"Batch OCR error: {e}")
+                batch_results = [None] * len(valid_frames)
+        else:
+            batch_results = []
+
+        res_idx = 0
+        for item in pending_items:
+            frame_idx, timestamp, final_img, skipped = item
+
+            self._update_progress(frame_idx, total_frames, start_time)
+
+            if skipped:
+                text, conf = self.last_ocr_result
+            elif final_img is not None:
+                raw_res = batch_results[res_idx] if res_idx < len(batch_results) else None
+                res_idx += 1
+                try:
+                    text, conf = PaddleWrapper.parse_results(raw_res, self.params.get("conf", 0.5))
+                except Exception:
+                    text, conf = "", 0.0
+                self.last_ocr_result = (text, conf)
+            else:
+                text, conf = "", 0.0
+
+            aggregator.add_result(text, conf, timestamp)
+
     def run(self) -> None:
-        """Main execution loop for the OCR processing pipeline."""
+        """Main execution loop accumulating batches for the OCR pipeline."""
         video: VideoProvider | None = None
         producer_thread: threading.Thread | None = None
+        self.last_ocr_result = ("", 0.0)
 
         try:
-            self._log("--- START OCR (GPU-Accelerated Pipeline) ---")
+            self._log("--- START OCR (Batched GPU Pipeline) ---")
 
             preset_name = str(self.params.get("preset_name", "⚖️ Balance"))
             config = get_preset_config(preset_name)
@@ -95,46 +130,44 @@ class OCRWorker(threading.Thread):
             producer_thread = threading.Thread(target=self._producer_loop, args=(video, pipeline), daemon=True)
             producer_thread.start()
 
-            last_ocr_result = ("", 0.0)
             start_time = time.time()
             total_frames = video.total_frames
 
+            pending_items = []
+            valid_frames = []
+            batch_size = 4
+
             while self.is_running and not self._stop_event.is_set():
                 try:
-                    item = self.frame_queue.get(timeout=0.5)
+                    item = self.frame_queue.get(timeout=0.2)
                 except queue.Empty:
-                    if producer_thread and not producer_thread.is_alive():
-                        break
-                    continue
+                    item = None
+
+                if producer_thread and not producer_thread.is_alive() and self.frame_queue.empty() and item is None:
+                    item = SENTINEL
 
                 if item is SENTINEL:
                     if self.producer_error:
                         raise self.producer_error
+                    if pending_items:
+                        self._process_batch(pending_items, valid_frames, ocr_engine, aggregator, total_frames, start_time)
+                        pending_items.clear()
+                        valid_frames.clear()
                     break
 
-                frame_idx, timestamp, final_img, skipped = item
+                if item is not None:
+                    pending_items.append(item)
+                    frame_idx, timestamp, final_img, skipped = item
+                    if not skipped and final_img is not None:
+                        valid_frames.append(final_img)
+                    self.frame_queue.task_done()
 
-                if not self.is_running: break
-
-                self._update_progress(frame_idx, total_frames, start_time)
-
-                if skipped:
-                    text, conf = last_ocr_result
-                elif final_img is not None:
-                    try:
-                        if not self.is_running: break
-                        res = ocr_engine.predict(final_img)
-                        text, conf = PaddleWrapper.parse_results(res, self.params.get("conf", 0.5))
-                    except Exception:
-                        text, conf = "", 0.0
-                    last_ocr_result = (text, conf)
-                else:
-                    text, conf = "", 0.0
-
-                if not self.is_running: break
-
-                aggregator.add_result(text, conf, timestamp)
-                self.frame_queue.task_done()
+                if len(valid_frames) >= batch_size or (item is None and pending_items):
+                    if not self.is_running or self._stop_event.is_set():
+                        break
+                    self._process_batch(pending_items, valid_frames, ocr_engine, aggregator, total_frames, start_time)
+                    pending_items.clear()
+                    valid_frames.clear()
 
             if self.is_running and not self._stop_event.is_set():
                 self._update_progress(total_frames, total_frames, start_time)
