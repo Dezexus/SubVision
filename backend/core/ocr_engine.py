@@ -1,5 +1,5 @@
 """
-PaddleOCR wrapper with singleton management, thread-safe inference locks, and safe batch processing.
+PaddleOCR wrapper with singleton management, inference locks, and memory-safe contiguous array enforcement.
 """
 import logging
 import threading
@@ -58,14 +58,15 @@ class PaddleWrapper:
             paddle.set_device("cpu")
 
     def predict(self, frame: np.ndarray) -> Any:
-        """Executes thread-safe OCR prediction on a single frame."""
+        """Executes thread-safe OCR prediction enforcing contiguous memory layout."""
         with self._inference_lock:
+            safe_frame = np.ascontiguousarray(frame)
             if hasattr(self.ocr, 'predict'):
-                return self.ocr.predict(frame)
-            return self.ocr.ocr(frame)
+                return self.ocr.predict(safe_frame)
+            return self.ocr.ocr(safe_frame)
 
     def predict_batch(self, frames: list[np.ndarray]) -> list[Any]:
-        """Safely processes a batch of frames to prevent PyBind11 C++ segmentation faults."""
+        """Safely processes a batch of frames preventing PyBind11 C++ memory access violations."""
         if not frames:
             return []
 
@@ -73,10 +74,11 @@ class PaddleWrapper:
         with self._inference_lock:
             for frame in frames:
                 try:
+                    safe_frame = np.ascontiguousarray(frame)
                     if hasattr(self.ocr, 'predict'):
-                        res = self.ocr.predict(frame)
+                        res = self.ocr.predict(safe_frame)
                     else:
-                        res = self.ocr.ocr(frame)
+                        res = self.ocr.ocr(safe_frame)
                     results.append(res)
                 except Exception as e:
                     logging.error(f"OCR inference failed for frame: {e}")
