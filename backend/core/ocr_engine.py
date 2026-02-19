@@ -1,9 +1,8 @@
 """
-This module provides a wrapper class for the PaddleOCR library,
-simplifying its initialization and result parsing. It checks for the
-presence of the library and handles device selection (GPU/CPU).
+PaddleOCR wrapper and singleton manager for optimized VRAM usage.
 """
 import logging
+import threading
 from typing import Any
 import numpy as np
 
@@ -16,9 +15,8 @@ except ImportError:
     HAS_PADDLE = False
     PaddleOCR = object
 
-
 class PaddleWrapper:
-    """A wrapper for simplifying interaction with the PaddleOCR engine."""
+    """Wrapper for initializing and interacting with the PaddleOCR engine."""
 
     DET_PARAMS = {
         "det_limit_side_len": 2500,
@@ -29,16 +27,6 @@ class PaddleWrapper:
     }
 
     def __init__(self, lang: str = "en", use_gpu: bool = True) -> None:
-        """
-        Initializes the PaddleOCR engine with specified parameters.
-
-        Args:
-            lang: The language model to use for OCR.
-            use_gpu: Whether to attempt using the GPU for computation.
-
-        Raises:
-            ImportError: If the PaddleOCR library is not installed.
-        """
         if not HAS_PADDLE:
             raise ImportError("PaddleOCR is not installed.")
 
@@ -54,10 +42,6 @@ class PaddleWrapper:
         )
 
     def _init_device(self) -> None:
-        """
-        Sets the computation device for Paddle, preferring GPU if available
-        and enabled, otherwise falling back to CPU.
-        """
         if not self.use_gpu:
             paddle.set_device("cpu")
             return
@@ -72,31 +56,10 @@ class PaddleWrapper:
             paddle.set_device("cpu")
 
     def predict(self, frame: np.ndarray) -> Any:
-        """
-        Runs the OCR prediction on a single image frame.
-
-        Args:
-            frame: The input image as a NumPy array.
-
-        Returns:
-            The raw prediction result from the PaddleOCR engine.
-        """
         return self.ocr.predict(frame)
 
     @staticmethod
     def parse_results(result_list: Any, conf_thresh: float) -> tuple[str, float]:
-        """
-        Parses the raw OCR results, filters by confidence, sorts vertically,
-        and returns a combined string with the average confidence score.
-
-        Args:
-            result_list: The raw result object from the predict method.
-            conf_thresh: The minimum confidence score to include a text box.
-
-        Returns:
-            A tuple containing the concatenated text string and the
-            average confidence of the included texts.
-        """
         if not result_list:
             return "", 0.0
 
@@ -138,3 +101,16 @@ class PaddleWrapper:
 
         avg_conf = sum(final_scores) / len(final_scores) if final_scores else 0.0
         return " ".join(final_texts), avg_conf
+
+
+_engine_lock = threading.Lock()
+_engines: dict[tuple[str, bool], PaddleWrapper] = {}
+
+def get_paddle_engine(lang: str = "en", use_gpu: bool = True) -> PaddleWrapper:
+    """Thread-safe factory ensuring singleton instances of PaddleWrapper per language and device."""
+    key = (lang, use_gpu)
+    if key not in _engines:
+        with _engine_lock:
+            if key not in _engines:
+                _engines[key] = PaddleWrapper(lang=lang, use_gpu=use_gpu)
+    return _engines[key]

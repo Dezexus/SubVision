@@ -1,19 +1,16 @@
 """
-This module defines the OCRWorker, a threaded class responsible for orchestrating
-the entire video-to-subtitle process, from frame extraction and image processing
-to OCR inference and subtitle aggregation.
+Background worker thread orchestrating the video OCR pipeline.
 """
 import gc
 import logging
 import queue
 import threading
 import time
-import traceback
 from collections.abc import Callable
 from typing import Any
 
 from .image_pipeline import ImagePipeline
-from .ocr_engine import PaddleWrapper
+from .ocr_engine import PaddleWrapper, get_paddle_engine
 from .presets import get_preset_config
 from .subtitle_aggregator import SubtitleAggregator
 from .utils import format_timestamp
@@ -23,18 +20,9 @@ logger = logging.getLogger(__name__)
 SENTINEL = object()
 
 class OCRWorker(threading.Thread):
-    """
-    Orchestrates the entire OCR process in a separate thread.
-    """
+    """Worker thread executing frame extraction, processing, and OCR inference."""
 
     def __init__(self, params: dict[str, Any], callbacks: dict[str, Callable[..., Any]]) -> None:
-        """
-        Initializes the worker thread.
-
-        Args:
-            params: A dictionary of operational parameters.
-            callbacks: A dictionary of callback functions.
-        """
         super().__init__()
         self.params = params
         self.cb = callbacks
@@ -54,10 +42,7 @@ class OCRWorker(threading.Thread):
             pass
 
     def _producer_loop(self, video: VideoProvider, pipeline: ImagePipeline) -> None:
-        """
-        Reads frames from the video, applies the image processing pipeline,
-        and puts the results into a queue for the consumer.
-        """
+        """Reads and processes video frames, pushing them to the queue."""
         try:
             for frame_idx, timestamp, frame in video:
                 if not self.is_running or self._stop_event.is_set():
@@ -79,9 +64,8 @@ class OCRWorker(threading.Thread):
             self.frame_queue.put(SENTINEL)
 
     def run(self) -> None:
-        """The main execution method of the worker thread."""
+        """Main execution loop for the OCR processing pipeline."""
         video: VideoProvider | None = None
-        ocr_engine: PaddleWrapper | None = None
         producer_thread: threading.Thread | None = None
 
         try:
@@ -102,7 +86,7 @@ class OCRWorker(threading.Thread):
 
             if not self.is_running: return
 
-            ocr_engine = PaddleWrapper(lang=str(self.params.get("langs", "en")), use_gpu=True)
+            ocr_engine = get_paddle_engine(lang=str(self.params.get("langs", "en")), use_gpu=True)
 
             aggregator = SubtitleAggregator(min_conf=float(config["min_conf"]), fps=video.fps)
             aggregator.on_new_subtitle = self._emit_subtitle
@@ -172,9 +156,6 @@ class OCRWorker(threading.Thread):
 
             if video:
                 video.release()
-
-            if ocr_engine:
-                del ocr_engine
 
             try:
                 while not self.frame_queue.empty():
