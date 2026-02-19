@@ -1,5 +1,20 @@
+/**
+ * Global application state management store.
+ */
 import { create } from 'zustand';
 import type { ProcessConfig, SubtitleItem, VideoMetadata, BlurSettings } from '../types';
+
+/**
+ * Retrieves an existing client ID from session storage or generates a new one.
+ */
+const getOrCreateClientId = (): string => {
+  const stored = sessionStorage.getItem('subvision_client_id');
+  if (stored) return stored;
+
+  const newId = crypto.randomUUID();
+  sessionStorage.setItem('subvision_client_id', newId);
+  return newId;
+};
 
 interface AppState {
   file: File | null;
@@ -43,7 +58,7 @@ interface AppState {
   setSubtitles: (subs: SubtitleItem[]) => void;
   updateSubtitle: (sub: SubtitleItem) => void;
   deleteSubtitle: (id: number) => void;
-  mergeSubtitles: (index: number) => void; // <--- NEW ACTION
+  mergeSubtitles: (index: number) => void;
 
   setRenderedVideoUrl: (url: string | null) => void;
 }
@@ -81,7 +96,7 @@ export const useAppStore = create<AppState>((set) => ({
   progress: { current: 0, total: 0, eta: '--:--' },
   subtitles: [],
   logs: [],
-  clientId: crypto.randomUUID(),
+  clientId: getOrCreateClientId(),
   renderedVideoUrl: null,
 
   setFile: (file) => set({
@@ -135,10 +150,8 @@ export const useAppStore = create<AppState>((set) => ({
     subtitles: state.subtitles.filter(sub => sub.id !== id)
   })),
 
-  // --- NEW MERGE LOGIC ---
   mergeSubtitles: (index) => set((state) => {
     const subs = [...state.subtitles];
-    // Check if we can merge (need current and next)
     if (index < 0 || index >= subs.length - 1) return { subtitles: subs };
 
     const current = subs[index];
@@ -146,13 +159,12 @@ export const useAppStore = create<AppState>((set) => ({
 
     const merged: SubtitleItem = {
       ...current,
-      end: next.end, // Extend end time
-      text: `${current.text} ${next.text}`, // Combine text
-      conf: (current.conf + next.conf) / 2, // Average confidence
+      end: next.end,
+      text: `${current.text} ${next.text}`,
+      conf: (current.conf + next.conf) / 2,
       isEdited: true
     };
 
-    // Remove the two old ones and insert the new one
     subs.splice(index, 2, merged);
 
     return { subtitles: subs };
