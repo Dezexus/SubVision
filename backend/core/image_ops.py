@@ -3,6 +3,7 @@ import functools
 from typing import Any, Union
 import cv2
 import numpy as np
+import logging
 
 try:
     import paddle
@@ -49,7 +50,7 @@ def _apply_cpu_denoise(cpu_frame: np.ndarray, h_val: float) -> np.ndarray:
     return cv2.fastNlMeansDenoisingColored(cpu_frame, None, h_val, h_val, 7, 21)
 
 def denoise_frame(frame: FrameType | None, strength: float) -> FrameType | None:
-    """Applies Fast Non-Local Means Denoising using GPU or multithreaded CPU fallback."""
+    """Applies Fast Non-Local Means Denoising using GPU or multithreaded CPU fallback with timeout."""
     if frame is None or strength <= 0: return frame
     h_val = float(strength)
 
@@ -63,7 +64,12 @@ def denoise_frame(frame: FrameType | None, strength: float) -> FrameType | None:
 
     cpu_frame = ensure_cpu(frame)
     future = _thread_pool.submit(_apply_cpu_denoise, cpu_frame, h_val)
-    return future.result()
+
+    try:
+        return future.result(timeout=30.0)
+    except concurrent.futures.TimeoutError:
+        logging.error("CPU Denoise thread hung, bypassing filter.")
+        return cpu_frame
 
 def apply_scaling(frame: FrameType | None, scale_factor: float) -> FrameType | None:
     """Resizes the frame using Bicubic interpolation."""

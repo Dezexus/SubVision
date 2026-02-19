@@ -1,6 +1,3 @@
-"""
-Background worker thread orchestrating the batched video OCR pipeline.
-"""
 import gc
 import logging
 import queue
@@ -10,6 +7,13 @@ import os
 from collections.abc import Callable
 from typing import Any
 import numpy as np
+import cv2
+
+try:
+    import paddle
+    HAS_PADDLE = True
+except ImportError:
+    HAS_PADDLE = False
 
 from .image_pipeline import ImagePipeline
 from .ocr_engine import PaddleWrapper, get_paddle_engine
@@ -22,7 +26,7 @@ logger = logging.getLogger(__name__)
 SENTINEL = object()
 
 class OCRWorker(threading.Thread):
-    """Worker thread executing frame extraction, processing, and batch OCR inference."""
+    """Worker thread executing frame extraction, processing, and batch OCR inference with Watchdog."""
 
     def __init__(self, params: dict[str, Any], callbacks: dict[str, Callable[..., Any]]) -> None:
         super().__init__()
@@ -46,6 +50,7 @@ class OCRWorker(threading.Thread):
 
     def _producer_loop(self, video: VideoProvider, pipeline: ImagePipeline) -> None:
         """Reads and processes video frames, pushing them to the queue."""
+        cv2.setNumThreads(0)
         try:
             for frame_idx, timestamp, frame in video:
                 if not self.is_running or self._stop_event.is_set():
@@ -98,8 +103,14 @@ class OCRWorker(threading.Thread):
 
             aggregator.add_result(text, conf, timestamp)
 
+        if HAS_PADDLE:
+            try:
+                paddle.device.cuda.empty_cache()
+            except Exception:
+                pass
+
     def run(self) -> None:
-        """Main execution loop accumulating batches for the OCR pipeline."""
+        """Main execution loop accumulating batches for the OCR pipeline with Watchdog monitoring."""
         video: VideoProvider | None = None
         producer_thread: threading.Thread | None = None
         self.last_ocr_result = ("", 0.0)
@@ -131,6 +142,7 @@ class OCRWorker(threading.Thread):
             producer_thread.start()
 
             start_time = time.time()
+            last_activity_time = time.time()
             total_frames = video.total_frames
 
             pending_items = []
@@ -140,8 +152,12 @@ class OCRWorker(threading.Thread):
             while self.is_running and not self._stop_event.is_set():
                 try:
                     item = self.frame_queue.get(timeout=0.2)
+                    if item is not None:
+                        last_activity_time = time.time()
                 except queue.Empty:
                     item = None
+                    if time.time() - last_activity_time > 45.0:
+                        raise TimeoutError("Watchdog Timeout: Decoder or Processing Thread Deadlocked.")
 
                 if producer_thread and not producer_thread.is_alive() and self.frame_queue.empty() and item is None:
                     item = SENTINEL
@@ -168,6 +184,7 @@ class OCRWorker(threading.Thread):
                     self._process_batch(pending_items, valid_frames, ocr_engine, aggregator, total_frames, start_time)
                     pending_items.clear()
                     valid_frames.clear()
+                    last_activity_time = time.time()
 
             if self.is_running and not self._stop_event.is_set():
                 self._update_progress(total_frames, total_frames, start_time)
@@ -197,6 +214,12 @@ class OCRWorker(threading.Thread):
                     self.frame_queue.get_nowait()
             except Exception:
                 pass
+
+            if HAS_PADDLE:
+                try:
+                    paddle.device.cuda.empty_cache()
+                except Exception:
+                    pass
 
             gc.collect()
 
