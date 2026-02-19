@@ -1,5 +1,5 @@
 """
-PaddleOCR wrapper with singleton management, thread-safe inference locks, and batch processing support.
+PaddleOCR wrapper with singleton management, thread-safe inference locks, and safe batch processing.
 """
 import logging
 import threading
@@ -16,7 +16,7 @@ except ImportError:
     PaddleOCR = object
 
 class PaddleWrapper:
-    """Provides isolated, thread-safe access to the PaddleOCR inference engine with batching capabilities."""
+    """Provides isolated, thread-safe access to the PaddleOCR inference engine."""
 
     DET_PARAMS = {
         "det_limit_side_len": 2500,
@@ -60,20 +60,28 @@ class PaddleWrapper:
     def predict(self, frame: np.ndarray) -> Any:
         """Executes thread-safe OCR prediction on a single frame."""
         with self._inference_lock:
-            return self.ocr.predict(frame)
+            if hasattr(self.ocr, 'predict'):
+                return self.ocr.predict(frame)
+            return self.ocr.ocr(frame)
 
     def predict_batch(self, frames: list[np.ndarray]) -> list[Any]:
-        """Executes thread-safe OCR prediction on a batch of frames to maximize GPU utilization."""
+        """Safely processes a batch of frames to prevent PyBind11 C++ segmentation faults."""
         if not frames:
             return []
+
+        results = []
         with self._inference_lock:
-            try:
-                if hasattr(self.ocr, 'ocr'):
-                    return self.ocr.ocr(frames)
-                return [self.ocr.predict(f) for f in frames]
-            except Exception as e:
-                logging.error(f"Batch prediction failed, falling back to sequential: {e}")
-                return [self.ocr.predict(f) for f in frames]
+            for frame in frames:
+                try:
+                    if hasattr(self.ocr, 'predict'):
+                        res = self.ocr.predict(frame)
+                    else:
+                        res = self.ocr.ocr(frame)
+                    results.append(res)
+                except Exception as e:
+                    logging.error(f"OCR inference failed for frame: {e}")
+                    results.append(None)
+        return results
 
     @staticmethod
     def parse_results(result_list: Any, conf_thresh: float) -> tuple[str, float]:
