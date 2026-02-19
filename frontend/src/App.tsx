@@ -2,6 +2,7 @@ import React from 'react';
 import { SettingsPanel } from './features/settings/SettingsPanel';
 import { EditorPanel } from './features/editor/EditorPanel';
 import { ResultsPanel } from './features/results/ResultsPanel';
+import { PreviewModal } from './features/preview/PreviewModal';
 import { useAppStore } from './store/useAppStore';
 import { useSocket } from './hooks/useSocket';
 
@@ -20,6 +21,8 @@ function App() {
 
         {file && <ResultsPanel />}
       </div>
+
+      <PreviewModal />
     </div>
   );
 }

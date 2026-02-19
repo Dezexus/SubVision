@@ -1,5 +1,5 @@
 import React, { useMemo, useRef } from 'react';
-import { Download, ScanFace, ArrowLeft, Upload, FileVideo } from 'lucide-react';
+import { Download, ScanFace, ArrowLeft, Upload, FileVideo, Play } from 'lucide-react';
 import { GlassPanel } from '../../components/ui/GlassPanel';
 import { Button } from '../../components/ui/Button';
 import { ProgressHeader } from './components/ProgressHeader';
@@ -24,7 +24,8 @@ export const ResultsPanel = () => {
     setBlurMode,
     setSubtitles,
     addLog,
-    renderedVideoUrl
+    renderedVideoUrl,
+    setPreviewModalOpen
   } = useAppStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -125,26 +126,37 @@ export const ResultsPanel = () => {
 
         <div className="flex flex-col gap-2">
             {!isBlurMode ? (
-                <div className="flex gap-2">
-                    <Button
-                        variant="primary"
-                        className="flex-1 py-3 h-11 text-xs font-semibold shadow-md"
-                        disabled={isProcessing || !metadata || subtitles.length === 0}
-                        onClick={handleDownloadSrt}
-                        icon={<Download size={14} />}
-                    >
-                        SRT
-                    </Button>
+                <>
                     <Button
                         variant="secondary"
-                        className="flex-1 py-3 h-11 text-xs font-semibold shadow-md bg-purple-600/20 hover:bg-purple-600/30 text-purple-200 border-purple-500/30"
+                        className="w-full py-3 h-11 text-xs font-semibold shadow-md bg-[#333333] hover:bg-[#404040] text-white border-[#454545]"
                         disabled={isProcessing || !metadata || subtitles.length === 0}
-                        onClick={() => setBlurMode(true)}
-                        icon={<ScanFace size={14} />}
+                        onClick={() => setPreviewModalOpen(true)}
+                        icon={<Play size={14} />}
                     >
-                        BLUR
+                        PREVIEW PLAYER
                     </Button>
-                </div>
+                    <div className="flex gap-2">
+                        <Button
+                            variant="primary"
+                            className="flex-1 py-3 h-11 text-xs font-semibold shadow-md"
+                            disabled={isProcessing || !metadata || subtitles.length === 0}
+                            onClick={handleDownloadSrt}
+                            icon={<Download size={14} />}
+                        >
+                            SRT
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            className="flex-1 py-3 h-11 text-xs font-semibold shadow-md bg-purple-600/20 hover:bg-purple-600/30 text-purple-200 border-purple-500/30"
+                            disabled={isProcessing || !metadata || subtitles.length === 0}
+                            onClick={() => setBlurMode(true)}
+                            icon={<ScanFace size={14} />}
+                        >
+                            BLUR
+                        </Button>
+                    </div>
+                </>
             ) : (
                 <div className="space-y-2">
                     {renderedVideoUrl && (

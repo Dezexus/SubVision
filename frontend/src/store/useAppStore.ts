@@ -1,6 +1,12 @@
+/**
+ * Global application state management store implemented with Zustand slice pattern.
+ */
 import { create, StateCreator } from 'zustand';
 import type { ProcessConfig, SubtitleItem, VideoMetadata, BlurSettings } from '../types';
 
+/**
+ * Retrieves an existing client ID from session storage or generates a new one.
+ */
 const getOrCreateClientId = (): string => {
   const stored = sessionStorage.getItem('subvision_client_id');
   if (stored) return stored;
@@ -10,15 +16,23 @@ const getOrCreateClientId = (): string => {
   return newId;
 };
 
+/**
+ * State slice managing video file, metadata, and frame navigation.
+ */
 export interface VideoSlice {
   file: File | null;
   metadata: VideoMetadata | null;
   currentFrameIndex: number;
+  isPreviewModalOpen: boolean;
   setFile: (file: File | null) => void;
   setMetadata: (meta: VideoMetadata) => void;
   setCurrentFrame: (index: number | ((prev: number) => number)) => void;
+  setPreviewModalOpen: (isOpen: boolean) => void;
 }
 
+/**
+ * State slice managing OCR configurations, presets, and region of interest.
+ */
 export interface ConfigSlice {
   roi: [number, number, number, number];
   preset: string;
@@ -28,6 +42,9 @@ export interface ConfigSlice {
   updateConfig: (updates: Partial<ProcessConfig>) => void;
 }
 
+/**
+ * State slice managing blur effects, preview rendering, and target areas.
+ */
 export interface BlurSlice {
   isBlurMode: boolean;
   blurSettings: BlurSettings;
@@ -37,6 +54,9 @@ export interface BlurSlice {
   setBlurPreviewUrl: (url: string | null) => void;
 }
 
+/**
+ * State slice managing backend processing status, logs, and subtitle data.
+ */
 export interface ProcessSlice {
   isProcessing: boolean;
   progress: { current: number; total: number; eta: string };
@@ -55,25 +75,31 @@ export interface ProcessSlice {
   setRenderedVideoUrl: (url: string | null) => void;
 }
 
+/**
+ * Aggregated application state combining all functional slices.
+ */
 export type AppState = VideoSlice & ConfigSlice & BlurSlice & ProcessSlice;
 
 const createVideoSlice: StateCreator<AppState, [], [], VideoSlice> = (set) => ({
   file: null,
   metadata: null,
   currentFrameIndex: 0,
+  isPreviewModalOpen: false,
   setFile: (file) => set({
     file,
     subtitles: [],
     logs: [],
     renderedVideoUrl: null,
     currentFrameIndex: 0,
-    blurPreviewUrl: null
+    blurPreviewUrl: null,
+    isPreviewModalOpen: false
   }),
   setMetadata: (metadata) => set({ metadata, currentFrameIndex: 0 }),
   setCurrentFrame: (index) => set((state) => ({
     currentFrameIndex: typeof index === 'function' ? index(state.currentFrameIndex) : index,
     blurPreviewUrl: null
   })),
+  setPreviewModalOpen: (isOpen) => set({ isPreviewModalOpen: isOpen }),
 });
 
 const createConfigSlice: StateCreator<AppState, [], [], ConfigSlice> = (set) => ({
@@ -90,7 +116,7 @@ const createConfigSlice: StateCreator<AppState, [], [], ConfigSlice> = (set) => 
   },
   setRoi: (roi) => set({ roi }),
   setPreset: (preset) => set({ preset }),
-  updateConfig: (updates) => set((state) => ({ config: { ...state.config, ...updates } }))
+  updateConfig: (updates) => set((state) => ({ config: { ...state.config, ...updates } })),
 });
 
 const createBlurSlice: StateCreator<AppState, [], [], BlurSlice> = (set) => ({
