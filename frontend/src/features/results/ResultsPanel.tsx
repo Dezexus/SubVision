@@ -1,3 +1,6 @@
+/**
+ * Panel component for managing, importing, and exporting processed subtitles and videos.
+ */
 import React, { useMemo, useRef } from 'react';
 import { Download, ScanFace, ArrowLeft, Upload, FileVideo } from 'lucide-react';
 import { GlassPanel } from '../../components/ui/GlassPanel';
@@ -8,6 +11,9 @@ import { useSocket } from '../../hooks/useSocket';
 import { useAppStore } from '../../store/useAppStore';
 import { api } from '../../services/api';
 
+/**
+ * Formats seconds into standard SRT timestamp format.
+ */
 const formatSrtTime = (seconds: number) => {
   const date = new Date(0);
   date.setSeconds(seconds);
@@ -36,6 +42,9 @@ export const ResultsPanel = () => {
     return { total };
   }, [subtitles]);
 
+  /**
+   * Generates and triggers download of the SRT file with UTF-8 BOM for NLE compatibility.
+   */
   const handleDownloadSrt = () => {
     if (!metadata || subtitles.length === 0) return;
 
@@ -46,7 +55,7 @@ export const ResultsPanel = () => {
       srtContent += `${sub.text}\n\n`;
     });
 
-    const blob = new Blob([srtContent], { type: 'application/octet-stream' });
+    const blob = new Blob(['\uFEFF', srtContent], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -58,6 +67,9 @@ export const ResultsPanel = () => {
     URL.revokeObjectURL(url);
   };
 
+  /**
+   * Handles user upload of an existing SRT file and updates the application state.
+   */
   const handleImportSrt = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -71,14 +83,16 @@ export const ResultsPanel = () => {
       console.error(err);
       addLog("Error importing SRT.");
     }
-    // Reset input
+
     e.target.value = '';
   };
 
+  /**
+   * Triggers download of the finalized rendered video.
+   */
   const handleDownloadVideo = () => {
     if (!renderedVideoUrl || !metadata) return;
 
-    // Construct full URL if relative
     const downloadLink = renderedVideoUrl.startsWith('http')
         ? renderedVideoUrl
         : `${import.meta.env.VITE_API_URL || 'http://localhost:7860'}${renderedVideoUrl}`;
@@ -90,13 +104,12 @@ export const ResultsPanel = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  }
+  };
 
   return (
     <GlassPanel className="w-full lg:w-1/4 min-w-[320px] flex flex-col h-full z-20 bg-[#1e1e1e]">
       <ProgressHeader />
 
-      {/* Import Button Header */}
       <div className="flex items-center justify-between p-2 border-b border-[#333333] bg-[#252526]">
          <span className="text-xs font-bold text-[#858585] px-2">SUBTITLES</span>
          <button
@@ -151,7 +164,6 @@ export const ResultsPanel = () => {
                 </div>
             ) : (
                 <div className="space-y-2">
-                    {/* Download Video Button - Only appears when URL is ready */}
                     {renderedVideoUrl && (
                         <Button
                             variant="success"
