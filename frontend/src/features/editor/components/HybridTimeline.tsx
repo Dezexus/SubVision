@@ -1,7 +1,10 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+/**
+ * Timeline component providing a visual representation of subtitles, video duration, and precise playback control.
+ * Features anchor-based zooming to keep the mouse position stable while scaling the timeline track.
+ */
+import React, { useState, useMemo, useRef, useLayoutEffect } from 'react';
 import {
   ChevronLeft, ChevronRight,
-  SkipBack, SkipForward,
   Clock, ZoomIn, ZoomOut
 } from 'lucide-react';
 import { useAppStore } from '../../../store/useAppStore';
@@ -21,12 +24,12 @@ export const HybridTimeline = () => {
 
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const zoomAnchorRef = useRef<{ newScrollLeft: number } | null>(null);
 
-  const [zoomLevel, setZoomLevel] = useState(1); // 1 = 100% width
+  const [zoomLevel, setZoomLevel] = useState(1);
   const [hoveredSub, setHoveredSub] = useState<ProcessedSubtitle | null>(null);
   const [hoverPos, setHoverPos] = useState<number>(0);
 
-  // Time & Duration
   const { currentTime, totalTime } = useMemo(() => {
     if (!metadata) return { currentTime: "00:00:00.00", totalTime: "00:00:00.00" };
     return {
@@ -35,7 +38,6 @@ export const HybridTimeline = () => {
     };
   }, [metadata, currentFrameIndex]);
 
-  // Subtitle Lanes Calculation
   const processedSubtitles = useMemo((): ProcessedSubtitle[] => {
     const sortedSubs = [...subtitles].sort((a, b) => a.start - b.start);
     const lanes: number[] = [];
@@ -49,17 +51,51 @@ export const HybridTimeline = () => {
     });
   }, [subtitles]);
 
-  // --- ZOOM & SCROLL LOGIC ---
+  useLayoutEffect(() => {
+    if (zoomAnchorRef.current !== null && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollLeft = zoomAnchorRef.current.newScrollLeft;
+      zoomAnchorRef.current = null;
+    }
+  }, [zoomLevel]);
+
+  /**
+   * Applies a zoom step using a specific horizontal anchor point to maintain visual stability.
+   */
+  const applyAnchorZoom = (delta: number, anchorX: number) => {
+    if (!scrollContainerRef.current) return;
+    const scrollLeft = scrollContainerRef.current.scrollLeft;
+
+    setZoomLevel(prev => {
+      const newZoom = Math.min(Math.max(1, prev + delta), 20);
+      if (newZoom !== prev) {
+        const zoomRatio = newZoom / prev;
+        const absoluteAnchorX = scrollLeft + anchorX;
+        const newAbsoluteAnchorX = absoluteAnchorX * zoomRatio;
+        zoomAnchorRef.current = {
+          newScrollLeft: newAbsoluteAnchorX - anchorX
+        };
+      }
+      return newZoom;
+    });
+  };
+
   const handleWheel = (e: React.WheelEvent) => {
     if (e.ctrlKey) {
-        // ZOOM
         e.preventDefault();
-        const delta = e.deltaY > 0 ? -0.1 : 0.1;
-        setZoomLevel(prev => Math.min(Math.max(1, prev + delta), 20)); // Max 20x zoom
+        if (!scrollContainerRef.current) return;
+        const rect = scrollContainerRef.current.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const delta = e.deltaY > 0 ? -0.2 : 0.2;
+        applyAnchorZoom(delta, mouseX);
     } else if (e.shiftKey && scrollContainerRef.current) {
-        // SCROLL
         scrollContainerRef.current.scrollLeft += e.deltaY;
     }
+  };
+
+  const handleZoomButton = (delta: number) => {
+    if (!scrollContainerRef.current) return;
+    const rect = scrollContainerRef.current.getBoundingClientRect();
+    applyAnchorZoom(delta, rect.width / 2);
   };
 
   const handleTimelineClick = (e: React.MouseEvent) => {
@@ -67,12 +103,6 @@ export const HybridTimeline = () => {
     const rect = scrollContainerRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const scrollLeft = scrollContainerRef.current.scrollLeft;
-
-    // Calc total width of the timeline content
-    const totalWidth = rect.width * zoomLevel; // Approximate visual width if zoomed
-    // Wait, better approach:
-    // The inner div width is `${zoomLevel * 100}%` of parent.
-    // Actually, click is relative to viewport. We need click relative to content.
 
     const contentX = clickX + scrollLeft;
     const containerWidth = scrollContainerRef.current.scrollWidth;
@@ -91,16 +121,11 @@ export const HybridTimeline = () => {
 
   if (!metadata) return null;
 
-  // Percentage for the playhead
   const progressPercent = ((currentFrameIndex) / (metadata.total_frames - 1)) * 100;
 
   return (
     <div className="bg-[#1e1e1e] border border-[#333333] shadow-2xl select-none flex flex-col rounded-xl overflow-hidden">
-
-      {/* 1. Control Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 bg-[#252526] border-b border-[#333333]">
-
-        {/* Time Display */}
         <div className="flex items-center gap-3 w-40">
             <div className="p-1.5 bg-[#333333] rounded-md text-[#007acc]">
                 <Clock size={14} />
@@ -115,56 +140,47 @@ export const HybridTimeline = () => {
             </div>
         </div>
 
-        {/* Transport Controls */}
         <div className="flex items-center gap-1 bg-[#1e1e1e] p-1 rounded-lg border border-[#333333]">
             <button onClick={() => setCurrentFrame(f => Math.max(0, f - 1))} className="p-1.5 rounded-md hover:bg-[#333333] text-[#858585] hover:text-white transition" title="Prev Frame">
                 <ChevronLeft size={16} />
             </button>
-             {/* Zoom Controls */}
             <div className="flex items-center px-2 gap-1 border-l border-[#333333] ml-1 pl-2">
-                <button onClick={() => setZoomLevel(z => Math.max(1, z - 0.5))} className="p-1 text-[#858585] hover:text-white"><ZoomOut size={14}/></button>
+                <button onClick={() => handleZoomButton(-0.5)} className="p-1 text-[#858585] hover:text-white"><ZoomOut size={14}/></button>
                 <span className="text-[10px] font-mono w-8 text-center">{Math.round(zoomLevel * 100)}%</span>
-                <button onClick={() => setZoomLevel(z => Math.min(20, z + 0.5))} className="p-1 text-[#858585] hover:text-white"><ZoomIn size={14}/></button>
+                <button onClick={() => handleZoomButton(0.5)} className="p-1 text-[#858585] hover:text-white"><ZoomIn size={14}/></button>
             </div>
             <button onClick={() => setCurrentFrame(f => Math.min(metadata.total_frames - 1, f + 1))} className="p-1.5 rounded-md hover:bg-[#333333] text-[#858585] hover:text-white transition" title="Next Frame">
                 <ChevronRight size={16} />
             </button>
         </div>
 
-        {/* Duration */}
         <div className="flex flex-col items-end w-32 opacity-60">
              <span className="text-xs font-mono text-[#858585] font-medium">{totalTime}</span>
         </div>
       </div>
 
-
-      {/* 2. Timeline Track Area */}
       <div
         ref={containerRef}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setHoveredSub(null)}
         className="relative h-28 bg-[#18181b] w-full group overflow-hidden"
       >
-          {/* Scrollable Container */}
           <div
             ref={scrollContainerRef}
             className="w-full h-full overflow-x-auto overflow-y-hidden custom-scrollbar relative"
             onWheel={handleWheel}
             onClick={handleTimelineClick}
           >
-              {/* Scalable Content Track */}
               <div
                 className="h-full relative transition-all duration-75 ease-out"
                 style={{ width: `${zoomLevel * 100}%` }}
               >
-                  {/* Ruler Marks */}
                   <div className="absolute top-0 w-full h-4 border-b border-[#333333] flex justify-between px-[2px] opacity-50">
                      {Array.from({ length: 20 * Math.ceil(zoomLevel) }).map((_, i) => (
                          <div key={i} className={cn("w-px bg-[#333333]", i % 10 === 0 ? "h-2 mt-1" : "h-1 mt-2")} />
                      ))}
                   </div>
 
-                  {/* Subtitle Blocks */}
                   <div className="absolute top-6 w-full h-full pointer-events-none">
                     {processedSubtitles.map((sub) => {
                       const startPercent = (sub.start / metadata.duration) * 100;
@@ -185,7 +201,7 @@ export const HybridTimeline = () => {
                           className="absolute h-6 group/sub pointer-events-auto"
                           style={{
                             left: `${startPercent}%`,
-                            width: `${Math.max(durationPercent, 0.1)}%`, // Ensure visible even if short
+                            width: `${Math.max(durationPercent, 0.1)}%`,
                             top: `${sub.track * 28}px`,
                           }}
                           onMouseEnter={() => setHoveredSub(sub)}
@@ -194,14 +210,13 @@ export const HybridTimeline = () => {
                                 "w-full h-full rounded-sm border transition-all duration-150 backdrop-blur-sm truncate px-1 text-[9px] font-mono leading-6 opacity-80 hover:opacity-100",
                                 colorClass
                             )}>
-                                {zoomLevel > 3 && sub.text} {/* Show text only if zoomed in */}
+                                {zoomLevel > 3 && sub.text}
                             </div>
                         </div>
                       );
                     })}
                   </div>
 
-                  {/* Playhead */}
                   <div
                     className="absolute top-0 bottom-0 z-10 w-px pointer-events-none transition-all duration-75 ease-linear will-change-left"
                     style={{ left: `${progressPercent}%` }}
@@ -212,7 +227,6 @@ export const HybridTimeline = () => {
               </div>
           </div>
 
-          {/* Hover Tooltip (Static Position relative to viewport) */}
           {hoveredSub && (
             <div
                 className="absolute z-50 bottom-2 pointer-events-none"
@@ -231,7 +245,6 @@ export const HybridTimeline = () => {
                 </div>
             </div>
           )}
-
       </div>
     </div>
   );
