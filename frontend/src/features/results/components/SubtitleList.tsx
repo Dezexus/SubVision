@@ -1,32 +1,62 @@
-// A scrollable list that renders all subtitle items using SubtitleCard.
+/**
+ * Virtualized list component for rendering large arrays of subtitles efficiently.
+ */
 import React, { useRef, useEffect } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { useAppStore } from '../../../store/useAppStore';
 import { SubtitleCard } from './SubtitleCard';
 
 export const SubtitleList = () => {
   const { subtitles } = useAppStore();
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const parentRef = useRef<HTMLDivElement>(null);
 
-  // Automatically scroll to the bottom when a new subtitle is added
+  const rowVirtualizer = useVirtualizer({
+    count: subtitles.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 110,
+    overscan: 10,
+  });
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [subtitles.length]);
+    if (subtitles.length > 0) {
+      rowVirtualizer.scrollToIndex(subtitles.length - 1, { align: 'end', behavior: 'smooth' });
+    }
+  }, [subtitles.length, rowVirtualizer]);
 
   if (subtitles.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center text-gray-600 text-xs italic">
+      <div className="h-full flex items-center justify-center text-[#555] text-xs italic">
         Waiting for results...
       </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-hide">
-      {subtitles.map((sub, idx) => (
-        <SubtitleCard key={sub.id} item={sub} index={idx} />
-      ))}
-      {/* Invisible element to mark the bottom for auto-scrolling */}
-      <div ref={bottomRef} />
+    <div
+      ref={parentRef}
+      className="h-full w-full overflow-y-auto scrollbar-hide pb-4"
+    >
+      <div
+        className="w-full relative"
+        style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+      >
+        {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+          const sub = subtitles[virtualRow.index];
+          return (
+            <div
+              key={sub.id}
+              data-index={virtualRow.index}
+              ref={rowVirtualizer.measureElement}
+              className="absolute top-0 left-0 w-full px-2 pb-3"
+              style={{
+                transform: `translateY(${virtualRow.start}px)`,
+              }}
+            >
+              <SubtitleCard item={sub} index={virtualRow.index} />
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };
