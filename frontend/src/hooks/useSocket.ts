@@ -1,3 +1,6 @@
+/**
+ * WebSocket hook for real-time bidirectional communication.
+ */
 import { useEffect } from 'react';
 import useWebSocket from 'react-use-websocket';
 import { useAppStore } from '../store/useAppStore';
@@ -23,15 +26,25 @@ export const useSocket = () => {
     setRenderedVideoUrl
   } = useAppStore();
 
-  const { lastJsonMessage } = useWebSocket(`${SOCKET_URL}/${clientId}`, {
+  const { lastJsonMessage, sendJsonMessage } = useWebSocket(`${SOCKET_URL}/${clientId}`, {
     shouldReconnect: () => true,
     reconnectInterval: 3000,
   });
 
   useEffect(() => {
+    const interval = setInterval(() => {
+      sendJsonMessage({ type: 'ping' });
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [sendJsonMessage]);
+
+  useEffect(() => {
     if (!lastJsonMessage) return;
 
-    const msg = lastJsonMessage as WebSocketMessage;
+    const msg = lastJsonMessage as WebSocketMessage | { type: 'pong' };
+
+    if (msg.type === 'pong') return;
 
     switch (msg.type) {
       case 'log':
@@ -51,7 +64,6 @@ export const useSocket = () => {
         if (msg.success) {
             addLog('--- Process Completed Successfully ---');
             if (msg.download_url) {
-                // CACHE BUSTING: Append timestamp to force re-download
                 const uniqueUrl = `${msg.download_url}?t=${Date.now()}`;
                 setRenderedVideoUrl(uniqueUrl);
             }

@@ -2,6 +2,7 @@
 Main application module for the SubVision API.
 """
 import asyncio
+import json
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,12 +46,18 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str):
-    """Handles WebSocket connections for client communication."""
+    """Handles WebSocket connections with a ping/pong Heartbeat mechanism."""
     await manager.connect(websocket, client_id)
     try:
         while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
+            data = await asyncio.wait_for(websocket.receive_text(), timeout=60.0)
+            try:
+                payload = json.loads(data)
+                if payload.get("type") == "ping":
+                    await websocket.send_text(json.dumps({"type": "pong"}))
+            except json.JSONDecodeError:
+                pass
+    except (WebSocketDisconnect, asyncio.TimeoutError):
         manager.disconnect(client_id)
         if process_mgr:
             process_mgr.stop_process(client_id)
