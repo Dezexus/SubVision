@@ -1,7 +1,8 @@
 /**
- * Timeline component with interactive drag-and-drop subtitle trimming and anchor-based zooming.
+ * Timeline component with interactive drag-and-drop subtitle trimming,
+ * anchor-based zooming, and native event overrides to prevent browser zoom.
  */
-import React, { useState, useMemo, useRef, useLayoutEffect, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useLayoutEffect, useCallback, useEffect } from 'react';
 import {
   ChevronLeft, ChevronRight,
   Clock, ZoomIn, ZoomOut
@@ -58,7 +59,7 @@ export const HybridTimeline = () => {
     }
   }, [zoomLevel]);
 
-  const applyAnchorZoom = (delta: number, anchorX: number) => {
+  const applyAnchorZoom = useCallback((delta: number, anchorX: number) => {
     if (!scrollContainerRef.current) return;
     const scrollLeft = scrollContainerRef.current.scrollLeft;
 
@@ -74,20 +75,47 @@ export const HybridTimeline = () => {
       }
       return newZoom;
     });
-  };
+  }, []);
 
-  const handleWheel = (e: React.WheelEvent) => {
-    if (e.ctrlKey) {
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const handleNativeWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) {
         e.preventDefault();
-        if (!scrollContainerRef.current) return;
-        const rect = scrollContainerRef.current.getBoundingClientRect();
+        const rect = container.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
         const delta = e.deltaY > 0 ? -0.2 : 0.2;
         applyAnchorZoom(delta, mouseX);
-    } else if (e.shiftKey && scrollContainerRef.current) {
-        scrollContainerRef.current.scrollLeft += e.deltaY;
-    }
-  };
+      } else if (e.shiftKey) {
+        e.preventDefault();
+        container.scrollLeft += e.deltaY;
+      }
+    };
+
+    container.addEventListener('wheel', handleNativeWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleNativeWheel);
+  }, [applyAnchorZoom]);
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && (e.key === '=' || e.key === '+' || e.key === '-')) {
+        e.preventDefault();
+        const delta = e.key === '-' ? -0.5 : 0.5;
+        if (scrollContainerRef.current) {
+          const rect = scrollContainerRef.current.getBoundingClientRect();
+          applyAnchorZoom(delta, rect.width / 2);
+        }
+      } else if (e.ctrlKey && e.key === '0') {
+        e.preventDefault();
+        setZoomLevel(1);
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown, { passive: false });
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [applyAnchorZoom]);
 
   const handleZoomButton = (delta: number) => {
     if (!scrollContainerRef.current) return;
@@ -210,7 +238,6 @@ export const HybridTimeline = () => {
           <div
             ref={scrollContainerRef}
             className="w-full h-full overflow-x-auto overflow-y-hidden custom-scrollbar relative"
-            onWheel={handleWheel}
             onClick={handleTimelineClick}
           >
               <div
