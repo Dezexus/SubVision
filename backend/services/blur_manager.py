@@ -8,6 +8,7 @@ import queue
 import unicodedata
 import math
 from typing import Optional, Tuple, List, Dict
+from core.image_ops import extract_frame_cv2
 
 logger = logging.getLogger(__name__)
 
@@ -232,29 +233,16 @@ class BlurManager:
         return frame
 
     def generate_preview(self, video_path: str, frame_index: int, settings: dict, text: str) -> Optional[np.ndarray]:
-        """Generates a single preview frame with the obscuring filter applied including software fallback."""
-        cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY])
-        ok, _ = cap.read()
-
-        if not ok:
-            cap.release()
-            cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_NONE])
-        else:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-
-        if not cap.isOpened():
+        """Generates a single preview frame with the obscuring filter applied using centralized robust extraction."""
+        cached_frame = extract_frame_cv2(video_path, frame_index)
+        if cached_frame is None:
             return None
 
-        try:
-            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
-            ret, frame = cap.read()
-            if not ret: return None
-            roi = self._calculate_roi(text, width, height, settings)
-            return self._apply_blur_to_frame(frame, roi, settings)
-        finally:
-            cap.release()
+        frame = cached_frame.copy()
+        height, width = frame.shape[:2]
+
+        roi = self._calculate_roi(text, width, height, settings)
+        return self._apply_blur_to_frame(frame, roi, settings)
 
     def _run_subprocess_cancellable(self, cmd: list[str]) -> None:
         """Executes a subprocess and safely terminates it if the stop event is triggered."""
