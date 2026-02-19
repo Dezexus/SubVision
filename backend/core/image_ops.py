@@ -2,6 +2,7 @@
 Image processing utility functions utilizing OpenCV, PaddlePaddle, and multiprocessing.
 """
 import concurrent.futures
+import functools
 from typing import Any, Union
 import cv2
 import numpy as np
@@ -172,14 +173,18 @@ def detect_change_absolute(img1: FrameType | None, img2: FrameType | None) -> bo
     count = cv2.countNonZero(thresh)
     return count > 15
 
+@functools.lru_cache(maxsize=32)
 def extract_frame_cv2(video_path: str, frame_index: int) -> np.ndarray | None:
-    """Extracts a single frame using HW-accelerated capture."""
+    """Extracts a single frame using HW-accelerated capture with LRU caching."""
     if not video_path: return None
     cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY])
     try:
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
         ok, frame = cap.read()
-        return frame if ok else None
+        if ok and frame is not None:
+            frame.setflags(write=False)
+            return frame
+        return None
     finally:
         cap.release()
 
