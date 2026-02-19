@@ -1,5 +1,7 @@
-// Displays a real-time preview of the image after processing filters are applied.
-import React, { useEffect, useState } from 'react';
+/**
+ * Real-time filter preview component with memory leak prevention for blob URLs.
+ */
+import React, { useEffect, useState, useRef } from 'react';
 import { Cpu, Loader2, ScanLine } from 'lucide-react';
 import { useAppStore } from '../../../store/useAppStore';
 import { api } from '../../../services/api';
@@ -8,11 +10,20 @@ export const FilterPreview = () => {
   const { metadata, roi, config, currentFrameIndex } = useAppStore();
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const currentUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!metadata || roi[2] === 0) return;
+    if (!metadata || roi[2] === 0) {
+      if (currentUrlRef.current) {
+        URL.revokeObjectURL(currentUrlRef.current);
+        currentUrlRef.current = null;
+        setPreviewUrl(null);
+      }
+      return;
+    }
 
-    // Debounce API calls to prevent spamming while user adjusts settings
+    let isActive = true;
+
     const timer = setTimeout(async () => {
       setLoading(true);
       try {
@@ -22,26 +33,43 @@ export const FilterPreview = () => {
           roi: roi,
           clahe_limit: config.clahe_limit || 2.0,
           scale_factor: config.scale_factor || 1.0,
-          denoise: 3.0 // Denoise is static for preview
+          denoise: 3.0
         });
-        setPreviewUrl(url);
+
+        if (isActive) {
+          if (currentUrlRef.current) {
+            URL.revokeObjectURL(currentUrlRef.current);
+          }
+          currentUrlRef.current = url;
+          setPreviewUrl(url);
+        } else {
+          URL.revokeObjectURL(url);
+        }
       } catch (e) {
-        console.error("Preview fetch failed", e);
+        console.error(e);
       } finally {
-        setLoading(false);
+        if (isActive) setLoading(false);
       }
     }, 500);
 
-    return () => clearTimeout(timer);
+    return () => {
+      isActive = false;
+      clearTimeout(timer);
+    };
   }, [roi, config, currentFrameIndex, metadata]);
 
-  // Don't render if there's no valid ROI or video metadata
+  useEffect(() => {
+    return () => {
+      if (currentUrlRef.current) {
+        URL.revokeObjectURL(currentUrlRef.current);
+      }
+    };
+  }, []);
+
   if (!roi[2] || !metadata) return null;
 
   return (
     <div className="bg-[#1e1e1e] border border-[#333333] rounded-xl p-3 shadow-xl w-full flex gap-4 items-center">
-
-      {/* Left: Filter Info */}
       <div className="flex flex-col gap-2 min-w-[120px]">
         <div className="flex items-center gap-2 text-[#C5C5C5] mb-1">
           <Cpu size={16} />
@@ -61,7 +89,6 @@ export const FilterPreview = () => {
         </div>
       </div>
 
-      {/* Right: Image Preview */}
       <div className="flex-1 bg-black rounded border border-[#333333] overflow-hidden flex items-center justify-center relative h-[100px]">
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">

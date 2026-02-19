@@ -1,3 +1,6 @@
+/**
+ * Blur settings control panel with memory management for preview blob URLs.
+ */
 import React, { useEffect, useState, useRef } from 'react';
 import {
   Sliders, Video, RotateCcw,
@@ -8,9 +11,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { Slider } from '../../components/ui/Slider';
 import { Button } from '../../components/ui/Button';
 import { api } from '../../services/api';
-import { cn } from '../../utils/cn';
 
-// Default "DaVinci" values for Reset functionality
 const DEFAULTS = {
   y: 912,
   font_size: 22,
@@ -38,19 +39,20 @@ export const BlurControlPanel = () => {
 
   const [isPreviewUpdating, setIsPreviewUpdating] = useState(false);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const currentUrlRef = useRef<string | null>(null);
 
   const videoHeight = metadata?.height || 1080;
 
-  // Initial Auto-Positioning logic (only runs once if Y is default)
   useEffect(() => {
     if (metadata && blurSettings.y === 900 && roi[1] > 0) {
         setBlurSettings({ y: roi[1] + roi[3] });
     }
   }, [roi, metadata, blurSettings.y, setBlurSettings]);
 
-  // Auto-Preview Logic
   useEffect(() => {
       if (!metadata) return;
+
+      let isActive = true;
 
       if (debounceTimerRef.current) {
           clearTimeout(debounceTimerRef.current);
@@ -70,18 +72,37 @@ export const BlurControlPanel = () => {
                   blur_settings: blurSettings,
                   subtitle_text: text
               });
-              setBlurPreviewUrl(url);
+
+              if (isActive) {
+                  if (currentUrlRef.current) {
+                      URL.revokeObjectURL(currentUrlRef.current);
+                  }
+                  currentUrlRef.current = url;
+                  setBlurPreviewUrl(url);
+              } else {
+                  URL.revokeObjectURL(url);
+              }
           } catch (e) {
-              console.error("Preview update failed", e);
+              console.error(e);
           } finally {
-              setIsPreviewUpdating(false);
+              if (isActive) setIsPreviewUpdating(false);
           }
-      }, 500); // 500ms debounce
+      }, 500);
 
       return () => {
+          isActive = false;
           if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       };
   }, [blurSettings, currentFrameIndex, metadata, subtitles, setBlurPreviewUrl]);
+
+  useEffect(() => {
+      return () => {
+          if (currentUrlRef.current) {
+              URL.revokeObjectURL(currentUrlRef.current);
+              setBlurPreviewUrl(null);
+          }
+      };
+  }, [setBlurPreviewUrl]);
 
   const handleRender = async () => {
     if (!metadata) return;
@@ -110,7 +131,6 @@ export const BlurControlPanel = () => {
 
   return (
     <div className="flex flex-col h-full bg-[#1e1e1e]">
-      {/* Header */}
       <div className="p-4 border-b border-[#333333] flex justify-between items-center bg-[#252526]">
         <div className="flex items-center gap-2 text-[#F0F0F0]">
             <Sliders size={16} className="text-brand-400" />
@@ -126,17 +146,13 @@ export const BlurControlPanel = () => {
             <button
                 onClick={handleReset}
                 className="p-1.5 text-[#858585] hover:text-white hover:bg-[#333333] rounded transition-colors"
-                title="Reset to Defaults"
             >
                 <RotateCcw size={14} />
             </button>
         </div>
       </div>
 
-      {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-hide">
-
-        {/* SECTION 1: GEOMETRY */}
         <div className="space-y-4">
             <div className="flex items-center gap-2 text-[11px] font-bold text-[#858585] uppercase tracking-wider">
                  <ScanLine size={14} /> Target Geometry (Green)
@@ -159,7 +175,6 @@ export const BlurControlPanel = () => {
             </div>
         </div>
 
-        {/* SECTION 2: COVERAGE */}
         <div className="space-y-4">
             <div className="flex items-center gap-2 text-[11px] font-bold text-[#858585] uppercase tracking-wider">
                  <BoxSelect size={14} /> Blur Coverage (Red)
@@ -187,7 +202,6 @@ export const BlurControlPanel = () => {
 
         <div className="h-px bg-[#333333]" />
 
-        {/* SECTION 3: APPEARANCE */}
         <div className="space-y-4">
             <div className="flex items-center gap-2 text-[11px] font-bold text-[#858585] uppercase tracking-wider">
                  <Droplet size={14} /> Appearance
@@ -212,7 +226,6 @@ export const BlurControlPanel = () => {
         </div>
       </div>
 
-      {/* Footer Action */}
       <div className="p-4 border-t border-[#333333] bg-[#252526]">
         <Button
           variant="primary"
