@@ -5,12 +5,11 @@ import os
 import shutil
 import uuid
 import cv2
-from fastapi import APIRouter, UploadFile, HTTPException, File, BackgroundTasks, status
+from fastapi import APIRouter, UploadFile, HTTPException, File, status
 from fastapi.responses import StreamingResponse, FileResponse
 from io import BytesIO
 
 from services.video_manager import VideoManager
-from services.cleanup import cleanup_old_files
 from app.schemas import VideoMetadata, PreviewConfig
 
 router = APIRouter()
@@ -20,10 +19,8 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 ALLOWED_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm"}
 
 @router.post("/upload", response_model=VideoMetadata)
-async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+async def upload_video(file: UploadFile = File(...)):
     """Handles video upload with strict MIME type and extension validation."""
-    background_tasks.add_task(cleanup_old_files, max_age_hours=12)
-
     filename = file.filename or ""
     ext = os.path.splitext(filename)[1].lower()
 

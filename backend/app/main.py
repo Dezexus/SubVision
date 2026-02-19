@@ -1,8 +1,7 @@
 """
-Main application file for the SubVision API.
-This script initializes the FastAPI application, configures middleware,
-includes API routers, and sets up WebSocket and static file handling.
+Main application module for the SubVision API.
 """
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,18 +12,21 @@ from app.routers.processing import process_mgr
 from app.websocket_manager import manager
 from services.cleanup import cleanup_old_files
 
+async def periodic_cleanup(interval_seconds: int = 3600, max_age_hours: int = 12):
+    """Executes file cleanup periodically in the background."""
+    while True:
+        try:
+            cleanup_old_files(max_age_hours=max_age_hours)
+        except Exception as e:
+            print(f"Periodic cleanup error: {e}")
+        await asyncio.sleep(interval_seconds)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Manages the application's lifespan events.
-    On startup, it triggers a cleanup of old files.
-    """
-    try:
-        cleanup_old_files(max_age_hours=24)
-    except Exception as e:
-        print(f"Cleanup warning on startup: {e}")
+    """Manages application startup and shutdown lifecycle events."""
+    cleanup_task = asyncio.create_task(periodic_cleanup())
     yield
-    pass
+    cleanup_task.cancel()
 
 app = FastAPI(title="SubVision API", version="1.0.0", lifespan=lifespan)
 
@@ -43,11 +45,7 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str):
-    """
-    Handles the WebSocket connection for a given client. It manages the
-    connection lifecycle and ensures that any running process associated
-    with the client is stopped upon disconnection.
-    """
+    """Handles WebSocket connections for client communication."""
     await manager.connect(websocket, client_id)
     try:
         while True:
@@ -56,4 +54,3 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
         manager.disconnect(client_id)
         if process_mgr:
             process_mgr.stop_process(client_id)
-
