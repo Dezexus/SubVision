@@ -137,6 +137,7 @@ class OCRWorker(threading.Thread):
                 self.frame_queue.task_done()
 
             if self.is_running and not self._stop_event.is_set():
+                self._update_progress(total_frames, total_frames, start_time)
                 srt_data = aggregator.finalize()
                 self._log(f"Smart Skip: {pipeline.skipped_count} frames")
                 self._save_to_file(srt_data)
