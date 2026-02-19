@@ -1,5 +1,5 @@
 """
-Image processing utility functions utilizing OpenCV, PaddlePaddle, and multiprocessing.
+Image processing utility functions utilizing OpenCV, PaddlePaddle, and thread-based concurrency.
 """
 import concurrent.futures
 import functools
@@ -29,7 +29,7 @@ if HAS_CUDA:
 else:
     FrameType = np.ndarray
 
-_cpu_pool = concurrent.futures.ProcessPoolExecutor(max_workers=2)
+_thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 
 def ensure_gpu(frame: FrameType) -> Any:
     """Uploads frame to GPU if currently on CPU."""
@@ -48,11 +48,11 @@ def ensure_cpu(frame: FrameType) -> np.ndarray:
     return frame
 
 def _apply_cpu_denoise(cpu_frame: np.ndarray, h_val: float) -> np.ndarray:
-    """Isolated CPU denoise function for multiprocessing."""
+    """Isolated CPU denoise function for multithreading."""
     return cv2.fastNlMeansDenoisingColored(cpu_frame, None, h_val, h_val, 7, 21)
 
 def denoise_frame(frame: FrameType | None, strength: float) -> FrameType | None:
-    """Applies Fast Non-Local Means Denoising using GPU or multiprocessed CPU fallback."""
+    """Applies Fast Non-Local Means Denoising using GPU or multithreaded CPU fallback."""
     if frame is None or strength <= 0: return frame
     h_val = float(strength)
 
@@ -65,7 +65,7 @@ def denoise_frame(frame: FrameType | None, strength: float) -> FrameType | None:
         except cv2.error: pass
 
     cpu_frame = ensure_cpu(frame)
-    future = _cpu_pool.submit(_apply_cpu_denoise, cpu_frame, h_val)
+    future = _thread_pool.submit(_apply_cpu_denoise, cpu_frame, h_val)
     return future.result()
 
 def apply_scaling(frame: FrameType | None, scale_factor: float) -> FrameType | None:
