@@ -1,8 +1,3 @@
-"""
-This module provides a static utility class, VideoManager, for handling
-video-related operations such as conversion, metadata extraction,
-and generating processed frame previews.
-"""
 import logging
 import os
 import subprocess
@@ -21,22 +16,12 @@ from core.image_ops import (
 
 logger = logging.getLogger(__name__)
 
-
 class VideoManager:
     """A collection of static methods for video conversion, metadata, and previews."""
 
     @staticmethod
     def convert_video_to_h264(input_path: str) -> str | None:
-        """
-        Converts a video to a standard MP4 (H.264) format using FFmpeg
-        to ensure compatibility.
-
-        Args:
-            input_path: The path to the source video file.
-
-        Returns:
-            The path to the converted MP4 file, or None if conversion fails.
-        """
+        """Converts a video to a standard MP4 format using FFmpeg with robust audio encoding."""
         if not input_path:
             return None
 
@@ -47,7 +32,7 @@ class VideoManager:
         logger.info(f"Attempting to convert {input_path} to a compatible format...")
         cmd = [
             "ffmpeg", "-y", "-i", input_path, "-c:v", "libx264",
-            "-preset", "ultrafast", "-crf", "23", "-c:a", "copy",
+            "-preset", "ultrafast", "-crf", "26", "-c:a", "aac", "-b:a", "192k",
             output_path,
         ]
         try:
@@ -55,35 +40,39 @@ class VideoManager:
             logger.info("Conversion successful.")
             return output_path
         except (subprocess.CalledProcessError, FileNotFoundError):
-            logger.error("FFmpeg conversion failed. Ensure FFmpeg is installed and in your system's PATH.")
+            logger.error("FFmpeg conversion failed.")
+            if os.path.exists(output_path):
+                os.remove(output_path)
             return None
 
     @staticmethod
     def get_video_info(video_path: str | None) -> tuple[np.ndarray | None, int]:
-        """
-        Extracts the total frame count and the first valid frame from a video.
-
-        Args:
-            video_path: The path to the video file.
-
-        Returns:
-            A tuple containing the first frame as an RGB NumPy array and the
-            total number of frames. Returns (None, 1) on failure.
-        """
+        """Extracts the total frame count and the first valid frame from a video with a software decoding fallback."""
         if not video_path:
             return None, 1
 
-        cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG)
-        if not cap.isOpened():
-            return None, 1
+        cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY])
+        ok, frame = cap.read()
+
+        if not ok:
+            cap.release()
+            cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_NONE])
+            ok, frame = cap.read()
 
         try:
             total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            ok, frame = cap.read()
+            attempts = 0
+
+            while not ok and attempts < 15:
+                ok, frame = cap.read()
+                attempts += 1
 
             if not ok and total > 10:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 10)
-                ok, frame = cap.read()
+                for _ in range(5):
+                    ok, frame = cap.read()
+                    if ok:
+                        break
 
             return (cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), total) if ok else (None, 1)
         finally:
@@ -91,40 +80,18 @@ class VideoManager:
 
     @staticmethod
     def get_frame_image(video_path: str, frame_index: int) -> np.ndarray | None:
-        """
-        Retrieves a specific frame from a video by its index.
-
-        Args:
-            video_path: The path to the video file.
-            frame_index: The numerical index of the frame to retrieve.
-
-        Returns:
-            The requested frame as an RGB NumPy array, or None if it cannot be read.
-        """
+        """Retrieves a specific frame from a video by its index."""
         frame = extract_frame_cv2(video_path, frame_index)
         return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) if frame is not None else None
 
     @staticmethod
     def generate_preview(
-        video_path: str,
-        frame_index: int,
-        editor_data: dict[str, Any] | None,
-        scale_factor: float,
+            video_path: str,
+            frame_index: int,
+            editor_data: dict[str, Any] | None,
+            scale_factor: float,
     ) -> Image.Image | None:
-        """
-        Generates a processed preview image for a specific frame, applying all
-        configured image enhancement filters.
-
-        Args:
-            video_path: The path to the video file.
-            frame_index: The index of the frame to process.
-            editor_data: UI data, potentially containing an ROI mask.
-            clahe_val: The clip limit for CLAHE enhancement (IGNORED NOW).
-            scale_factor: The scaling factor for resizing.
-
-        Returns:
-            A processed PIL Image in RGB format, or None on failure.
-        """
+        """Generates a processed preview image for a specific frame."""
         if not video_path:
             return None
 
@@ -145,8 +112,6 @@ class VideoManager:
             return None
 
         denoised = denoise_frame(frame_roi, strength=3.0)
-
-        # CLAHE REMOVED
         processed = denoised
 
         if scale_factor > 1.0 and processed is not None:

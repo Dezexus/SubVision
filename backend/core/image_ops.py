@@ -1,6 +1,3 @@
-"""
-Image processing utility functions utilizing OpenCV, PaddlePaddle, and thread-based concurrency.
-"""
 import concurrent.futures
 import functools
 from typing import Any, Union
@@ -175,15 +172,30 @@ def detect_change_absolute(img1: FrameType | None, img2: FrameType | None) -> bo
 
 @functools.lru_cache(maxsize=32)
 def extract_frame_cv2(video_path: str, frame_index: int) -> np.ndarray | None:
-    """Extracts a single frame using HW-accelerated capture with LRU caching."""
+    """Extracts a single frame using hardware-accelerated capture with automatic software fallback."""
     if not video_path: return None
+
     cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY])
+    ok, _ = cap.read()
+
+    if not ok:
+        cap.release()
+        cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_NONE])
+
     try:
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
         ok, frame = cap.read()
+
+        if not ok:
+            cap.release()
+            cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_NONE])
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+            ok, frame = cap.read()
+
         if ok and frame is not None:
             frame.setflags(write=False)
             return frame
+
         return None
     finally:
         cap.release()

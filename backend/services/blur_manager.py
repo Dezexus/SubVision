@@ -1,6 +1,3 @@
-"""
-Video blurring manager with hardware-accelerated NVENC rendering and fallback support.
-"""
 import cv2
 import numpy as np
 import logging
@@ -173,10 +170,19 @@ class BlurManager:
         return frame
 
     def generate_preview(self, video_path: str, frame_index: int, settings: dict, text: str) -> Optional[np.ndarray]:
-        """Generates a single preview frame with the blur applied."""
+        """Generates a single preview frame with the blur applied including software fallback."""
         cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY])
+        ok, _ = cap.read()
+
+        if not ok:
+            cap.release()
+            cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_NONE])
+        else:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
         if not cap.isOpened():
             return None
+
         try:
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -217,7 +223,7 @@ class BlurManager:
             output_path: str,
             progress_callback=None
     ):
-        """Executes the full video blurring and accelerated hardware rendering pipeline."""
+        """Executes the full video blurring and accelerated hardware rendering pipeline with software fallback."""
         self._is_running = True
         self._stop_event.clear()
 
@@ -225,6 +231,14 @@ class BlurManager:
         temp_video_path = f"{base_name}_temp{ext}"
 
         cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY])
+        ok, _ = cap.read()
+
+        if not ok:
+            cap.release()
+            cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_NONE])
+        else:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
         if not cap.isOpened():
             raise ValueError("Could not open video file")
 

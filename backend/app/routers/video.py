@@ -1,8 +1,6 @@
-"""
-API router for video management with chunked upload and strict validation.
-"""
 import os
-import uuid
+import re
+import logging
 import cv2
 from typing import Union
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
@@ -12,6 +10,7 @@ from io import BytesIO
 from services.video_manager import VideoManager
 from app.schemas import VideoMetadata, PreviewConfig
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -26,7 +25,13 @@ async def upload_video(
     total_chunks: int = Form(...),
     filename: str = Form(...)
 ) -> Union[VideoMetadata, dict]:
-    """Handles chunked video uploads with strict validation."""
+    """Handles chunked video uploads with strict validation and automatic codec transcoding."""
+    if not re.match(r"^[a-zA-Z0-9\-]+$", upload_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid upload_id format."
+        )
+
     ext = os.path.splitext(filename)[1].lower()
 
     if ext not in ALLOWED_EXTENSIONS:
@@ -51,11 +56,20 @@ async def upload_video(
         frame, total_frames = VideoManager.get_video_info(final_path)
 
         if frame is None:
+            logger.warning(f"OpenCV failed to decode {final_filename}. Attempting automatic H.264 fallback conversion.")
+            converted_path = VideoManager.convert_video_to_h264(final_path)
+            if converted_path and os.path.exists(converted_path):
+                os.remove(final_path)
+                final_path = converted_path
+                final_filename = os.path.basename(final_path)
+                frame, total_frames = VideoManager.get_video_info(final_path)
+
+        if frame is None:
             if os.path.exists(final_path):
                 os.remove(final_path)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid video format or corrupted file."
+                detail="Invalid video format or unsupported codec. Automatic H.264 conversion failed."
             )
 
         height, width, _ = frame.shape
