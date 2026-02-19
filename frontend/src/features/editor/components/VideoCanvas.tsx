@@ -1,10 +1,12 @@
+/**
+ * Video canvas component for rendering frames, managing ROI crops, and interactive blur positioning.
+ */
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { useAppStore } from '../../../store/useAppStore';
 import { api } from '../../../services/api';
-import { Loader2, ImageOff, Eye, EyeOff, MoveVertical, ArrowLeftRight, ArrowUpDown } from 'lucide-react';
-import { cn } from '../../../utils/cn';
+import { Loader2, ImageOff, Eye, EyeOff, MoveVertical } from 'lucide-react';
 
 export const VideoCanvas = () => {
   const {
@@ -24,7 +26,6 @@ export const VideoCanvas = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showGuides, setShowGuides] = useState(true);
 
-  // --- DRAG STATE ---
   const [isDragging, setIsDragging] = useState<'none' | 'move-y' | 'resize-x' | 'resize-y'>('none');
   const dragStartRef = useRef<{ y: number, x: number, initialY: number, initialPadX: number, initialPadY: number }>({ y: 0, x: 0, initialY: 0, initialPadX: 0, initialPadY: 0 });
 
@@ -50,7 +51,9 @@ export const VideoCanvas = () => {
     img.onerror = () => setIsLoading(false);
   }, [currentFrameIndex, metadata]);
 
-  // Handle standard ROI crop
+  /**
+   * Translates crop coordinates to actual video resolution dimensions.
+   */
   const onCropComplete = (crop: PixelCrop) => {
     if (!imgRef.current || !metadata) return;
     const image = imgRef.current;
@@ -74,7 +77,9 @@ export const VideoCanvas = () => {
     return subtitles.find(sub => currentTime >= sub.start && currentTime <= sub.end);
   }, [isBlurMode, currentFrameIndex, subtitles, metadata]);
 
-  // --- GEOMETRY CALCULATION ---
+  /**
+   * Calculates dynamic geometry for blur target and coverage areas based on settings and text dimensions.
+   */
   const geometry = useMemo(() => {
     if (!metadata) return null;
 
@@ -85,17 +90,14 @@ export const VideoCanvas = () => {
     const textHeight = fontSizePx + 4;
     const paddingYPx = Math.floor(textHeight * blurSettings.padding_y);
 
-    // Calc Video Coordinates
     const x = Math.floor((metadata.width - textWidth) / 2);
-    const y = blurSettings.y - textHeight; // Bottom anchored
+    const y = blurSettings.y - textHeight;
 
-    // Green Box (Target)
     const greenX = x;
     const greenY = y;
     const greenW = textWidth;
     const greenH = textHeight;
 
-    // Red Box (Blur)
     const redX = Math.max(0, x - blurSettings.padding_x);
     const redY = Math.max(0, y - paddingYPx);
     const rawRedW = textWidth + (blurSettings.padding_x * 2);
@@ -106,13 +108,14 @@ export const VideoCanvas = () => {
     return {
         green: { x: greenX, y: greenY, w: greenW, h: greenH },
         red: { x: redX, y: redY, w: redW, h: redH },
-        textHeight, // Used for scaling logic
+        textHeight,
         paddingYPx
     };
   }, [blurSettings, metadata, activeSubtitle]);
 
-
-  // --- INTERACTION HANDLERS ---
+  /**
+   * Calculates the scale difference between DOM display size and actual video resolution.
+   */
   const getScale = () => {
     if (!containerRef.current || !metadata) return { x: 1, y: 1 };
     const rect = containerRef.current.getBoundingClientRect();
@@ -143,28 +146,18 @@ export const VideoCanvas = () => {
       const deltaX = (e.clientX - dragStartRef.current.x) * scale.x;
 
       if (isDragging === 'move-y') {
-          // Moving Green Box UP/DOWN changes 'y' (which is bottom anchor)
-          // Since Y is bottom anchor: Moving Mouse DOWN (+Y) should increase Y value
           setBlurSettings({ y: Math.round(dragStartRef.current.initialY + deltaY) });
       }
       else if (isDragging === 'resize-x') {
-          // Dragging Red Box Side changes padding_x (symmetric)
-          // Moving Right (+X) increases padding
-          // Since we might drag left side, we use abs(delta) relative to center, but simpler:
-          // Just assume dragging right edge for now.
-          const newPadX = Math.max(0, Math.round(dragStartRef.current.initialPadX + (deltaX * 0.5))); // 0.5 because padding applies both sides
+          const newPadX = Math.max(0, Math.round(dragStartRef.current.initialPadX + (deltaX * 0.5)));
           setBlurSettings({ padding_x: newPadX });
       }
       else if (isDragging === 'resize-y') {
-          // Dragging Red Box Top/Bottom changes padding_y
-          // Dragging Down (+Y) increases height
-          // Calculate pixels to padding_y ratio
-          const pixelsChanged = deltaY * 0.5; // Apply half
+          const pixelsChanged = deltaY * 0.5;
           const newHeightPx = (geometry.textHeight * dragStartRef.current.initialPadY) + pixelsChanged;
           const newPadY = Math.max(0, newHeightPx / geometry.textHeight);
           setBlurSettings({ padding_y: parseFloat(newPadY.toFixed(2)) });
       }
-
   }, [isDragging, geometry, setBlurSettings]);
 
   const handleMouseUp = useCallback(() => {
@@ -175,15 +168,18 @@ export const VideoCanvas = () => {
       if (isDragging !== 'none') {
           window.addEventListener('mousemove', handleMouseMove);
           window.addEventListener('mouseup', handleMouseUp);
+          document.addEventListener('mouseleave', handleMouseUp);
       }
       return () => {
           window.removeEventListener('mousemove', handleMouseMove);
           window.removeEventListener('mouseup', handleMouseUp);
+          document.removeEventListener('mouseleave', handleMouseUp);
       };
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
-
-  // Helper to convert internal video coords to CSS %
+  /**
+   * Translates internal video coordinates to CSS percentages.
+   */
   const toCss = (rect: {x: number, y: number, w: number, h: number}) => {
       if (!metadata) return {};
       return {
@@ -218,7 +214,6 @@ export const VideoCanvas = () => {
 
           {imgSrc && (
               <>
-                {/* Toggle Guide Button */}
                 {isBlurMode && (
                     <button
                         onClick={() => setShowGuides(!showGuides)}
@@ -254,15 +249,12 @@ export const VideoCanvas = () => {
                             onDragStart={(e) => e.preventDefault()}
                         />
 
-                        {/* INTERACTIVE LAYER */}
                         {showGuides && geometry && (
                             <>
-                                {/* RED BOX (BLUR) */}
                                 <div
                                     className="absolute border border-dashed border-red-500/80 z-30"
                                     style={toCss(geometry.red)}
                                 >
-                                    {/* Resize Handles */}
                                     <div
                                         className="absolute -right-1 top-0 bottom-0 w-3 cursor-ew-resize hover:bg-red-500/20"
                                         onMouseDown={(e) => handleMouseDown(e, 'resize-x')}
@@ -279,7 +271,6 @@ export const VideoCanvas = () => {
                                     />
                                 </div>
 
-                                {/* GREEN BOX (TARGET) */}
                                 <div
                                     className="absolute bg-green-500/10 border border-green-500/90 z-40 cursor-grab active:cursor-grabbing group/green"
                                     style={toCss(geometry.green)}
@@ -291,7 +282,6 @@ export const VideoCanvas = () => {
                                     </div>
                                 </div>
 
-                                {/* Tooltip for Dragging */}
                                 {isDragging !== 'none' && (
                                     <div className="absolute top-4 left-4 bg-black/80 text-white text-xs px-2 py-1 rounded border border-white/20 z-50 font-mono">
                                         {isDragging === 'move-y' && `Y: ${blurSettings.y}`}
