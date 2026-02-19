@@ -10,16 +10,20 @@ const estimateTextWidth = (text: string, fontSizePx: number): number => {
   let width = 0.0;
   for (const char of text) {
     if (/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af\uff00-\uffef]/.test(char)) {
-      width += 1.0;
-    } else if (/[il1.,!I|:;]/.test(char)) {
-      width += 0.3;
-    } else if (/[A-ZmwWM@]/.test(char)) {
-      width += 0.75;
+      width += 1.1;
+    } else if (/[mwWM@OQG]/.test(char)) {
+      width += 0.95;
+    } else if (/[A-Z]/.test(char)) {
+      width += 0.8;
+    } else if (/[0-9]/.test(char)) {
+      width += 0.65;
+    } else if (/[il1.,!I|:;tfj]/.test(char)) {
+      width += 0.35;
     } else {
-      width += 0.55;
+      width += 0.65;
     }
   }
-  return Math.floor(width * fontSizePx);
+  return Math.ceil(width * fontSizePx);
 };
 
 export const VideoCanvas = () => {
