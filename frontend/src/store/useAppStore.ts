@@ -4,9 +4,6 @@
 import { create } from 'zustand';
 import type { ProcessConfig, SubtitleItem, VideoMetadata, BlurSettings } from '../types';
 
-/**
- * Retrieves an existing client ID from session storage or generates a new one.
- */
 const getOrCreateClientId = (): string => {
   const stored = sessionStorage.getItem('subvision_client_id');
   if (stored) return stored;
@@ -20,7 +17,6 @@ interface AppState {
   file: File | null;
   metadata: VideoMetadata | null;
   currentFrameIndex: number;
-  isPlaying: boolean;
 
   roi: [number, number, number, number];
   preset: string;
@@ -41,7 +37,6 @@ interface AppState {
   setFile: (file: File | null) => void;
   setMetadata: (meta: VideoMetadata) => void;
   setCurrentFrame: (index: number | ((prev: number) => number)) => void;
-  setIsPlaying: (isPlaying: boolean) => void;
 
   setRoi: (roi: [number, number, number, number]) => void;
   updateConfig: (updates: Partial<ProcessConfig>) => void;
@@ -67,7 +62,6 @@ export const useAppStore = create<AppState>((set) => ({
   file: null,
   metadata: null,
   currentFrameIndex: 0,
-  isPlaying: false,
 
   roi: [0, 0, 0, 0],
   preset: '⚖️ Balance',
@@ -114,8 +108,6 @@ export const useAppStore = create<AppState>((set) => ({
     currentFrameIndex: typeof index === 'function' ? index(state.currentFrameIndex) : index,
     blurPreviewUrl: null
   })),
-
-  setIsPlaying: (isPlaying) => set({ isPlaying }),
 
   setRoi: (roi) => set({ roi }),
 

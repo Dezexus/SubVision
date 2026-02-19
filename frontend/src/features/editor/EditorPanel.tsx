@@ -1,5 +1,5 @@
 /**
- * Main editor layout orchestration with global hotkey support for timeline navigation.
+ * Main editor layout orchestration with global hotkey support for frame navigation.
  */
 import React, { useEffect } from 'react';
 import { VideoCanvas } from './components/VideoCanvas';
@@ -9,14 +9,7 @@ import { HybridTimeline } from './components/HybridTimeline';
 import { useAppStore } from '../../store/useAppStore';
 
 export const EditorPanel = () => {
-  const {
-    file,
-    roi,
-    metadata,
-    isPlaying,
-    setIsPlaying,
-    setCurrentFrame
-  } = useAppStore();
+  const { file, roi, metadata, setCurrentFrame } = useAppStore();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -25,10 +18,7 @@ export const EditorPanel = () => {
         if (tag === 'input' || tag === 'textarea') return;
       }
 
-      if (e.code === 'Space') {
-        e.preventDefault();
-        setIsPlaying(!isPlaying);
-      } else if (e.code === 'ArrowLeft') {
+      if (e.code === 'ArrowLeft') {
         e.preventDefault();
         setCurrentFrame(f => Math.max(0, f - 1));
       } else if (e.code === 'ArrowRight' && metadata) {
@@ -39,26 +29,7 @@ export const EditorPanel = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, metadata, setIsPlaying, setCurrentFrame]);
-
-  useEffect(() => {
-    if (!isPlaying || !metadata) return;
-
-    const fps = metadata.fps || 25;
-    const intervalMs = 1000 / fps;
-
-    const interval = setInterval(() => {
-      setCurrentFrame(prev => {
-        if (prev >= metadata.total_frames - 1) {
-          setIsPlaying(false);
-          return prev;
-        }
-        return prev + 1;
-      });
-    }, intervalMs);
-
-    return () => clearInterval(interval);
-  }, [isPlaying, metadata, setCurrentFrame, setIsPlaying]);
+  }, [metadata, setCurrentFrame]);
 
   if (!file) {
     return (
