@@ -1,6 +1,5 @@
 /**
- * Timeline component with interactive drag-and-drop subtitle trimming,
- * anchor-based zooming, and native event overrides to prevent browser zoom.
+ * Timeline component with unified frame-to-pixel math and phantom-click prevention.
  */
 import React, { useState, useMemo, useRef, useLayoutEffect, useCallback, useEffect } from 'react';
 import {
@@ -25,17 +24,28 @@ export const HybridTimeline = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const zoomAnchorRef = useRef<{ newScrollLeft: number } | null>(null);
-  const dragRef = useRef<{ subId: number; edge: 'start' | 'end' } | null>(null);
+  const dragRef = useRef<{
+    subId: number;
+    edge: 'start' | 'end';
+    startX: number;
+    initialStart: number;
+    initialEnd: number;
+  } | null>(null);
+
+  const isDraggingRef = useRef(false);
 
   const [zoomLevel, setZoomLevel] = useState(1);
   const [hoveredSub, setHoveredSub] = useState<ProcessedSubtitle | null>(null);
   const [hoverPos, setHoverPos] = useState<number>(0);
+  const [draggedEdge, setDraggedEdge] = useState<{ id: number, edge: 'start' | 'end' } | null>(null);
 
-  const { currentTime, totalTime } = useMemo(() => {
-    if (!metadata) return { currentTime: "00:00:00.00", totalTime: "00:00:00.00" };
+  const { currentTime, totalTime, exactDuration } = useMemo(() => {
+    if (!metadata) return { currentTime: "00:00:00.00", totalTime: "00:00:00.00", exactDuration: 1 };
+    const calculatedDuration = metadata.total_frames / metadata.fps;
     return {
       currentTime: formatTimeDisplay(currentFrameIndex / metadata.fps),
-      totalTime: formatTimeDisplay(metadata.duration)
+      totalTime: formatTimeDisplay(calculatedDuration),
+      exactDuration: calculatedDuration
     };
   }, [metadata, currentFrameIndex]);
 
@@ -124,7 +134,9 @@ export const HybridTimeline = () => {
   };
 
   const handleTimelineClick = (e: React.MouseEvent) => {
+    if (isDraggingRef.current) return;
     if (!metadata || !scrollContainerRef.current) return;
+
     const rect = scrollContainerRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const scrollLeft = scrollContainerRef.current.scrollLeft;
@@ -133,7 +145,7 @@ export const HybridTimeline = () => {
     const containerWidth = scrollContainerRef.current.scrollWidth;
 
     const percent = contentX / containerWidth;
-    const targetFrame = Math.floor(percent * metadata.total_frames);
+    const targetFrame = Math.round(percent * metadata.total_frames);
 
     setCurrentFrame(Math.min(Math.max(0, targetFrame), metadata.total_frames - 1));
   };
@@ -151,23 +163,30 @@ export const HybridTimeline = () => {
     const currentMetadata = state.metadata;
     if (!currentMetadata) return;
 
-    const { subId, edge } = dragRef.current;
-    const rect = scrollContainerRef.current.getBoundingClientRect();
-    const scrollLeft = scrollContainerRef.current.scrollLeft;
-    const containerWidth = scrollContainerRef.current.scrollWidth;
+    const { subId, edge, startX, initialStart, initialEnd } = dragRef.current;
 
-    const contentX = e.clientX - rect.left + scrollLeft;
-    let newTime = (contentX / containerWidth) * currentMetadata.duration;
-    newTime = Math.max(0, Math.min(newTime, currentMetadata.duration));
+    const calculatedDuration = currentMetadata.total_frames / currentMetadata.fps;
+    const deltaX = e.clientX - startX;
+    const containerWidth = scrollContainerRef.current.scrollWidth;
+    const deltaTime = (deltaX / containerWidth) * calculatedDuration;
 
     const currentSub = state.subtitles.find(s => s.id === subId);
     if (!currentSub) return;
 
+    const rawNewTime = edge === 'start' ? initialStart + deltaTime : initialEnd + deltaTime;
+    const fps = currentMetadata.fps;
+    let targetFrame = Math.round(rawNewTime * fps);
+
     const updatedSub = { ...currentSub };
+
     if (edge === 'start') {
-        updatedSub.start = Math.min(newTime, currentSub.end - 0.1);
+        const maxStartFrame = Math.floor((currentSub.end - 0.1) * fps);
+        targetFrame = Math.min(Math.max(0, targetFrame), maxStartFrame);
+        updatedSub.start = targetFrame / fps;
     } else {
-        updatedSub.end = Math.max(newTime, currentSub.start + 0.1);
+        const minEndFrame = Math.ceil((currentSub.start + 0.1) * fps);
+        targetFrame = Math.max(Math.min(currentMetadata.total_frames, targetFrame), minEndFrame);
+        updatedSub.end = targetFrame / fps;
     }
 
     state.updateSubtitle(updatedSub);
@@ -175,15 +194,34 @@ export const HybridTimeline = () => {
 
   const handleEdgeMouseUp = useCallback(() => {
     dragRef.current = null;
+    setDraggedEdge(null);
+    document.body.style.cursor = '';
+
     window.removeEventListener('mousemove', handleEdgeMouseMove);
     window.removeEventListener('mouseup', handleEdgeMouseUp);
     document.removeEventListener('mouseleave', handleEdgeMouseUp);
+
+    setTimeout(() => {
+      isDraggingRef.current = false;
+    }, 100);
   }, [handleEdgeMouseMove]);
 
-  const handleEdgeMouseDown = (e: React.MouseEvent, subId: number, edge: 'start' | 'end') => {
+  const handleEdgeMouseDown = (e: React.MouseEvent, sub: SubtitleItem, edge: 'start' | 'end') => {
     e.stopPropagation();
     e.preventDefault();
-    dragRef.current = { subId, edge };
+
+    isDraggingRef.current = true;
+    dragRef.current = {
+      subId: sub.id,
+      edge,
+      startX: e.clientX,
+      initialStart: sub.start,
+      initialEnd: sub.end
+    };
+
+    setDraggedEdge({ id: sub.id, edge });
+    document.body.style.cursor = 'col-resize';
+
     window.addEventListener('mousemove', handleEdgeMouseMove);
     window.addEventListener('mouseup', handleEdgeMouseUp);
     document.addEventListener('mouseleave', handleEdgeMouseUp);
@@ -191,7 +229,7 @@ export const HybridTimeline = () => {
 
   if (!metadata) return null;
 
-  const progressPercent = ((currentFrameIndex) / (metadata.total_frames - 1)) * 100;
+  const progressPercent = (currentFrameIndex / metadata.total_frames) * 100;
 
   return (
     <div className="bg-[#1e1e1e] border border-[#333333] shadow-2xl select-none flex flex-col rounded-xl overflow-hidden">
@@ -252,9 +290,11 @@ export const HybridTimeline = () => {
 
                   <div className="absolute top-6 w-full h-full pointer-events-none">
                     {processedSubtitles.map((sub) => {
-                      const startPercent = (sub.start / metadata.duration) * 100;
-                      const durationPercent = ((sub.end - sub.start) / metadata.duration) * 100;
+                      const startPercent = (sub.start / exactDuration) * 100;
+                      const durationPercent = ((sub.end - sub.start) / exactDuration) * 100;
                       const isActive = (currentFrameIndex / metadata.fps) >= sub.start && (currentFrameIndex / metadata.fps) <= sub.end;
+                      const isDraggedStart = draggedEdge?.id === sub.id && draggedEdge.edge === 'start';
+                      const isDraggedEnd = draggedEdge?.id === sub.id && draggedEdge.edge === 'end';
 
                       let colorClass = "bg-[#333333] border-[#454545]";
                       if (sub.isEdited) colorClass = "bg-blue-500/20 border-blue-500/40 text-blue-200";
@@ -276,18 +316,24 @@ export const HybridTimeline = () => {
                           onMouseEnter={() => setHoveredSub(sub)}
                         >
                             <div className={cn(
-                                "w-full h-full rounded-sm border transition-all duration-150 backdrop-blur-sm truncate px-1 text-[9px] font-mono leading-6 opacity-80 hover:opacity-100 relative overflow-hidden",
+                                "w-full h-full rounded-sm border transition-all duration-150 backdrop-blur-sm truncate px-1 text-[9px] font-mono leading-6 opacity-80 hover:opacity-100 relative",
                                 colorClass
                             )}>
                                 {zoomLevel > 3 && sub.text}
 
                                 <div
-                                    className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-white/50 transition-colors z-10"
-                                    onMouseDown={(e) => handleEdgeMouseDown(e, sub.id, 'start')}
+                                    className={cn(
+                                        "absolute left-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-white/50 transition-colors z-10",
+                                        isDraggedStart ? "bg-yellow-400/80" : ""
+                                    )}
+                                    onMouseDown={(e) => handleEdgeMouseDown(e, sub, 'start')}
                                 />
                                 <div
-                                    className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-white/50 transition-colors z-10"
-                                    onMouseDown={(e) => handleEdgeMouseDown(e, sub.id, 'end')}
+                                    className={cn(
+                                        "absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-white/50 transition-colors z-10",
+                                        isDraggedEnd ? "bg-yellow-400/80" : ""
+                                    )}
+                                    onMouseDown={(e) => handleEdgeMouseDown(e, sub, 'end')}
                                 />
                             </div>
                         </div>
