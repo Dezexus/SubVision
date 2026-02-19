@@ -1,9 +1,10 @@
 /**
- * Video canvas component for rendering frames, managing ROI crops, and interactive blur positioning.
+ * Video canvas component with AbortController for optimized frame fetching.
  */
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
+import axios from 'axios';
 import { useAppStore } from '../../../store/useAppStore';
 import { api } from '../../../services/api';
 import { Loader2, ImageOff, Eye, EyeOff, MoveVertical } from 'lucide-react';
@@ -31,6 +32,8 @@ export const VideoCanvas = () => {
 
   const imgRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const currentUrlRef = useRef<string | null>(null);
 
   const aspectRatio = useMemo(() => {
     if (!metadata || metadata.height === 0) return 16 / 9;
@@ -39,21 +42,55 @@ export const VideoCanvas = () => {
 
   useEffect(() => {
     if (!metadata) return;
-    setIsLoading(true);
-    const url = api.getFrameUrl(metadata.filename, currentFrameIndex);
 
-    const img = new Image();
-    img.src = url;
-    img.onload = () => {
-      setImgSrc(url);
-      setIsLoading(false);
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
+    setIsLoading(true);
+    let isActive = true;
+
+    const fetchFrame = async () => {
+      try {
+        const url = await api.getFrameBlob(metadata.filename, currentFrameIndex, abortController.signal);
+
+        if (isActive) {
+          if (currentUrlRef.current) {
+            URL.revokeObjectURL(currentUrlRef.current);
+          }
+          currentUrlRef.current = url;
+          setImgSrc(url);
+          setIsLoading(false);
+        } else {
+          URL.revokeObjectURL(url);
+        }
+      } catch (error) {
+        if (!axios.isCancel(error)) {
+          console.error(error);
+          if (isActive) setIsLoading(false);
+        }
+      }
     };
-    img.onerror = () => setIsLoading(false);
+
+    fetchFrame();
+
+    return () => {
+      isActive = false;
+      abortController.abort();
+    };
   }, [currentFrameIndex, metadata]);
 
-  /**
-   * Translates crop coordinates to actual video resolution dimensions.
-   */
+  useEffect(() => {
+    return () => {
+      if (currentUrlRef.current) {
+        URL.revokeObjectURL(currentUrlRef.current);
+      }
+    };
+  }, []);
+
   const onCropComplete = (crop: PixelCrop) => {
     if (!imgRef.current || !metadata) return;
     const image = imgRef.current;
@@ -77,9 +114,6 @@ export const VideoCanvas = () => {
     return subtitles.find(sub => currentTime >= sub.start && currentTime <= sub.end);
   }, [isBlurMode, currentFrameIndex, subtitles, metadata]);
 
-  /**
-   * Calculates dynamic geometry for blur target and coverage areas based on settings and text dimensions.
-   */
   const geometry = useMemo(() => {
     if (!metadata) return null;
 
@@ -113,9 +147,6 @@ export const VideoCanvas = () => {
     };
   }, [blurSettings, metadata, activeSubtitle]);
 
-  /**
-   * Calculates the scale difference between DOM display size and actual video resolution.
-   */
   const getScale = () => {
     if (!containerRef.current || !metadata) return { x: 1, y: 1 };
     const rect = containerRef.current.getBoundingClientRect();
@@ -177,9 +208,6 @@ export const VideoCanvas = () => {
       };
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
-  /**
-   * Translates internal video coordinates to CSS percentages.
-   */
   const toCss = (rect: {x: number, y: number, w: number, h: number}) => {
       if (!metadata) return {};
       return {

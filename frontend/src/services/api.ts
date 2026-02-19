@@ -1,3 +1,6 @@
+/**
+ * API service module for backend communication with request cancellation support.
+ */
 import axios from 'axios';
 import type { ProcessConfig, VideoMetadata, RenderConfig, SubtitleItem, BlurSettings } from '../types';
 
@@ -18,6 +21,14 @@ export const api = {
     return `${API_URL}/video/frame/${filename}/${frameIndex}`;
   },
 
+  getFrameBlob: async (filename: string, frameIndex: number, signal?: AbortSignal) => {
+    const response = await axios.get(`${API_URL}/video/frame/${filename}/${frameIndex}`, {
+      responseType: 'blob',
+      signal
+    });
+    return URL.createObjectURL(response.data);
+  },
+
   getPreview: async (config: {
     filename: string;
     frame_index: number;
@@ -25,22 +36,23 @@ export const api = {
     clahe_limit: number;
     scale_factor: number;
     denoise: number;
-  }) => {
+  }, signal?: AbortSignal) => {
     const response = await axios.post(`${API_URL}/video/preview`, config, {
       responseType: 'blob',
+      signal
     });
     return URL.createObjectURL(response.data);
   },
 
-  // New endpoint for real-time blur preview
   getBlurPreview: async (config: {
     filename: string;
     frame_index: number;
     blur_settings: BlurSettings;
     subtitle_text: string;
-  }) => {
+  }, signal?: AbortSignal) => {
     const response = await axios.post(`${API_URL}/process/preview_blur`, config, {
-      responseType: 'blob'
+      responseType: 'blob',
+      signal
     });
     return URL.createObjectURL(response.data);
   },
