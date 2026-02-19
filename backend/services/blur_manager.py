@@ -1,6 +1,5 @@
 """
-This module manages the video blurring process, including ROI calculation,
-frame processing using CUDA (if available), and final video encoding.
+Video blurring manager with hardware acceleration support and optimized rendering.
 """
 import cv2
 import numpy as np
@@ -20,13 +19,10 @@ except AttributeError:
     HAS_CUDA = False
 
 class BlurManager:
-    """
-    Manages the application of blur filters to video regions based on subtitle timestamps.
-    Supports CPU and GPU (CUDA) processing.
-    """
+    """Manages the application of blur filters to video frames and rendering."""
 
     def __init__(self):
-        """Initializes the BlurManager with thread synchronization events."""
+        """Initializes threading events for process control."""
         self._stop_event = threading.Event()
         self._is_running = False
 
@@ -36,18 +32,7 @@ class BlurManager:
         self._stop_event.set()
 
     def _calculate_roi(self, text: str, width: int, height: int, settings: dict) -> Tuple[int, int, int, int]:
-        """
-        Calculates the Region of Interest (ROI) for blurring based on text length and settings.
-
-        Args:
-            text: The subtitle text to cover.
-            width: Video width.
-            height: Video height.
-            settings: Blur configuration (position, padding, font size).
-
-        Returns:
-            A tuple (x, y, w, h) defining the blur area.
-        """
+        """Calculates the Region of Interest (ROI) bounding box for the given text."""
         if not text:
             return 0, 0, 0, 0
 
@@ -77,18 +62,7 @@ class BlurManager:
         return final_x, final_y, final_w, final_h
 
     def _apply_blur_to_frame(self, frame: np.ndarray, roi: Tuple[int, int, int, int], settings: dict) -> np.ndarray:
-        """
-        Applies a box blur with optional feathering to the specified ROI.
-        Uses CUDA acceleration if available.
-
-        Args:
-            frame: The input video frame.
-            roi: The region to blur (x, y, w, h).
-            settings: Blur parameters (sigma, feather).
-
-        Returns:
-            The processed frame.
-        """
+        """Applies box blur and optional feathering to a frame ROI."""
         bx, by, bw, bh = roi
         if bw <= 0 or bh <= 0:
             return frame
@@ -200,18 +174,7 @@ class BlurManager:
         return frame
 
     def generate_preview(self, video_path: str, frame_index: int, settings: dict, text: str) -> Optional[np.ndarray]:
-        """
-        Generates a single preview frame with the blur applied.
-
-        Args:
-            video_path: Path to the video.
-            frame_index: Frame number to extract.
-            settings: Blur settings.
-            text: Text to calculate ROI.
-
-        Returns:
-            The preview image as a numpy array.
-        """
+        """Generates a single preview frame with the blur applied."""
         cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY])
         if not cap.isOpened():
             return None
@@ -234,17 +197,7 @@ class BlurManager:
             output_path: str,
             progress_callback=None
     ):
-        """
-        Executes the full video processing task: reads video, applies blur based on subtitles,
-        writes temporary video, and merges audio.
-
-        Args:
-            video_path: Input video path.
-            subtitles: List of subtitle objects with timing and text.
-            blur_settings: Configuration for the blur effect.
-            output_path: Final destination for the processed video.
-            progress_callback: Function to call with progress updates.
-        """
+        """Executes the full video blurring and rendering pipeline."""
         self._is_running = True
         self._stop_event.clear()
 
@@ -364,8 +317,8 @@ class BlurManager:
 
         if not self._stop_event.is_set():
             try:
-                logger.info("Transcoding to H.264 and merging audio...")
-                command = [
+                logger.info("Transcoding to H.264 and attempting audio copy...")
+                base_cmd = [
                     "ffmpeg", "-y",
                     "-i", temp_video_path,
                     "-i", video_path,
@@ -373,13 +326,20 @@ class BlurManager:
                     "-preset", "veryfast",
                     "-crf", "23",
                     "-pix_fmt", "yuv420p",
-                    "-c:a", "aac",
                     "-map", "0:v:0",
-                    "-map", "1:a:0",
-                    "-shortest",
-                    output_path
+                    "-map", "1:a:0?",
+                    "-shortest"
                 ]
-                subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+                cmd_copy = base_cmd + ["-c:a", "copy", output_path]
+
+                try:
+                    subprocess.run(cmd_copy, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                except subprocess.CalledProcessError:
+                    logger.warning("Audio copy failed, falling back to AAC transcoding...")
+                    cmd_aac = base_cmd + ["-c:a", "aac", output_path]
+                    subprocess.run(cmd_aac, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
                 if os.path.exists(temp_video_path):
                     os.remove(temp_video_path)
                 return output_path
