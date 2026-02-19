@@ -1,3 +1,6 @@
+/**
+ * Main settings panel coordinating project processing and blur configurations.
+ */
 import React from 'react';
 import { Play, Square, RefreshCw } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
@@ -33,7 +36,7 @@ export const SettingsPanel = () => {
         client_id: clientId,
         roi: roi,
         preset: preset,
-        languages: 'en',
+        languages: config.languages || 'en',
         ...config
       });
     } catch (error) {

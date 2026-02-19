@@ -72,6 +72,7 @@ export const useAppStore = create<AppState>((set) => ({
     scale_factor: 2.0,
     smart_skip: true,
     visual_cutoff: true,
+    languages: 'en',
   },
 
   isBlurMode: false,
