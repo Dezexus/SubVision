@@ -164,39 +164,3 @@ class OCRWorker(threading.Thread):
                 pass
 
             gc.collect()
-            try:
-                import paddle
-                if paddle.is_compiled_with_cuda():
-                    paddle.device.cuda.empty_cache()
-            except ImportError:
-                pass
-
-    def _update_progress(self, current: int, total: int, start_time: float) -> None:
-        if self.cb.get("progress") and current > 0:
-            elapsed = time.time() - start_time
-            avg_time = elapsed / current
-            eta_sec = int((total - current) * avg_time)
-            eta_str = f"{eta_sec // 60:02d}:{eta_sec % 60:02d}"
-            self.cb["progress"](current, total, eta_str)
-
-    def _log(self, msg: str) -> None:
-        if self.cb.get("log"):
-            self.cb["log"](msg)
-
-    def _emit_subtitle(self, item: dict[str, Any]) -> None:
-        if self.cb.get("subtitle"):
-            self.cb["subtitle"](item)
-
-    def _save_to_file(self, srt_data: list[dict[str, Any]]) -> None:
-        output_path = str(self.params["output_path"])
-        try:
-            with open(output_path, "w", encoding="utf-8") as f:
-                for item in srt_data:
-                    f.write(
-                        f"{item['id']}\n"
-                        f"{format_timestamp(item['start'])} --> {format_timestamp(item['end'])}\n"
-                        f"{item['text']}\n\n"
-                    )
-            self._log(f"Saved: {output_path}")
-        except OSError as e:
-            self._log(f"Error saving file: {e}")

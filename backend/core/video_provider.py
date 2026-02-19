@@ -1,6 +1,5 @@
 """
-This module defines the VideoProvider class, a utility for iterating
-through video frames with a specified step using hardware acceleration.
+Video provider utility for iterating through frames with hardware decoding support.
 """
 from collections.abc import Iterator
 from typing import Any
@@ -19,19 +18,9 @@ except (ImportError, RuntimeError, Exception) as e:
 logger = logging.getLogger(__name__)
 
 class VideoProvider:
-    """
-    Handles video file reading and provides an iterator to efficiently
-    access frames at a given interval using NVDEC where possible.
-    """
+    """Handles video file reading and frame extraction using NVDEC or OpenCV."""
 
     def __init__(self, video_path: str, step: int = 1) -> None:
-        """
-        Initializes the video provider.
-
-        Args:
-            video_path: The path to the video file.
-            step: The interval at which to process frames.
-        """
         self.path = video_path
         self.step = step
         self.use_nvc = False
@@ -89,15 +78,12 @@ class VideoProvider:
         self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 25.0
 
     def __iter__(self) -> Iterator[tuple[int, float, Any]]:
-        """
-        Yields:
-            Frame index, Timestamp (sec), Frame (Paddle Tensor [GPU] OR Numpy Array [CPU])
-        """
+        """Yields frame index, timestamp, and frame data (Tensor or Numpy array)."""
         if self.use_nvc and self.nvc_decoder:
             for i in range(0, self.total_frames, self.step):
                 try:
                     frame_obj = self.nvc_decoder[i]
-                    paddle_tensor = from_dlpack(frame_obj)
+                    paddle_tensor = from_dlpack(frame_obj).clone()
                     timestamp = i / self.fps
                     yield i, timestamp, paddle_tensor
                 except Exception:
@@ -115,7 +101,7 @@ class VideoProvider:
                 frame_idx += 1
 
     def release(self) -> None:
-        """Releases the underlying video resources."""
+        """Releases the underlying video decoding resources."""
         if self.cap:
             self.cap.release()
         self.nvc_decoder = None
