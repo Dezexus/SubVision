@@ -1,5 +1,5 @@
 """
-PaddleOCR wrapper and singleton manager for optimized VRAM usage.
+PaddleOCR wrapper and singleton manager with thread-safe inference locks for optimized VRAM usage.
 """
 import logging
 import threading
@@ -16,7 +16,7 @@ except ImportError:
     PaddleOCR = object
 
 class PaddleWrapper:
-    """Wrapper for initializing and interacting with the PaddleOCR engine."""
+    """Wrapper for initializing and interacting with the PaddleOCR engine safely."""
 
     DET_PARAMS = {
         "det_limit_side_len": 2500,
@@ -31,6 +31,7 @@ class PaddleWrapper:
             raise ImportError("PaddleOCR is not installed.")
 
         self.use_gpu = use_gpu
+        self._inference_lock = threading.Lock()
         self._init_device()
 
         self.ocr = PaddleOCR(
@@ -56,7 +57,9 @@ class PaddleWrapper:
             paddle.set_device("cpu")
 
     def predict(self, frame: np.ndarray) -> Any:
-        return self.ocr.predict(frame)
+        """Executes OCR prediction ensuring exclusive thread access to the C++ predictor."""
+        with self._inference_lock:
+            return self.ocr.predict(frame)
 
     @staticmethod
     def parse_results(result_list: Any, conf_thresh: float) -> tuple[str, float]:
