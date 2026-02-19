@@ -111,7 +111,8 @@ class BlurManager:
             fill_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (fill_ksize, fill_ksize))
             text_mask = cv2.morphologyEx(text_mask, cv2.MORPH_CLOSE, fill_kernel)
 
-            dilate_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+            dilate_ksize = max(7, int(font_size_px * 0.4))
+            dilate_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (dilate_ksize, dilate_ksize))
             text_mask = cv2.dilate(text_mask, dilate_kernel, iterations=1)
 
             local_mask = np.zeros(roi_expanded.shape[:2], dtype=np.uint8)
@@ -123,7 +124,7 @@ class BlurManager:
 
             local_mask[ly1:ly2, lx1:lx2] = text_mask
 
-            inpainted = cv2.inpaint(roi_expanded, local_mask, 3, cv2.INPAINT_TELEA)
+            inpainted = cv2.inpaint(roi_expanded, local_mask, 7, cv2.INPAINT_TELEA)
             frame[y1:y2, x1:x2] = inpainted
 
         sigma = int(settings.get('sigma', 5))
