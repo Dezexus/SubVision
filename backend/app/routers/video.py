@@ -1,11 +1,11 @@
 """
-API router for video management with strict file validation.
+API router for video management with chunked upload and strict validation.
 """
 import os
-import shutil
 import uuid
 import cv2
-from fastapi import APIRouter, UploadFile, HTTPException, File, status
+from typing import Union
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
 from fastapi.responses import StreamingResponse, FileResponse
 from io import BytesIO
 
@@ -18,10 +18,15 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm"}
 
-@router.post("/upload", response_model=VideoMetadata)
-async def upload_video(file: UploadFile = File(...)):
-    """Handles video upload with strict MIME type and extension validation."""
-    filename = file.filename or ""
+@router.post("/upload")
+async def upload_video(
+    file: UploadFile = File(...),
+    upload_id: str = Form(...),
+    chunk_index: int = Form(...),
+    total_chunks: int = Form(...),
+    filename: str = Form(...)
+) -> Union[VideoMetadata, dict]:
+    """Handles chunked video uploads with strict validation."""
     ext = os.path.splitext(filename)[1].lower()
 
     if ext not in ALLOWED_EXTENSIONS:
@@ -30,46 +35,45 @@ async def upload_video(file: UploadFile = File(...)):
             detail=f"Extension not allowed. Supported: {', '.join(ALLOWED_EXTENSIONS)}"
         )
 
-    content_type = file.content_type or ""
-    if not content_type.startswith("video/") and content_type != "application/octet-stream":
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Invalid MIME type. Only video files are allowed."
-        )
-
-    safe_filename = f"{uuid.uuid4()}{ext}"
-    file_path = os.path.join(UPLOAD_DIR, safe_filename)
+    temp_path = os.path.join(UPLOAD_DIR, f"{upload_id}.part")
 
     try:
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        with open(temp_path, "ab") as buffer:
+            buffer.write(await file.read())
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to save file: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to save chunk: {e}")
 
-    frame, total_frames = VideoManager.get_video_info(file_path)
+    if chunk_index == total_chunks - 1:
+        final_filename = f"{upload_id}{ext}"
+        final_path = os.path.join(UPLOAD_DIR, final_filename)
+        os.rename(temp_path, final_path)
 
-    if frame is None:
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid video format or corrupted file."
+        frame, total_frames = VideoManager.get_video_info(final_path)
+
+        if frame is None:
+            if os.path.exists(final_path):
+                os.remove(final_path)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid video format or corrupted file."
+            )
+
+        height, width, _ = frame.shape
+        cap = cv2.VideoCapture(final_path)
+        fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        duration = total_frames / fps
+        cap.release()
+
+        return VideoMetadata(
+            filename=final_filename,
+            total_frames=total_frames,
+            width=width,
+            height=height,
+            fps=fps,
+            duration=duration
         )
 
-    height, width, _ = frame.shape
-    cap = cv2.VideoCapture(file_path)
-    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-    duration = total_frames / fps
-    cap.release()
-
-    return VideoMetadata(
-        filename=safe_filename,
-        total_frames=total_frames,
-        width=width,
-        height=height,
-        fps=fps,
-        duration=duration
-    )
+    return {"status": "chunk_received", "chunk": chunk_index}
 
 @router.get("/download/{filename}")
 async def download_file(filename: str):

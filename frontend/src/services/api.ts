@@ -1,5 +1,5 @@
 /**
- * API service module for backend communication with request cancellation support.
+ * API service module for backend communication with chunked upload and request cancellation support.
  */
 import axios from 'axios';
 import type { ProcessConfig, VideoMetadata, RenderConfig, SubtitleItem, BlurSettings } from '../types';
@@ -8,13 +8,37 @@ export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:7860';
 const API_URL = `${API_BASE}/api`;
 
 export const api = {
-  uploadVideo: async (file: File): Promise<VideoMetadata> => {
-    const formData = new FormData();
-    formData.append('file', file);
-    const response = await axios.post<VideoMetadata>(`${API_URL}/video/upload`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    return response.data;
+  uploadVideo: async (file: File, onProgress?: (pct: number) => void): Promise<VideoMetadata> => {
+    const chunkSize = 10 * 1024 * 1024;
+    const totalChunks = Math.ceil(file.size / chunkSize);
+    const uploadId = crypto.randomUUID();
+
+    let lastResponse: any;
+
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * chunkSize;
+      const end = Math.min(start + chunkSize, file.size);
+      const chunk = file.slice(start, end);
+
+      const formData = new FormData();
+      formData.append('file', chunk);
+      formData.append('upload_id', uploadId);
+      formData.append('chunk_index', i.toString());
+      formData.append('total_chunks', totalChunks.toString());
+      formData.append('filename', file.name);
+
+      const response = await axios.post(`${API_URL}/video/upload`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      lastResponse = response.data;
+
+      if (onProgress) {
+        onProgress(Math.round(((i + 1) / totalChunks) * 100));
+      }
+    }
+
+    return lastResponse as VideoMetadata;
   },
 
   getFrameUrl: (filename: string, frameIndex: number) => {
