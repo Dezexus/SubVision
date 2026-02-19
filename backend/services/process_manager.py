@@ -1,9 +1,8 @@
 """
-This module defines the ProcessManager class, which is responsible for
-creating, managing, and terminating background OCR worker threads.
+Process manager for handling background OCR worker threads safely.
 """
 import os
-import time
+import logging
 from collections.abc import Callable
 from typing import Any
 import threading
@@ -11,18 +10,14 @@ import threading
 from core.image_ops import calculate_roi_from_mask
 from core.worker import OCRWorker
 
+logger = logging.getLogger(__name__)
 
 class ProcessManager:
-    """
-    Manages background OCR worker threads on a per-session basis, handling
-    the lifecycle of each processing task.
-    """
+    """Manages lifecycle and thread synchronization for OCR processing tasks."""
 
     def __init__(self) -> None:
-        """Initializes the manager with a registry for active workers."""
+        """Initializes the manager and thread lock."""
         self.workers_registry: dict[str, OCRWorker] = {}
-        # Global lock to ensure only one worker starts/stops at a time
-        # preventing race conditions on GPU resources.
         self._lock = threading.Lock()
 
     def start_process(
@@ -39,32 +34,14 @@ class ProcessManager:
         visual_cutoff: bool,
         callbacks: dict[str, Callable[..., Any]],
     ) -> str:
-        """
-        Initializes and starts a new OCR processing task in a background thread.
-        Crucially, it ensures any existing worker for this session is FULLY stopped first.
-
-        Args:
-            session_id: A unique identifier for the user session.
-            video_file: Path to the input video file.
-            editor_data: Data from the UI, potentially containing a mask for ROI.
-            langs: The language(s) for OCR.
-            step: Frame processing interval.
-            conf_threshold: Minimum confidence threshold for text recognition.
-            clahe_val: CLAHE clip limit for image enhancement.
-            scale_val: The factor by which to scale the image.
-            smart_skip: Whether to skip processing for static frames.
-            visual_cutoff: A parameter for visual-based frame analysis.
-            callbacks: A dictionary of functions for real-time feedback.
-
-        Returns:
-            The path to the generated SRT output file.
-        """
+        """Starts a new OCR worker thread safely after stopping any existing one."""
         with self._lock:
-            # 1. Stop existing worker synchronously (wait for join)
             if session_id in self.workers_registry:
                 self._stop_worker_sync(session_id)
 
-            roi_state = editor_data.get("roi_override") or calculate_roi_from_mask(editor_data)
+            roi_state = editor_data.get("roi_override") if editor_data else None
+            if not roi_state:
+                roi_state = calculate_roi_from_mask(editor_data)
 
             base_name, _ = os.path.splitext(video_file)
             output_srt = f"{base_name}.srt"
@@ -96,34 +73,33 @@ class ProcessManager:
             return output_srt
 
     def stop_process(self, session_id: str) -> bool:
-        """
-        Stops and removes the worker for the given session ID.
-        Blocks until the worker thread has actually terminated.
-
-        Args:
-            session_id: The identifier of the session to stop.
-
-        Returns:
-            True if a worker was found and stopped, False otherwise.
-        """
+        """Safely stops and unregisters an active OCR worker thread."""
         with self._lock:
             return self._stop_worker_sync(session_id)
 
     def _stop_worker_sync(self, session_id: str) -> bool:
-        """
-        Internal helper to stop a worker and wait for it to join.
-        Must be called under self._lock.
-        """
+        """Internally stops a worker using a multi-attempt join strategy."""
         worker = self.workers_registry.pop(session_id, None)
+
         if worker:
             if worker.is_alive():
                 worker.stop()
-                # Wait up to 5 seconds for the thread to finish cleanly
-                worker.join(timeout=5.0)
 
-                # If still alive, it's stuck in C++ land (Paddle), we can't do much
-                # but we've done our best to avoid OOM.
+                max_attempts = 3
+                timeout_per_attempt = 2.0
+
+                for attempt in range(max_attempts):
+                    worker.join(timeout=timeout_per_attempt)
+                    if not worker.is_alive():
+                        break
+
                 if worker.is_alive():
-                    print(f"Warning: Worker {session_id} did not terminate gracefully.")
+                    logger.error(
+                        f"Critical: Worker {session_id} failed to terminate "
+                        f"after {max_attempts * timeout_per_attempt}s."
+                    )
+
+            del worker
             return True
+
         return False
