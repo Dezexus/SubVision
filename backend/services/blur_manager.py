@@ -5,6 +5,7 @@ import os
 import subprocess
 import threading
 import queue
+import unicodedata
 from typing import Optional, Tuple, List, Dict
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,21 @@ class BlurManager:
         self._is_running = False
         self._stop_event.set()
 
+    def _estimate_text_width(self, text: str, font_size: int) -> int:
+        """Calculates approximate pixel width of text using Unicode character categorization."""
+        width = 0.0
+        for char in text:
+            ea = unicodedata.east_asian_width(char)
+            if ea in ('W', 'F'):
+                width += 1.0
+            elif char in 'il1.,!I|:;':
+                width += 0.3
+            elif char.isupper() or char in 'mwWM@':
+                width += 0.75
+            else:
+                width += 0.55
+        return int(width * font_size)
+
     def _calculate_roi(self, text: str, width: int, height: int, settings: dict) -> Tuple[int, int, int, int]:
         """Calculates the Region of Interest (ROI) bounding box for the given text."""
         if not text:
@@ -35,9 +51,8 @@ class BlurManager:
         y_pos = int(settings.get('y', height - 50))
         font_size_px = int(settings.get('font_size', 21))
 
-        char_aspect_ratio = 0.52
         text_h = font_size_px + 4
-        text_w = int(len(text) * font_size_px * char_aspect_ratio)
+        text_w = self._estimate_text_width(text, font_size_px)
 
         padding_x = int(settings.get('padding_x', 40))
         padding_y_factor = float(settings.get('padding_y', 2.0))

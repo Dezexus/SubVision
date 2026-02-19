@@ -1,6 +1,3 @@
-/**
- * Video canvas component with AbortController for optimized frame fetching.
- */
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
@@ -9,18 +6,32 @@ import { useAppStore } from '../../../store/useAppStore';
 import { api } from '../../../services/api';
 import { Loader2, ImageOff, Eye, EyeOff, MoveVertical } from 'lucide-react';
 
+const estimateTextWidth = (text: string, fontSizePx: number): number => {
+  let width = 0.0;
+  for (const char of text) {
+    if (/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af\uff00-\uffef]/.test(char)) {
+      width += 1.0;
+    } else if (/[il1.,!I|:;]/.test(char)) {
+      width += 0.3;
+    } else if (/[A-ZmwWM@]/.test(char)) {
+      width += 0.75;
+    } else {
+      width += 0.55;
+    }
+  }
+  return Math.floor(width * fontSizePx);
+};
+
 export const VideoCanvas = () => {
-  const {
-    metadata,
-    currentFrameIndex,
-    setRoi,
-    file,
-    isBlurMode,
-    blurSettings,
-    setBlurSettings,
-    subtitles,
-    blurPreviewUrl
-  } = useAppStore();
+  const file = useAppStore(state => state.file);
+  const metadata = useAppStore(state => state.metadata);
+  const currentFrameIndex = useAppStore(state => state.currentFrameIndex);
+  const setRoi = useAppStore(state => state.setRoi);
+  const isBlurMode = useAppStore(state => state.isBlurMode);
+  const blurSettings = useAppStore(state => state.blurSettings);
+  const setBlurSettings = useAppStore(state => state.setBlurSettings);
+  const subtitles = useAppStore(state => state.subtitles);
+  const blurPreviewUrl = useAppStore(state => state.blurPreviewUrl);
 
   const [crop, setCrop] = useState<Crop>();
   const [imgSrc, setImgSrc] = useState<string | null>(null);
@@ -119,8 +130,8 @@ export const VideoCanvas = () => {
 
     const textToMeasure = activeSubtitle ? activeSubtitle.text : "Preview Text Size";
     const fontSizePx = blurSettings.font_size;
-    const charAspectRatio = 0.52;
-    const textWidth = Math.floor(textToMeasure.length * fontSizePx * charAspectRatio);
+
+    const textWidth = estimateTextWidth(textToMeasure, fontSizePx);
     const textHeight = fontSizePx + 4;
     const paddingYPx = Math.floor(textHeight * blurSettings.padding_y);
 
