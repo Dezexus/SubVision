@@ -1,8 +1,7 @@
 /**
- * Timeline component providing a visual representation of subtitles, video duration, and precise playback control.
- * Features anchor-based zooming to keep the mouse position stable while scaling the timeline track.
+ * Timeline component with interactive drag-and-drop subtitle trimming and anchor-based zooming.
  */
-import React, { useState, useMemo, useRef, useLayoutEffect } from 'react';
+import React, { useState, useMemo, useRef, useLayoutEffect, useCallback } from 'react';
 import {
   ChevronLeft, ChevronRight,
   Clock, ZoomIn, ZoomOut
@@ -25,6 +24,7 @@ export const HybridTimeline = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const zoomAnchorRef = useRef<{ newScrollLeft: number } | null>(null);
+  const dragRef = useRef<{ subId: number; edge: 'start' | 'end' } | null>(null);
 
   const [zoomLevel, setZoomLevel] = useState(1);
   const [hoveredSub, setHoveredSub] = useState<ProcessedSubtitle | null>(null);
@@ -58,9 +58,6 @@ export const HybridTimeline = () => {
     }
   }, [zoomLevel]);
 
-  /**
-   * Applies a zoom step using a specific horizontal anchor point to maintain visual stability.
-   */
   const applyAnchorZoom = (delta: number, anchorX: number) => {
     if (!scrollContainerRef.current) return;
     const scrollLeft = scrollContainerRef.current.scrollLeft;
@@ -117,6 +114,51 @@ export const HybridTimeline = () => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     setHoverPos(e.clientX - rect.left);
+  };
+
+  const handleEdgeMouseMove = useCallback((e: MouseEvent) => {
+    if (!dragRef.current || !scrollContainerRef.current) return;
+
+    const state = useAppStore.getState();
+    const currentMetadata = state.metadata;
+    if (!currentMetadata) return;
+
+    const { subId, edge } = dragRef.current;
+    const rect = scrollContainerRef.current.getBoundingClientRect();
+    const scrollLeft = scrollContainerRef.current.scrollLeft;
+    const containerWidth = scrollContainerRef.current.scrollWidth;
+
+    const contentX = e.clientX - rect.left + scrollLeft;
+    let newTime = (contentX / containerWidth) * currentMetadata.duration;
+    newTime = Math.max(0, Math.min(newTime, currentMetadata.duration));
+
+    const currentSub = state.subtitles.find(s => s.id === subId);
+    if (!currentSub) return;
+
+    const updatedSub = { ...currentSub };
+    if (edge === 'start') {
+        updatedSub.start = Math.min(newTime, currentSub.end - 0.1);
+    } else {
+        updatedSub.end = Math.max(newTime, currentSub.start + 0.1);
+    }
+
+    state.updateSubtitle(updatedSub);
+  }, []);
+
+  const handleEdgeMouseUp = useCallback(() => {
+    dragRef.current = null;
+    window.removeEventListener('mousemove', handleEdgeMouseMove);
+    window.removeEventListener('mouseup', handleEdgeMouseUp);
+    document.removeEventListener('mouseleave', handleEdgeMouseUp);
+  }, [handleEdgeMouseMove]);
+
+  const handleEdgeMouseDown = (e: React.MouseEvent, subId: number, edge: 'start' | 'end') => {
+    e.stopPropagation();
+    e.preventDefault();
+    dragRef.current = { subId, edge };
+    window.addEventListener('mousemove', handleEdgeMouseMove);
+    window.addEventListener('mouseup', handleEdgeMouseUp);
+    document.addEventListener('mouseleave', handleEdgeMouseUp);
   };
 
   if (!metadata) return null;
@@ -207,10 +249,19 @@ export const HybridTimeline = () => {
                           onMouseEnter={() => setHoveredSub(sub)}
                         >
                             <div className={cn(
-                                "w-full h-full rounded-sm border transition-all duration-150 backdrop-blur-sm truncate px-1 text-[9px] font-mono leading-6 opacity-80 hover:opacity-100",
+                                "w-full h-full rounded-sm border transition-all duration-150 backdrop-blur-sm truncate px-1 text-[9px] font-mono leading-6 opacity-80 hover:opacity-100 relative overflow-hidden",
                                 colorClass
                             )}>
                                 {zoomLevel > 3 && sub.text}
+
+                                <div
+                                    className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-white/50 transition-colors z-10"
+                                    onMouseDown={(e) => handleEdgeMouseDown(e, sub.id, 'start')}
+                                />
+                                <div
+                                    className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-white/50 transition-colors z-10"
+                                    onMouseDown={(e) => handleEdgeMouseDown(e, sub.id, 'end')}
+                                />
                             </div>
                         </div>
                       );
