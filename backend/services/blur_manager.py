@@ -29,8 +29,8 @@ class BlurManager:
         self._is_running = False
         self._stop_event.set()
 
-    def _estimate_text_width(self, text: str, font_size: int) -> int:
-        """Calculates conservative pixel width of text using Unicode character weighting."""
+    def _estimate_text_width(self, text: str, font_size: int, width_multiplier: float) -> int:
+        """Calculates conservative pixel width of text using Unicode character weighting and custom multiplier."""
         width = 0.0
         for char in text:
             ea = unicodedata.east_asian_width(char)
@@ -46,7 +46,7 @@ class BlurManager:
                 width += 0.35
             else:
                 width += 0.65
-        return int(math.ceil(width * font_size))
+        return int(math.ceil(width * font_size * width_multiplier))
 
     def _calculate_roi(self, text: str, width: int, height: int, settings: dict) -> Tuple[int, int, int, int]:
         """Calculates the Region of Interest (ROI) bounding box for the given text."""
@@ -55,9 +55,10 @@ class BlurManager:
 
         y_pos = int(settings.get('y', height - 50))
         font_size_px = int(settings.get('font_size', 21))
+        width_multiplier = float(settings.get('width_multiplier', 1.0))
 
         text_h = font_size_px + 4
-        text_w = self._estimate_text_width(text, font_size_px)
+        text_w = self._estimate_text_width(text, font_size_px, width_multiplier)
 
         padding_x = int(settings.get('padding_x', 40))
         padding_y_factor = float(settings.get('padding_y', 2.0))

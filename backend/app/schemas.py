@@ -38,6 +38,7 @@ class BlurSettings(BaseModel):
     padding_y: float = 2.0
     sigma: int = 40
     feather: int = 30
+    width_multiplier: float = 1.0
 
 class RenderConfig(BaseModel):
     filename: str

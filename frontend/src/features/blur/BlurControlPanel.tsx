@@ -1,6 +1,3 @@
-/**
- * Blur settings control panel with memory management for preview blob URLs.
- */
 import React, { useEffect, useState, useRef } from 'react';
 import {
   Sliders, Video, RotateCcw,
@@ -18,7 +15,8 @@ const DEFAULTS = {
   padding_x: 60,
   padding_y: 2.0,
   sigma: 10,
-  feather: 40
+  feather: 40,
+  width_multiplier: 1.0
 };
 
 export const BlurControlPanel = () => {
@@ -171,6 +169,13 @@ export const BlurControlPanel = () => {
                   value={blurSettings.font_size}
                   suffix="px"
                   onChange={(e) => setBlurSettings({ font_size: Number(e.target.value) })}
+                />
+                <Slider
+                  label="Width Ratio"
+                  min={0.5} max={3.0} step={0.05}
+                  value={blurSettings.width_multiplier || 1.0}
+                  suffix="x"
+                  onChange={(e) => setBlurSettings({ width_multiplier: Number(e.target.value) })}
                 />
             </div>
         </div>

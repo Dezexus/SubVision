@@ -6,7 +6,7 @@ import { useAppStore } from '../../../store/useAppStore';
 import { api } from '../../../services/api';
 import { Loader2, ImageOff, Eye, EyeOff, MoveVertical } from 'lucide-react';
 
-const estimateTextWidth = (text: string, fontSizePx: number): number => {
+const estimateTextWidth = (text: string, fontSizePx: number, multiplier: number): number => {
   let width = 0.0;
   for (const char of text) {
     if (/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af\uff00-\uffef]/.test(char)) {
@@ -23,7 +23,7 @@ const estimateTextWidth = (text: string, fontSizePx: number): number => {
       width += 0.65;
     }
   }
-  return Math.ceil(width * fontSizePx);
+  return Math.ceil(width * fontSizePx * multiplier);
 };
 
 export const VideoCanvas = () => {
@@ -134,8 +134,9 @@ export const VideoCanvas = () => {
 
     const textToMeasure = activeSubtitle ? activeSubtitle.text : "Preview Text Size";
     const fontSizePx = blurSettings.font_size;
+    const widthMultiplier = blurSettings.width_multiplier || 1.0;
 
-    const textWidth = estimateTextWidth(textToMeasure, fontSizePx);
+    const textWidth = estimateTextWidth(textToMeasure, fontSizePx, widthMultiplier);
     const textHeight = fontSizePx + 4;
     const paddingYPx = Math.floor(textHeight * blurSettings.padding_y);
 

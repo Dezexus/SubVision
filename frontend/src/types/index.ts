@@ -23,13 +23,12 @@ export interface ProcessConfig {
 
 export interface BlurSettings {
   y: number;
-  font_scale: number;
+  font_size: number;
   padding_x: number;
   padding_y: number;
   sigma: number;
-  feather: number; // New field
-
-  // Legacy
+  feather: number;
+  width_multiplier: number;
   x?: number;
   w?: number;
   h?: number;
