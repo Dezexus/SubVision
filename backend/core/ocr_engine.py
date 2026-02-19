@@ -1,5 +1,5 @@
 """
-PaddleOCR wrapper and singleton manager with thread-safe inference locks for optimized VRAM usage.
+PaddleOCR wrapper with singleton management, thread-safe inference locks, and batch processing support.
 """
 import logging
 import threading
@@ -16,7 +16,7 @@ except ImportError:
     PaddleOCR = object
 
 class PaddleWrapper:
-    """Wrapper for initializing and interacting with the PaddleOCR engine safely."""
+    """Provides isolated, thread-safe access to the PaddleOCR inference engine with batching capabilities."""
 
     DET_PARAMS = {
         "det_limit_side_len": 2500,
@@ -24,6 +24,7 @@ class PaddleWrapper:
         "det_db_thresh": 0.3,
         "det_db_box_thresh": 0.6,
         "det_db_unclip_ratio": 1.5,
+        "rec_batch_num": 8,
     }
 
     def __init__(self, lang: str = "en", use_gpu: bool = True) -> None:
@@ -57,9 +58,22 @@ class PaddleWrapper:
             paddle.set_device("cpu")
 
     def predict(self, frame: np.ndarray) -> Any:
-        """Executes OCR prediction ensuring exclusive thread access to the C++ predictor."""
+        """Executes thread-safe OCR prediction on a single frame."""
         with self._inference_lock:
             return self.ocr.predict(frame)
+
+    def predict_batch(self, frames: list[np.ndarray]) -> list[Any]:
+        """Executes thread-safe OCR prediction on a batch of frames to maximize GPU utilization."""
+        if not frames:
+            return []
+        with self._inference_lock:
+            try:
+                if hasattr(self.ocr, 'ocr'):
+                    return self.ocr.ocr(frames)
+                return [self.ocr.predict(f) for f in frames]
+            except Exception as e:
+                logging.error(f"Batch prediction failed, falling back to sequential: {e}")
+                return [self.ocr.predict(f) for f in frames]
 
     @staticmethod
     def parse_results(result_list: Any, conf_thresh: float) -> tuple[str, float]:
