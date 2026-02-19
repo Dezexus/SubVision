@@ -1,8 +1,9 @@
 """
-Main application module for the SubVision API.
+Main application module for the SubVision API with strict CORS policy and background tasks.
 """
 import asyncio
 import json
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,9 +32,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="SubVision API", version="1.0.0", lifespan=lifespan)
 
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "http://localhost:7860,http://127.0.0.1:7860")
+allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
