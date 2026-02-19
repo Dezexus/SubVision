@@ -1,5 +1,5 @@
 """
-Video blurring manager with hardware acceleration support and optimized rendering.
+Video blurring manager with hardware-accelerated NVENC rendering and fallback support.
 """
 import cv2
 import numpy as np
@@ -19,7 +19,7 @@ except AttributeError:
     HAS_CUDA = False
 
 class BlurManager:
-    """Manages the application of blur filters to video frames and rendering."""
+    """Manages the application of blur filters to video frames and accelerated rendering."""
 
     def __init__(self):
         self._stop_event = threading.Event()
@@ -61,7 +61,7 @@ class BlurManager:
         return final_x, final_y, final_w, final_h
 
     def _apply_blur_to_frame(self, frame: np.ndarray, roi: Tuple[int, int, int, int], settings: dict) -> np.ndarray:
-        """Applies box blur and optional feathering to a frame ROI."""
+        """Applies box blur and optional feathering to a frame ROI using CUDA if available."""
         bx, by, bw, bh = roi
         if bw <= 0 or bh <= 0:
             return frame
@@ -217,7 +217,7 @@ class BlurManager:
             output_path: str,
             progress_callback=None
     ):
-        """Executes the full video blurring and rendering pipeline."""
+        """Executes the full video blurring and accelerated hardware rendering pipeline."""
         self._is_running = True
         self._stop_event.clear()
 
@@ -337,28 +337,43 @@ class BlurManager:
 
         if not self._stop_event.is_set():
             try:
-                logger.info("Transcoding to H.264 and attempting audio copy...")
+                logger.info("Transcoding to H.264 using NVENC and attempting audio copy...")
+
                 base_cmd = [
                     "ffmpeg", "-y",
                     "-i", temp_video_path,
                     "-i", video_path,
-                    "-c:v", "libx264",
-                    "-preset", "veryfast",
-                    "-crf", "23",
-                    "-pix_fmt", "yuv420p",
                     "-map", "0:v:0",
                     "-map", "1:a:0?",
                     "-shortest"
                 ]
 
-                cmd_copy = base_cmd + ["-c:a", "copy", output_path]
+                nvenc_params = [
+                    "-c:v", "h264_nvenc",
+                    "-preset", "p4",
+                    "-cq", "23",
+                    "-pix_fmt", "yuv420p"
+                ]
+
+                x264_params = [
+                    "-c:v", "libx264",
+                    "-preset", "veryfast",
+                    "-crf", "23",
+                    "-pix_fmt", "yuv420p"
+                ]
 
                 try:
-                    self._run_subprocess_cancellable(cmd_copy)
+                    cmd_nvenc_copy = base_cmd + nvenc_params + ["-c:a", "copy", output_path]
+                    self._run_subprocess_cancellable(cmd_nvenc_copy)
                 except subprocess.CalledProcessError:
-                    logger.warning("Audio copy failed, falling back to AAC transcoding...")
-                    cmd_aac = base_cmd + ["-c:a", "aac", output_path]
-                    self._run_subprocess_cancellable(cmd_aac)
+                    try:
+                        logger.warning("NVENC audio copy failed, falling back to AAC with NVENC...")
+                        cmd_nvenc_aac = base_cmd + nvenc_params + ["-c:a", "aac", output_path]
+                        self._run_subprocess_cancellable(cmd_nvenc_aac)
+                    except subprocess.CalledProcessError:
+                        logger.warning("NVENC encoding failed, falling back to software libx264...")
+                        cmd_x264_aac = base_cmd + x264_params + ["-c:a", "aac", output_path]
+                        self._run_subprocess_cancellable(cmd_x264_aac)
 
                 if os.path.exists(temp_video_path):
                     os.remove(temp_video_path)
