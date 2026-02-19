@@ -1,7 +1,7 @@
 """
-This module contains a collection of image processing utility functions
-leveraging OpenCV and PaddlePaddle (for GPU ops).
+Image processing utility functions utilizing OpenCV, PaddlePaddle, and multiprocessing.
 """
+import concurrent.futures
 from typing import Any, Union
 import cv2
 import numpy as np
@@ -28,8 +28,10 @@ if HAS_CUDA:
 else:
     FrameType = np.ndarray
 
+_cpu_pool = concurrent.futures.ProcessPoolExecutor(max_workers=2)
+
 def ensure_gpu(frame: FrameType) -> Any:
-    """Helper to upload frame to GPU if it's currently on CPU."""
+    """Uploads frame to GPU if currently on CPU."""
     if not HAS_CUDA: return frame
     if type(frame).__name__ == "GpuMat": return frame
     try:
@@ -39,15 +41,20 @@ def ensure_gpu(frame: FrameType) -> Any:
     except cv2.error: return frame
 
 def ensure_cpu(frame: FrameType) -> np.ndarray:
-    """Helper to download frame to CPU if it's currently on GPU."""
+    """Downloads frame to CPU if currently on GPU."""
     if not HAS_CUDA: return frame
     if type(frame).__name__ == "GpuMat": return frame.download()
     return frame
 
+def _apply_cpu_denoise(cpu_frame: np.ndarray, h_val: float) -> np.ndarray:
+    """Isolated CPU denoise function for multiprocessing."""
+    return cv2.fastNlMeansDenoisingColored(cpu_frame, None, h_val, h_val, 7, 21)
+
 def denoise_frame(frame: FrameType | None, strength: float) -> FrameType | None:
-    """Applies Fast Non-Local Means Denoising."""
+    """Applies Fast Non-Local Means Denoising using GPU or multiprocessed CPU fallback."""
     if frame is None or strength <= 0: return frame
     h_val = float(strength)
+
     if HAS_CUDA:
         try:
             gpu_mat = ensure_gpu(frame)
@@ -55,13 +62,16 @@ def denoise_frame(frame: FrameType | None, strength: float) -> FrameType | None:
             if type(frame).__name__ == "GpuMat": return denoised_gpu
             return denoised_gpu.download()
         except cv2.error: pass
+
     cpu_frame = ensure_cpu(frame)
-    return cv2.fastNlMeansDenoisingColored(cpu_frame, None, h_val, h_val, 7, 21)
+    future = _cpu_pool.submit(_apply_cpu_denoise, cpu_frame, h_val)
+    return future.result()
 
 def apply_scaling(frame: FrameType | None, scale_factor: float) -> FrameType | None:
     """Resizes the frame using Bicubic interpolation."""
     if frame is None: return None
     if scale_factor == 1.0: return frame
+
     if HAS_CUDA:
         try:
             gpu_mat = ensure_gpu(frame)
@@ -71,6 +81,7 @@ def apply_scaling(frame: FrameType | None, scale_factor: float) -> FrameType | N
             if type(frame).__name__ == "GpuMat": return resized_gpu
             return resized_gpu.download()
         except cv2.error: pass
+
     cpu_frame = ensure_cpu(frame)
     return cv2.resize(cpu_frame, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC)
 
@@ -78,6 +89,7 @@ def apply_sharpening(frame: FrameType | None) -> FrameType | None:
     """Applies a sharpening filter kernel."""
     if frame is None: return None
     kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]], dtype=np.float32)
+
     if HAS_CUDA:
         try:
             gpu_mat = ensure_gpu(frame)
@@ -86,15 +98,12 @@ def apply_sharpening(frame: FrameType | None) -> FrameType | None:
             if type(frame).__name__ == "GpuMat": return result_gpu
             return result_gpu.download()
         except cv2.error: pass
+
     cpu_frame = ensure_cpu(frame)
     return cv2.filter2D(cpu_frame, -1, kernel)
 
 def apply_scaling_paddle(tensor: Any, scale_factor: float) -> Any:
-    """
-    Applies bicubic scaling directly on a GPU tensor.
-    Input: (H, W, C) uint8
-    Output: (H_new, W_new, C) uint8
-    """
+    """Applies bicubic scaling directly on a Paddle GPU tensor."""
     if scale_factor == 1.0: return tensor
     x = tensor.transpose([2, 0, 1]).unsqueeze(0).astype('float32')
     out = F.interpolate(x, scale_factor=scale_factor, mode='bicubic', align_corners=False)
@@ -102,9 +111,7 @@ def apply_scaling_paddle(tensor: Any, scale_factor: float) -> Any:
     return out.squeeze(0).transpose([1, 2, 0])
 
 def apply_sharpening_paddle(tensor: Any) -> Any:
-    """
-    Applies sharpening convolution on a GPU tensor.
-    """
+    """Applies sharpening convolution on a Paddle GPU tensor."""
     k = paddle.to_tensor([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]], dtype='float32')
     k = k.unsqueeze(0).unsqueeze(0)
     weight = paddle.concat([k, k, k], axis=0)
@@ -114,7 +121,7 @@ def apply_sharpening_paddle(tensor: Any) -> Any:
     return out.squeeze(0).transpose([1, 2, 0])
 
 def detect_change_paddle(img1: Any, img2: Any) -> bool:
-    """GPU-based change detection using Paddle operations."""
+    """Performs GPU-based change detection using Paddle operations."""
     if not HAS_PADDLE or img1 is None or img2 is None: return True
     if img1.shape != img2.shape: return True
     try:
@@ -133,7 +140,7 @@ def detect_change_paddle(img1: Any, img2: Any) -> bool:
     except Exception: return True
 
 def detect_change_absolute(img1: FrameType | None, img2: FrameType | None) -> bool:
-    """CPU/OpenCV-CUDA Fallback for change detection."""
+    """Performs CPU/OpenCV-CUDA fallback change detection."""
     if img1 is None or img2 is None: return True
     size1 = img1.size() if type(img1).__name__ == "GpuMat" else (img1.shape[1], img1.shape[0])
     size2 = img2.size() if type(img2).__name__ == "GpuMat" else (img2.shape[1], img2.shape[0])
@@ -166,7 +173,7 @@ def detect_change_absolute(img1: FrameType | None, img2: FrameType | None) -> bo
     return count > 15
 
 def extract_frame_cv2(video_path: str, frame_index: int) -> np.ndarray | None:
-    """Extracts a single frame using accelerated capture."""
+    """Extracts a single frame using HW-accelerated capture."""
     if not video_path: return None
     cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY])
     try:
@@ -177,7 +184,7 @@ def extract_frame_cv2(video_path: str, frame_index: int) -> np.ndarray | None:
         cap.release()
 
 def calculate_roi_from_mask(image_dict: dict[str, Any] | None) -> list[int]:
-    """Calculates ROI bounding box from a frontend mask layer."""
+    """Calculates ROI bounding box from a UI mask layer."""
     if not image_dict: return [0, 0, 0, 0]
     layers = image_dict.get("layers")
     if layers and len(layers) > 0:
