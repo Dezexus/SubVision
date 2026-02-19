@@ -2,6 +2,7 @@ import os
 import re
 import logging
 import cv2
+import asyncio
 from typing import Union
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
 from fastapi.responses import StreamingResponse, FileResponse
@@ -9,6 +10,7 @@ from io import BytesIO
 
 from services.video_manager import VideoManager
 from app.schemas import VideoMetadata, PreviewConfig
+from app.websocket_manager import manager
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -19,13 +21,14 @@ ALLOWED_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm"}
 
 @router.post("/upload")
 async def upload_video(
-    file: UploadFile = File(...),
-    upload_id: str = Form(...),
-    chunk_index: int = Form(...),
-    total_chunks: int = Form(...),
-    filename: str = Form(...)
+        file: UploadFile = File(...),
+        upload_id: str = Form(...),
+        chunk_index: int = Form(...),
+        total_chunks: int = Form(...),
+        filename: str = Form(...),
+        client_id: str = Form(None)
 ) -> Union[VideoMetadata, dict]:
-    """Handles chunked video uploads with strict validation and automatic codec transcoding."""
+    """Handles chunked video uploads with strict validation, automatic codec transcoding, and non-blocking tasks."""
     if not re.match(r"^[a-zA-Z0-9\-]+$", upload_id):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -53,16 +56,19 @@ async def upload_video(
         final_path = os.path.join(UPLOAD_DIR, final_filename)
         os.rename(temp_path, final_path)
 
-        frame, total_frames = VideoManager.get_video_info(final_path)
+        frame, total_frames = await asyncio.to_thread(VideoManager.get_video_info, final_path)
 
         if frame is None:
             logger.warning(f"OpenCV failed to decode {final_filename}. Attempting automatic H.264 fallback conversion.")
-            converted_path = VideoManager.convert_video_to_h264(final_path)
+            if client_id:
+                await manager.send_json(client_id, {"type": "log", "message": "CONVERTING_CODEC"})
+
+            converted_path = await asyncio.to_thread(VideoManager.convert_video_to_h264, final_path)
             if converted_path and os.path.exists(converted_path):
                 os.remove(final_path)
                 final_path = converted_path
                 final_filename = os.path.basename(final_path)
-                frame, total_frames = VideoManager.get_video_info(final_path)
+                frame, total_frames = await asyncio.to_thread(VideoManager.get_video_info, final_path)
 
         if frame is None:
             if os.path.exists(final_path):
@@ -113,7 +119,7 @@ async def get_frame(filename: str, frame_index: int):
     if not os.path.exists(file_path):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
-    image = VideoManager.get_frame_image(file_path, frame_index)
+    image = await asyncio.to_thread(VideoManager.get_frame_image, file_path, frame_index)
     if image is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Frame not found")
 
@@ -131,7 +137,8 @@ async def get_preview(config: PreviewConfig):
     if not os.path.exists(file_path):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
-    preview_image = VideoManager.generate_preview(
+    preview_image = await asyncio.to_thread(
+        VideoManager.generate_preview,
         video_path=file_path,
         frame_index=config.frame_index,
         editor_data={"layers": [], "roi_override": config.roi},

@@ -1,18 +1,17 @@
-/**
- * Initial video upload screen with chunked upload progress tracking.
- */
 import React, { useCallback, useState } from 'react';
-import { Upload, AlertCircle } from 'lucide-react';
+import { Upload, AlertCircle, Loader2 } from 'lucide-react';
 import { useAppStore } from '../../../store/useAppStore';
 import { api } from '../../../services/api';
 import { cn } from '../../../utils/cn';
 
 export const WelcomeScreen = () => {
-  const { setFile, setMetadata, addLog } = useAppStore();
+  const { setFile, setMetadata, addLog, clientId, logs } = useAppStore();
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const isConverting = logs.includes('CONVERTING_CODEC');
 
   const handleFile = useCallback(async (selectedFile: File) => {
     setErrorMsg(null);
@@ -30,7 +29,7 @@ export const WelcomeScreen = () => {
     addLog(`Uploading: ${selectedFile.name}...`);
 
     try {
-      const metadata = await api.uploadVideo(selectedFile, (pct) => setUploadProgress(pct));
+      const metadata = await api.uploadVideo(selectedFile, clientId, (pct) => setUploadProgress(pct));
       setMetadata(metadata);
       setFile(selectedFile);
     } catch (error: any) {
@@ -44,7 +43,7 @@ export const WelcomeScreen = () => {
     } finally {
       setIsUploading(false);
     }
-  }, [setFile, setMetadata, addLog]);
+  }, [setFile, setMetadata, addLog, clientId]);
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -83,15 +82,19 @@ export const WelcomeScreen = () => {
             "w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-transform",
              isUploading ? "bg-bg-panel" : "bg-bg-panel group-hover:scale-110"
           )}>
-            <Upload size={32} className={cn("transition-colors", isUploading ? "text-brand-400" : "text-brand-500")} />
+            {isConverting ? (
+                <Loader2 size={32} className="animate-spin text-amber-500" />
+            ) : (
+                <Upload size={32} className={cn("transition-colors", isUploading ? "text-brand-400" : "text-brand-500")} />
+            )}
           </div>
 
           <div className="text-center space-y-2 px-4">
             <h2 className="text-2xl font-semibold text-txt-main">
-              {isUploading ? `Uploading ${uploadProgress}%...` : 'Drop Video Here'}
+              {isUploading ? (uploadProgress === 100 ? 'Processing...' : `Uploading ${uploadProgress}%...`) : 'Drop Video Here'}
             </h2>
-            <p className="text-txt-muted text-sm">
-              {isUploading ? 'Please wait, analyzing file...' : 'MP4, MKV, AVI, MOV, WEBM'}
+            <p className={cn("text-sm", isConverting ? "text-amber-400 font-medium animate-pulse" : "text-txt-muted")}>
+              {isUploading ? (isConverting ? 'Converting unsupported codec to H.264. This may take a while...' : 'Please wait, analyzing file...') : 'MP4, MKV, AVI, MOV, WEBM'}
             </p>
             {errorMsg && (
               <div className="flex items-center justify-center gap-2 text-red-400 text-sm mt-2 font-medium bg-red-500/10 py-1 px-3 rounded">

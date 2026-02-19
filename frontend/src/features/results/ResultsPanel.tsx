@@ -1,19 +1,12 @@
-/**
- * Panel component for managing, importing, and exporting processed subtitles and videos.
- */
 import React, { useMemo, useRef } from 'react';
 import { Download, ScanFace, ArrowLeft, Upload, FileVideo } from 'lucide-react';
 import { GlassPanel } from '../../components/ui/GlassPanel';
 import { Button } from '../../components/ui/Button';
 import { ProgressHeader } from './components/ProgressHeader';
 import { SubtitleList } from './components/SubtitleList';
-import { useSocket } from '../../hooks/useSocket';
 import { useAppStore } from '../../store/useAppStore';
 import { api } from '../../services/api';
 
-/**
- * Formats seconds into standard SRT timestamp format.
- */
 const formatSrtTime = (seconds: number) => {
   const date = new Date(0);
   date.setSeconds(seconds);
@@ -23,7 +16,6 @@ const formatSrtTime = (seconds: number) => {
 };
 
 export const ResultsPanel = () => {
-  useSocket();
   const {
     isProcessing,
     metadata,
@@ -42,9 +34,6 @@ export const ResultsPanel = () => {
     return { total };
   }, [subtitles]);
 
-  /**
-   * Generates and triggers download of the SRT file with UTF-8 BOM for NLE compatibility.
-   */
   const handleDownloadSrt = () => {
     if (!metadata || subtitles.length === 0) return;
 
@@ -67,9 +56,6 @@ export const ResultsPanel = () => {
     URL.revokeObjectURL(url);
   };
 
-  /**
-   * Handles user upload of an existing SRT file and updates the application state.
-   */
   const handleImportSrt = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -87,9 +73,6 @@ export const ResultsPanel = () => {
     e.target.value = '';
   };
 
-  /**
-   * Triggers download of the finalized rendered video.
-   */
   const handleDownloadVideo = () => {
     if (!renderedVideoUrl || !metadata) return;
 
