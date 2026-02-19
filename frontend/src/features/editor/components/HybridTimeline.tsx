@@ -1,5 +1,6 @@
 /**
- * Timeline component with unified frame-to-pixel math and phantom-click prevention.
+ * Timeline component with playhead snapping, drag-and-drop subtitle trimming,
+ * anchor-based zooming, and hover-delete hotkey support.
  */
 import React, { useState, useMemo, useRef, useLayoutEffect, useCallback, useEffect } from 'react';
 import {
@@ -33,6 +34,7 @@ export const HybridTimeline = () => {
   } | null>(null);
 
   const isDraggingRef = useRef(false);
+  const hoveredSubIdRef = useRef<number | null>(null);
 
   const [zoomLevel, setZoomLevel] = useState(1);
   const [hoveredSub, setHoveredSub] = useState<ProcessedSubtitle | null>(null);
@@ -61,6 +63,10 @@ export const HybridTimeline = () => {
       return { ...sub, track: assignedTrack };
     });
   }, [subtitles]);
+
+  useEffect(() => {
+    hoveredSubIdRef.current = hoveredSub ? hoveredSub.id : null;
+  }, [hoveredSub]);
 
   useLayoutEffect(() => {
     if (zoomAnchorRef.current !== null && scrollContainerRef.current) {
@@ -110,7 +116,18 @@ export const HybridTimeline = () => {
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && (e.key === '=' || e.key === '+' || e.key === '-')) {
+      if (e.target instanceof HTMLElement) {
+        const tag = e.target.tagName.toLowerCase();
+        if (tag === 'input' || tag === 'textarea') return;
+      }
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (hoveredSubIdRef.current !== null) {
+          e.preventDefault();
+          useAppStore.getState().deleteSubtitle(hoveredSubIdRef.current);
+          setHoveredSub(null);
+        }
+      } else if (e.ctrlKey && (e.key === '=' || e.key === '+' || e.key === '-')) {
         e.preventDefault();
         const delta = e.key === '-' ? -0.5 : 0.5;
         if (scrollContainerRef.current) {

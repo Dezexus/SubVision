@@ -1,4 +1,7 @@
-import React, { useState } from 'react';
+/**
+ * Component representing a single interactive subtitle row in the results list.
+ */
+import React, { useState, useEffect } from 'react';
 import { Copy, Trash2, ArrowDownToLine } from 'lucide-react';
 import type { SubtitleItem } from '../../../types';
 import { useAppStore } from '../../../store/useAppStore';
@@ -8,10 +11,28 @@ import { formatTimeDisplay } from '../../../utils/format';
 export const SubtitleCard = ({ item, index }: { item: SubtitleItem, index: number }) => {
   const { updateSubtitle, deleteSubtitle, mergeSubtitles, setCurrentFrame, metadata, subtitles } = useAppStore();
   const [isCopied, setIsCopied] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
   const isHighConf = item.conf > 0.85;
   const isLowConf = item.conf < 0.6;
   const hasNext = index < subtitles.length - 1;
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLElement) {
+        const tag = e.target.tagName.toLowerCase();
+        if (tag === 'input' || tag === 'textarea') return;
+      }
+
+      if (isHovered && (e.key === 'Delete' || e.key === 'Backspace')) {
+        e.preventDefault();
+        deleteSubtitle(item.id);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isHovered, item.id, deleteSubtitle]);
 
   const handleJump = () => {
     if (metadata) {
@@ -27,16 +48,16 @@ export const SubtitleCard = ({ item, index }: { item: SubtitleItem, index: numbe
   };
 
   return (
-    <div className={cn(
-      "group relative flex flex-col gap-3 p-3 rounded-lg border transition-all duration-200",
-      "bg-[#252526] hover:bg-[#2a2d2e]",
-      item.isEdited ? "border-[#007acc]/50" :
-      isLowConf ? "border-red-500/30" : "border-[#333333]"
-    )}>
-
-      {/* Main Text Input
-          pr-16: Добавлен отступ справа, чтобы текст не наезжал на кнопки
-      */}
+    <div
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className={cn(
+        "group relative flex flex-col gap-3 p-3 rounded-lg border transition-all duration-200",
+        "bg-[#252526] hover:bg-[#2a2d2e]",
+        item.isEdited ? "border-[#007acc]/50" :
+        isLowConf ? "border-red-500/30" : "border-[#333333]"
+      )}
+    >
       <textarea
         value={item.text}
         onChange={(e) => updateSubtitle({ ...item, text: e.target.value })}
@@ -45,7 +66,6 @@ export const SubtitleCard = ({ item, index }: { item: SubtitleItem, index: numbe
         spellCheck={false}
       />
 
-      {/* Footer Info */}
       <div className="flex items-center justify-between text-xs text-[#858585] mt-1">
         <div className="flex items-center gap-3">
           <span
@@ -66,7 +86,6 @@ export const SubtitleCard = ({ item, index }: { item: SubtitleItem, index: numbe
         </div>
 
         <div className="flex items-center gap-2">
-            {/* NEW MERGE BUTTON LOCATION: Always visible in footer */}
             {hasNext && (
                 <button
                     onClick={() => mergeSubtitles(index)}
@@ -84,7 +103,6 @@ export const SubtitleCard = ({ item, index }: { item: SubtitleItem, index: numbe
         </div>
       </div>
 
-      {/* Action Buttons (Top Right) - Only Admin Actions (Copy/Delete) */}
       <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-[#252526]/80 backdrop-blur-sm rounded-bl-lg pl-2 pb-1">
         <button
           onClick={handleCopy}
