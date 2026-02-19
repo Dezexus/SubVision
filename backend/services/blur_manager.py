@@ -22,7 +22,6 @@ class BlurManager:
     """Manages the application of blur filters to video frames and rendering."""
 
     def __init__(self):
-        """Initializes threading events for process control."""
         self._stop_event = threading.Event()
         self._is_running = False
 
@@ -189,6 +188,27 @@ class BlurManager:
         finally:
             cap.release()
 
+    def _run_subprocess_cancellable(self, cmd: list[str]) -> None:
+        """Executes a subprocess and safely terminates it if the stop event is triggered."""
+        process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        while process.poll() is None:
+            if self._stop_event.is_set():
+                process.terminate()
+                try:
+                    process.wait(timeout=2.0)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                raise InterruptedError("Process was cancelled by user.")
+
+            try:
+                process.wait(timeout=0.5)
+            except subprocess.TimeoutExpired:
+                continue
+
+        if process.returncode != 0:
+            raise subprocess.CalledProcessError(process.returncode, cmd)
+
     def apply_blur_task(
             self,
             video_path: str,
@@ -334,17 +354,17 @@ class BlurManager:
                 cmd_copy = base_cmd + ["-c:a", "copy", output_path]
 
                 try:
-                    subprocess.run(cmd_copy, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    self._run_subprocess_cancellable(cmd_copy)
                 except subprocess.CalledProcessError:
                     logger.warning("Audio copy failed, falling back to AAC transcoding...")
                     cmd_aac = base_cmd + ["-c:a", "aac", output_path]
-                    subprocess.run(cmd_aac, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    self._run_subprocess_cancellable(cmd_aac)
 
                 if os.path.exists(temp_video_path):
                     os.remove(temp_video_path)
                 return output_path
             except Exception as e:
-                logger.error(f"FFmpeg failed: {e}")
+                logger.error(f"FFmpeg failed or was interrupted: {e}")
                 if os.path.exists(temp_video_path):
                     if os.path.exists(output_path): os.remove(output_path)
                     os.rename(temp_video_path, output_path)
