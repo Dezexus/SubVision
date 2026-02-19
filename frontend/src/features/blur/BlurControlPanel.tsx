@@ -2,19 +2,22 @@ import React, { useEffect, useState, useRef } from 'react';
 import {
   Sliders, Video, RotateCcw,
   MoveVertical, Maximize, Droplet,
-  ScanLine, BoxSelect, Loader2
+  ScanLine, BoxSelect, Loader2,
+  Wand2
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { Slider } from '../../components/ui/Slider';
 import { Button } from '../../components/ui/Button';
 import { api } from '../../services/api';
+import { cn } from '../../utils/cn';
 
 const DEFAULTS = {
+  mode: 'hybrid',
   y: 912,
   font_size: 22,
   padding_x: 60,
   padding_y: 2.0,
-  sigma: 10,
+  sigma: 5,
   feather: 40,
   width_multiplier: 1.0
 };
@@ -107,7 +110,7 @@ export const BlurControlPanel = () => {
 
     setProcessing(true);
     updateProgress(0, metadata.total_frames, "Starting...");
-    addLog('--- Starting Smart Blur Render ---');
+    addLog('--- Starting Smart Render ---');
 
     try {
       await api.renderBlurVideo({
@@ -151,6 +154,32 @@ export const BlurControlPanel = () => {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-hide">
+
+        <div className="space-y-3">
+            <div className="flex items-center gap-2 text-[11px] font-bold text-[#858585] uppercase tracking-wider">
+                 <Wand2 size={14} /> Obscuring Mode
+            </div>
+            <div className="flex bg-[#18181b] p-1 rounded-md border border-[#333333] gap-1">
+                <button
+                    onClick={() => setBlurSettings({ mode: 'blur' })}
+                    className={cn("flex-1 text-[10px] py-1.5 font-bold rounded transition", blurSettings.mode === 'blur' ? "bg-[#333333] text-white shadow" : "text-[#858585] hover:text-[#C5C5C5]")}
+                >
+                    BOX BLUR
+                </button>
+                <button
+                    onClick={() => setBlurSettings({ mode: 'hybrid' })}
+                    className={cn("flex-1 text-[10px] py-1.5 font-bold rounded transition", blurSettings.mode === 'hybrid' ? "bg-[#007acc] text-white shadow" : "text-[#858585] hover:text-[#C5C5C5]")}
+                >
+                    HYBRID
+                </button>
+            </div>
+            {blurSettings.mode === 'hybrid' && (
+                <p className="text-[10px] text-[#858585] italic leading-tight mt-1">
+                    Best quality. Reconstructs background using Inpaint and smooths artifacts with a light Blur.
+                </p>
+            )}
+        </div>
+
         <div className="space-y-4">
             <div className="flex items-center gap-2 text-[11px] font-bold text-[#858585] uppercase tracking-wider">
                  <ScanLine size={14} /> Target Geometry (Green)
@@ -182,7 +211,7 @@ export const BlurControlPanel = () => {
 
         <div className="space-y-4">
             <div className="flex items-center gap-2 text-[11px] font-bold text-[#858585] uppercase tracking-wider">
-                 <BoxSelect size={14} /> Blur Coverage (Red)
+                 <BoxSelect size={14} /> Effect Coverage (Red)
             </div>
 
             <div className="pl-2 border-l-2 border-[#333333] space-y-4 ml-1">
@@ -209,23 +238,23 @@ export const BlurControlPanel = () => {
 
         <div className="space-y-4">
             <div className="flex items-center gap-2 text-[11px] font-bold text-[#858585] uppercase tracking-wider">
-                 <Droplet size={14} /> Appearance
+                <Droplet size={14} /> Appearance
             </div>
 
             <div className="bg-[#252526] p-3 rounded border border-[#333333] space-y-4">
                 <Slider
-                  label="Intensity"
-                  max={100}
-                  value={blurSettings.sigma}
-                  suffix="%"
-                  onChange={(e) => setBlurSettings({ sigma: Number(e.target.value) })}
+                label="Intensity"
+                max={100}
+                value={blurSettings.sigma}
+                suffix="%"
+                onChange={(e) => setBlurSettings({ sigma: Number(e.target.value) })}
                 />
                 <Slider
-                  label="Feather / Softness"
-                  max={100}
-                  value={blurSettings.feather}
-                  suffix="px"
-                  onChange={(e) => setBlurSettings({ feather: Number(e.target.value) })}
+                label="Feather / Softness"
+                max={100}
+                value={blurSettings.feather}
+                suffix="px"
+                onChange={(e) => setBlurSettings({ feather: Number(e.target.value) })}
                 />
             </div>
         </div>

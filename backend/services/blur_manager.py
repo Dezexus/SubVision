@@ -18,7 +18,7 @@ except AttributeError:
     HAS_CUDA = False
 
 class BlurManager:
-    """Manages the application of blur filters to video frames and accelerated rendering."""
+    """Manages the application of obscuring filters to video frames and accelerated rendering."""
 
     def __init__(self):
         self._stop_event = threading.Event()
@@ -79,12 +79,53 @@ class BlurManager:
         return final_x, final_y, final_w, final_h
 
     def _apply_blur_to_frame(self, frame: np.ndarray, roi: Tuple[int, int, int, int], settings: dict) -> np.ndarray:
-        """Applies box blur and optional feathering to a frame ROI using CUDA if available."""
+        """Applies specified obscuring method to a frame ROI."""
         bx, by, bw, bh = roi
         if bw <= 0 or bh <= 0:
             return frame
 
-        sigma = int(settings.get('sigma', 40))
+        mode = settings.get('mode', 'hybrid')
+        font_size_px = int(settings.get('font_size', 21))
+
+        if mode == 'hybrid':
+            pad = 15
+            h, w = frame.shape[:2]
+
+            y1 = max(0, by - pad)
+            y2 = min(h, by + bh + pad)
+            x1 = max(0, bx - pad)
+            x2 = min(w, bx + bw + pad)
+
+            roi_expanded = frame[y1:y2, x1:x2]
+            roi_inner = frame[by:by+bh, bx:bx+bw]
+
+            gray = cv2.cvtColor(roi_inner, cv2.COLOR_BGR2GRAY)
+
+            grad_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+            grad = cv2.morphologyEx(gray, cv2.MORPH_GRADIENT, grad_kernel)
+
+            _, text_mask = cv2.threshold(grad, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+
+            fill_ksize = max(3, int(font_size_px * 0.4))
+            fill_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (fill_ksize, fill_ksize))
+            text_mask = cv2.morphologyEx(text_mask, cv2.MORPH_CLOSE, fill_kernel)
+
+            dilate_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+            text_mask = cv2.dilate(text_mask, dilate_kernel, iterations=1)
+
+            local_mask = np.zeros(roi_expanded.shape[:2], dtype=np.uint8)
+
+            ly1 = by - y1
+            ly2 = ly1 + bh
+            lx1 = bx - x1
+            lx2 = lx1 + bw
+
+            local_mask[ly1:ly2, lx1:lx2] = text_mask
+
+            inpainted = cv2.inpaint(roi_expanded, local_mask, 3, cv2.INPAINT_TELEA)
+            frame[y1:y2, x1:x2] = inpainted
+
+        sigma = int(settings.get('sigma', 5))
         feather = int(settings.get('feather', 30))
 
         if HAS_CUDA:
@@ -191,7 +232,7 @@ class BlurManager:
         return frame
 
     def generate_preview(self, video_path: str, frame_index: int, settings: dict, text: str) -> Optional[np.ndarray]:
-        """Generates a single preview frame with the blur applied including software fallback."""
+        """Generates a single preview frame with the obscuring filter applied including software fallback."""
         cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY])
         ok, _ = cap.read()
 
@@ -244,7 +285,7 @@ class BlurManager:
             output_path: str,
             progress_callback=None
     ):
-        """Executes the full video blurring and accelerated hardware rendering pipeline with software fallback."""
+        """Executes the full video obscuring and accelerated hardware rendering pipeline with software fallback."""
         self._is_running = True
         self._stop_event.clear()
 

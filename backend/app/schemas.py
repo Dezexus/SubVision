@@ -31,6 +31,7 @@ class ProcessConfig(BaseModel):
     visual_cutoff: bool = True
 
 class BlurSettings(BaseModel):
+    mode: str = "blur"
     type: str = "box"
     y: int = 900
     font_size: int = 21

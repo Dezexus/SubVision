@@ -1,12 +1,6 @@
-/**
- * Global application state management store implemented with Zustand slice pattern.
- */
 import { create, StateCreator } from 'zustand';
 import type { ProcessConfig, SubtitleItem, VideoMetadata, BlurSettings } from '../types';
 
-/**
- * Retrieves an existing client ID from session storage or generates a new one.
- */
 const getOrCreateClientId = (): string => {
   const stored = sessionStorage.getItem('subvision_client_id');
   if (stored) return stored;
@@ -16,9 +10,6 @@ const getOrCreateClientId = (): string => {
   return newId;
 };
 
-/**
- * State slice managing video file, metadata, and frame navigation.
- */
 export interface VideoSlice {
   file: File | null;
   metadata: VideoMetadata | null;
@@ -30,9 +21,6 @@ export interface VideoSlice {
   setPreviewModalOpen: (isOpen: boolean) => void;
 }
 
-/**
- * State slice managing OCR configurations, presets, and region of interest.
- */
 export interface ConfigSlice {
   roi: [number, number, number, number];
   preset: string;
@@ -42,9 +30,6 @@ export interface ConfigSlice {
   updateConfig: (updates: Partial<ProcessConfig>) => void;
 }
 
-/**
- * State slice managing blur effects, preview rendering, and target areas.
- */
 export interface BlurSlice {
   isBlurMode: boolean;
   blurSettings: BlurSettings;
@@ -54,9 +39,6 @@ export interface BlurSlice {
   setBlurPreviewUrl: (url: string | null) => void;
 }
 
-/**
- * State slice managing backend processing status, logs, and subtitle data.
- */
 export interface ProcessSlice {
   isProcessing: boolean;
   progress: { current: number; total: number; eta: string };
@@ -75,9 +57,6 @@ export interface ProcessSlice {
   setRenderedVideoUrl: (url: string | null) => void;
 }
 
-/**
- * Aggregated application state combining all functional slices.
- */
 export type AppState = VideoSlice & ConfigSlice & BlurSlice & ProcessSlice;
 
 const createVideoSlice: StateCreator<AppState, [], [], VideoSlice> = (set) => ({
@@ -122,12 +101,13 @@ const createConfigSlice: StateCreator<AppState, [], [], ConfigSlice> = (set) => 
 const createBlurSlice: StateCreator<AppState, [], [], BlurSlice> = (set) => ({
   isBlurMode: false,
   blurSettings: {
+    mode: 'hybrid',
     type: 'box',
     y: 912,
     font_size: 22,
     padding_x: 60,
     padding_y: 2.0,
-    sigma: 10,
+    sigma: 5,
     feather: 40,
     width_multiplier: 1.0
   },
