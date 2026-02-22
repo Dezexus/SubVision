@@ -1,3 +1,6 @@
+/**
+ * Modal component providing an interactive playback interface and subtitle editor.
+ */
 import React, { useRef, useState, useEffect } from 'react';
 import { X, MoveVertical, Trash2 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
@@ -69,13 +72,13 @@ export const PreviewModal = () => {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 md:p-8 backdrop-blur-md transition-opacity">
-      <div className="bg-[#1e1e1e] rounded-xl border border-[#333333] shadow-2xl w-full max-w-6xl flex flex-col overflow-hidden relative animate-in fade-in zoom-in-95 duration-200">
+      <div className="bg-bg-main rounded-xl border border-border-main shadow-2xl w-full max-w-6xl flex flex-col overflow-hidden relative animate-in fade-in zoom-in-95 duration-200">
 
-        <div className="p-4 border-b border-[#333333] flex justify-between items-center bg-[#252526]">
+        <div className="p-4 border-b border-border-main flex justify-between items-center bg-bg-panel">
           <h2 className="text-white font-bold tracking-wide uppercase text-sm">Playback & Edit</h2>
           <button
             onClick={() => setPreviewModalOpen(false)}
-            className="p-1.5 text-[#858585] hover:text-white hover:bg-red-500/20 hover:border-red-500/50 border border-transparent rounded transition-colors"
+            className="p-1.5 text-txt-subtle hover:text-white hover:bg-red-500/20 hover:border-red-500/50 border border-transparent rounded transition-colors"
           >
             <X size={18} />
           </button>
@@ -97,7 +100,7 @@ export const PreviewModal = () => {
               style={{ bottom: `${bottomOffset}%` }}
             >
               <div
-                className="w-20 h-2.5 mb-1 bg-white/20 hover:bg-[#007acc] rounded-full cursor-ns-resize backdrop-blur-sm transition-colors shadow-sm flex items-center justify-center opacity-0 group-hover/video:opacity-100"
+                className="w-20 h-2.5 mb-1 bg-white/20 hover:bg-brand-500 rounded-full cursor-ns-resize backdrop-blur-sm transition-colors shadow-sm flex items-center justify-center opacity-0 group-hover/video:opacity-100"
                 onMouseDown={handleDragStart}
                 title="Drag to adjust vertical position"
               >
@@ -109,7 +112,7 @@ export const PreviewModal = () => {
                   value={activeSub.text}
                   onChange={(e) => updateSubtitle({ ...activeSub, text: e.target.value })}
                   onKeyDown={(e) => e.stopPropagation()}
-                  className="w-full bg-black/70 text-white text-center text-lg md:text-xl py-2.5 px-12 rounded-2xl border-2 border-transparent hover:border-white/20 focus:border-[#007acc] focus:bg-black/90 focus:outline-none resize-none overflow-hidden transition-all shadow-lg backdrop-blur-sm"
+                  className="w-full bg-black/70 text-white text-center text-lg md:text-xl py-2.5 px-12 rounded-2xl border-2 border-transparent hover:border-white/20 focus:border-brand-500 focus:bg-black/90 focus:outline-none resize-none overflow-hidden transition-all shadow-lg backdrop-blur-sm"
                   rows={2}
                 />
                 <button

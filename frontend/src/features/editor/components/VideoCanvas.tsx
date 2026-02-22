@@ -184,7 +184,7 @@ export const VideoCanvas = () => {
 
   if (!file || !metadata) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-[#555]">
+      <div className="flex-1 flex flex-col items-center justify-center text-txt-subtle">
         <ImageOff size={48} className="mb-4 opacity-20" />
         <p className="text-sm">Upload a video to start editing</p>
       </div>
@@ -195,12 +195,12 @@ export const VideoCanvas = () => {
     <div className="w-full h-full flex items-center justify-center p-4">
       <div
         ref={containerRef}
-        className="relative shadow-2xl shadow-black/50 border border-[#333333] rounded-xl overflow-hidden bg-black group/canvas select-none"
+        className="relative shadow-2xl shadow-black/50 border border-border-main rounded-xl overflow-hidden bg-black group/canvas select-none"
         style={{ aspectRatio, maxHeight: '100%', maxWidth: '100%' }}
       >
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/20 z-20 backdrop-blur-[2px]">
-                <Loader2 className="animate-spin text-[#007acc]" size={32} />
+                <Loader2 className="animate-spin text-brand-500" size={32} />
             </div>
           )}
 

@@ -105,38 +105,38 @@ export const HybridTimeline = () => {
   const progressPercent = (currentFrameIndex / metadata.total_frames) * 100;
 
   return (
-    <div className="bg-[#1e1e1e] border border-[#333333] shadow-2xl select-none flex flex-col rounded-xl overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2 bg-[#252526] border-b border-[#333333]">
+    <div className="bg-bg-main border border-border-main shadow-2xl select-none flex flex-col rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2 bg-bg-panel border-b border-border-main">
         <div className="flex items-center gap-3 w-40">
-            <div className="p-1.5 bg-[#333333] rounded-md text-[#007acc]">
+            <div className="p-1.5 bg-bg-surface rounded-md text-brand-500">
                 <Clock size={14} />
             </div>
             <div className="flex flex-col">
                 <span className="text-sm font-mono font-bold text-white leading-none tracking-wide">
                     {currentTime}
                 </span>
-                <span className="text-[9px] text-[#858585] font-mono mt-0.5">
-                    FRAME: <span className="text-[#C5C5C5]">{currentFrameIndex}</span>
+                <span className="text-[9px] text-txt-subtle font-mono mt-0.5">
+                    FRAME: <span className="text-txt-muted">{currentFrameIndex}</span>
                 </span>
             </div>
         </div>
 
-        <div className="flex items-center gap-1 bg-[#1e1e1e] p-1 rounded-lg border border-[#333333]">
-            <button onClick={() => setCurrentFrame(f => Math.max(0, f - 1))} className="p-1.5 rounded-md hover:bg-[#333333] text-[#858585] hover:text-white transition" title="Prev Frame">
+        <div className="flex items-center gap-1 bg-bg-main p-1 rounded-lg border border-border-main">
+            <button onClick={() => setCurrentFrame(f => Math.max(0, f - 1))} className="p-1.5 rounded-md hover:bg-bg-surface text-txt-subtle hover:text-white transition" title="Prev Frame">
                 <ChevronLeft size={16} />
             </button>
-            <div className="flex items-center px-2 gap-1 border-l border-[#333333] ml-1 pl-2">
-                <button onClick={() => handleZoomButton(-0.5)} className="p-1 text-[#858585] hover:text-white"><ZoomOut size={14}/></button>
+            <div className="flex items-center px-2 gap-1 border-l border-border-main ml-1 pl-2">
+                <button onClick={() => handleZoomButton(-0.5)} className="p-1 text-txt-subtle hover:text-white"><ZoomOut size={14}/></button>
                 <span className="text-[10px] font-mono w-8 text-center">{Math.round(zoomLevel * 100)}%</span>
-                <button onClick={() => handleZoomButton(0.5)} className="p-1 text-[#858585] hover:text-white"><ZoomIn size={14}/></button>
+                <button onClick={() => handleZoomButton(0.5)} className="p-1 text-txt-subtle hover:text-white"><ZoomIn size={14}/></button>
             </div>
-            <button onClick={() => setCurrentFrame(f => Math.min(metadata.total_frames - 1, f + 1))} className="p-1.5 rounded-md hover:bg-[#333333] text-[#858585] hover:text-white transition" title="Next Frame">
+            <button onClick={() => setCurrentFrame(f => Math.min(metadata.total_frames - 1, f + 1))} className="p-1.5 rounded-md hover:bg-bg-surface text-txt-subtle hover:text-white transition" title="Next Frame">
                 <ChevronRight size={16} />
             </button>
         </div>
 
         <div className="flex flex-col items-end w-32 opacity-60">
-             <span className="text-xs font-mono text-[#858585] font-medium">{totalTime}</span>
+             <span className="text-xs font-mono text-txt-subtle font-medium">{totalTime}</span>
         </div>
       </div>
 
@@ -144,7 +144,7 @@ export const HybridTimeline = () => {
         ref={containerRef}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setHoveredSub(null)}
-        className="relative h-28 bg-[#18181b] w-full group overflow-hidden"
+        className="relative h-28 bg-bg-track w-full group overflow-hidden"
       >
           <div
             ref={scrollContainerRef}
@@ -155,9 +155,9 @@ export const HybridTimeline = () => {
                 className="h-full relative transition-all duration-75 ease-out"
                 style={{ width: `${zoomLevel * 100}%` }}
               >
-                  <div className="absolute top-0 w-full h-4 border-b border-[#333333] flex justify-between px-[2px] opacity-50">
+                  <div className="absolute top-0 w-full h-4 border-b border-border-main flex justify-between px-[2px] opacity-50">
                      {Array.from({ length: 20 * Math.ceil(zoomLevel) }).map((_, i) => (
-                         <div key={i} className={cn("w-px bg-[#333333]", i % 10 === 0 ? "h-2 mt-1" : "h-1 mt-2")} />
+                         <div key={i} className={cn("w-px bg-border-main", i % 10 === 0 ? "h-2 mt-1" : "h-1 mt-2")} />
                      ))}
                   </div>
 
@@ -169,7 +169,7 @@ export const HybridTimeline = () => {
                       const isDraggedStart = draggedEdge?.id === sub.id && draggedEdge.edge === 'start';
                       const isDraggedEnd = draggedEdge?.id === sub.id && draggedEdge.edge === 'end';
 
-                      let colorClass = "bg-[#333333] border-[#454545]";
+                      let colorClass = "bg-bg-surface border-border-strong";
                       if (sub.isEdited) colorClass = "bg-blue-500/20 border-blue-500/40 text-blue-200";
                       else if (sub.conf > 0.85) colorClass = "bg-emerald-500/20 border-emerald-500/40 text-emerald-200";
                       else if (sub.conf < 0.6) colorClass = "bg-rose-500/20 border-rose-500/40 text-rose-200";
@@ -218,7 +218,7 @@ export const HybridTimeline = () => {
                     className="absolute top-0 bottom-0 z-10 w-px pointer-events-none transition-all duration-75 ease-linear will-change-left"
                     style={{ left: `${progressPercent}%` }}
                   >
-                      <div className="absolute -top-1 -left-[5px] w-[11px] h-[11px] bg-red-500 rounded-full shadow-md border-[2px] border-[#18181b]" />
+                      <div className="absolute -top-1 -left-[5px] w-[11px] h-[11px] bg-red-500 rounded-full shadow-md border-[2px] border-bg-track" />
                       <div className="absolute top-1.5 h-full w-[1.5px] -left-[0.75px] bg-red-500/80 rounded-full" />
                   </div>
               </div>
@@ -229,14 +229,14 @@ export const HybridTimeline = () => {
                 className="absolute z-50 bottom-2 pointer-events-none"
                 style={{ left: Math.min(Math.max(hoverPos, 100), containerRef.current ? containerRef.current.clientWidth - 100 : 0) }}
             >
-                <div className="bg-[#1e1e1e]/95 backdrop-blur border border-[#333333] p-2 rounded shadow-2xl text-xs -translate-x-1/2 w-48">
-                    <div className="flex justify-between text-[#858585] mb-1 font-mono text-[9px] uppercase">
+                <div className="bg-bg-main/95 backdrop-blur border border-border-main p-2 rounded shadow-2xl text-xs -translate-x-1/2 w-48">
+                    <div className="flex justify-between text-txt-subtle mb-1 font-mono text-[9px] uppercase">
                         <span>{formatTimeDisplay(hoveredSub.start)}</span>
                         <span className={cn(hoveredSub.conf > 0.8 ? "text-emerald-400" : "text-amber-400")}>
                             {Math.round(hoveredSub.conf * 100)}%
                         </span>
                     </div>
-                    <p className="text-[#F0F0F0] line-clamp-2">
+                    <p className="text-txt-main line-clamp-2">
                         {hoveredSub.text}
                     </p>
                 </div>

@@ -25,7 +25,7 @@ export const SubtitleList = () => {
 
   if (subtitles.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center text-[#555] text-xs italic">
+      <div className="h-full flex items-center justify-center text-txt-subtle text-xs italic">
         Waiting for results...
       </div>
     );

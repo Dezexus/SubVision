@@ -33,7 +33,7 @@ export const EditorPanel = () => {
 
   if (!file) {
     return (
-      <div className="flex-1 m-4 border border-[#333333] rounded-xl bg-[#0c0c0c] overflow-hidden shadow-2xl flex items-center justify-center">
+      <div className="flex-1 m-4 border border-border-main rounded-xl bg-bg-deep overflow-hidden shadow-2xl flex items-center justify-center">
          <WelcomeScreen />
       </div>
     );

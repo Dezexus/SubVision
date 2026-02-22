@@ -1,3 +1,6 @@
+/**
+ * Sidebar panel displaying OCR progress, extracted subtitles, and export actions.
+ */
 import React, { useMemo, useRef } from 'react';
 import { Download, ScanFace, ArrowLeft, Upload, FileVideo, Play } from 'lucide-react';
 import { GlassPanel } from '../../components/ui/GlassPanel';
@@ -91,14 +94,14 @@ export const ResultsPanel = () => {
   };
 
   return (
-    <GlassPanel className="w-full lg:w-1/4 min-w-[320px] flex flex-col h-full z-20 bg-[#1e1e1e]">
+    <GlassPanel className="w-full lg:w-1/4 min-w-[320px] flex flex-col h-full z-20 bg-bg-main">
       <ProgressHeader />
 
-      <div className="flex items-center justify-between p-2 border-b border-[#333333] bg-[#252526]">
-         <span className="text-xs font-bold text-[#858585] px-2">SUBTITLES</span>
+      <div className="flex items-center justify-between p-2 border-b border-border-main bg-bg-panel">
+         <span className="text-xs font-bold text-txt-subtle px-2">SUBTITLES</span>
          <button
            onClick={() => fileInputRef.current?.click()}
-           className="flex items-center gap-1 text-[10px] bg-[#333333] hover:bg-[#404040] text-[#C5C5C5] px-2 py-1 rounded transition"
+           className="flex items-center gap-1 text-[10px] bg-bg-surface hover:bg-bg-input-hover text-txt-muted px-2 py-1 rounded transition"
            title="Import .SRT"
          >
            <Upload size={10} />
@@ -113,14 +116,14 @@ export const ResultsPanel = () => {
          />
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2 scrollbar-hide bg-[#1e1e1e]">
+      <div className="flex-1 overflow-y-auto p-2 scrollbar-hide bg-bg-main">
          <SubtitleList />
       </div>
 
-      <div className="p-4 border-t border-[#333333] bg-[#252526] space-y-3">
+      <div className="p-4 border-t border-border-main bg-bg-panel space-y-3">
         {subtitles.length > 0 && (
-          <div className="flex justify-between text-xs text-[#858585] font-mono px-1">
-            <span>Lines: <b className="text-[#F0F0F0]">{stats.total}</b></span>
+          <div className="flex justify-between text-xs text-txt-subtle font-mono px-1">
+            <span>Lines: <b className="text-txt-main">{stats.total}</b></span>
           </div>
         )}
 
@@ -129,7 +132,7 @@ export const ResultsPanel = () => {
                 <>
                     <Button
                         variant="secondary"
-                        className="w-full py-3 h-11 text-xs font-semibold shadow-md bg-[#333333] hover:bg-[#404040] text-white border-[#454545]"
+                        className="w-full py-3 h-11 text-xs font-semibold shadow-md bg-bg-surface hover:bg-bg-input-hover text-white border-border-strong"
                         disabled={isProcessing || !metadata || subtitles.length === 0}
                         onClick={() => setPreviewModalOpen(true)}
                         icon={<Play size={14} />}

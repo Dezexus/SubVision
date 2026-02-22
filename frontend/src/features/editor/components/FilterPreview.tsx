@@ -69,30 +69,30 @@ export const FilterPreview = () => {
   if (!roi[2] || !metadata) return null;
 
   return (
-    <div className="bg-[#1e1e1e] border border-[#333333] rounded-xl p-3 shadow-xl w-full flex gap-4 items-center">
+    <div className="bg-bg-main border border-border-main rounded-xl p-3 shadow-xl w-full flex gap-4 items-center">
       <div className="flex flex-col gap-2 min-w-[120px]">
-        <div className="flex items-center gap-2 text-[#C5C5C5] mb-1">
+        <div className="flex items-center gap-2 text-txt-muted mb-1">
           <Cpu size={16} />
           <span className="text-xs font-bold uppercase tracking-wider">
             Algo Input
           </span>
         </div>
         <div className="space-y-1">
-           <div className="flex justify-between text-[10px] text-[#858585] uppercase">
+           <div className="flex justify-between text-[10px] text-txt-subtle uppercase">
              <span>Scale</span>
-             <span className="text-[#F0F0F0] font-mono">{config.scale_factor}x</span>
+             <span className="text-txt-main font-mono">{config.scale_factor}x</span>
            </div>
-           <div className="flex justify-between text-[10px] text-[#858585] uppercase">
+           <div className="flex justify-between text-[10px] text-txt-subtle uppercase">
              <span>ROI</span>
-             <span className="text-[#F0F0F0] font-mono">{roi[2]}x{roi[3]}</span>
+             <span className="text-txt-main font-mono">{roi[2]}x{roi[3]}</span>
            </div>
         </div>
       </div>
 
-      <div className="flex-1 bg-black rounded border border-[#333333] overflow-hidden flex items-center justify-center relative h-[100px]">
+      <div className="flex-1 bg-black rounded border border-border-main overflow-hidden flex items-center justify-center relative h-[100px]">
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
-            <Loader2 className="animate-spin text-[#007acc]" size={20} />
+            <Loader2 className="animate-spin text-brand-500" size={20} />
           </div>
         )}
         {previewUrl ? (
@@ -102,7 +102,7 @@ export const FilterPreview = () => {
             className="h-full w-auto object-contain"
           />
         ) : (
-          <div className="flex flex-col items-center gap-1 text-[#555]">
+          <div className="flex flex-col items-center gap-1 text-txt-subtle">
             <ScanLine size={16} />
             <span className="text-[9px]">NO SIGNAL</span>
           </div>
