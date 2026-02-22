@@ -1,4 +1,6 @@
-// A component for selecting a predefined set of OCR processing settings.
+/**
+ * A component for selecting a predefined set of OCR processing settings mapped to the unified theme.
+ */
 import React from 'react';
 import { Zap, Shield, Eye, Check } from 'lucide-react';
 import { useAppStore } from '../../../store/useAppStore';
@@ -32,15 +34,13 @@ export const PresetSelector = () => {
   const { preset, updateConfig } = useAppStore();
 
   const handleSelect = (p: typeof PRESETS[0]) => {
-    // Directly set the active preset ID and apply its configuration
-    // @ts-ignore - Direct state mutation for simplicity here
-    useAppStore.setState({ preset: p.id });
+    useAppStore.setState({ preset: p.id } as any);
     updateConfig(p.config);
   };
 
   return (
     <div className="space-y-3">
-      <label className="text-[11px] font-bold uppercase tracking-wider text-[#C5C5C5] mb-2 block">
+      <label className="text-[11px] font-bold uppercase tracking-wider text-txt-muted mb-2 block">
         Processing Mode
       </label>
       <div className="grid grid-cols-1 gap-2">
@@ -53,31 +53,28 @@ export const PresetSelector = () => {
               className={cn(
                 "relative p-3 rounded-sm border text-left flex items-center gap-3 transition-all duration-200 group",
                 isActive
-                  ? "bg-[#04395e] border-[#007acc] ring-1 ring-[#007acc] shadow-sm z-10" // Active state styles
-                  : "bg-[#252526] border-[#3c3c3c] hover:bg-[#2a2d2e] hover:border-[#007acc]/50" // Inactive state styles
+                  ? "bg-brand-active border-brand-500 ring-1 ring-brand-500 shadow-sm z-10"
+                  : "bg-bg-panel border-bg-input hover:bg-bg-hover hover:border-brand-500/50"
               )}
             >
-              {/* Icon */}
               <div className={cn(
                 "p-2 rounded-sm transition-colors",
-                isActive ? "bg-[#007acc] text-white" : "bg-[#3c3c3c] text-[#F0F0F0] group-hover:bg-[#454545]"
+                isActive ? "bg-brand-500 text-white" : "bg-bg-input text-txt-main group-hover:bg-border-strong"
               )}>
                 {p.icon}
               </div>
 
-              {/* Text Content */}
               <div className="flex-1 min-w-0">
-                <div className={cn("font-semibold text-sm", isActive ? "text-white" : "text-[#F0F0F0]")}>
+                <div className={cn("font-semibold text-sm", isActive ? "text-white" : "text-txt-main")}>
                   {p.label}
                 </div>
-                <div className={cn("text-xs truncate mt-0.5", isActive ? "text-[#e1e1e1]" : "text-[#C5C5C5]")}>
+                <div className={cn("text-xs truncate mt-0.5", isActive ? "text-white/80" : "text-txt-muted")}>
                   {p.desc}
                 </div>
               </div>
 
-              {/* Active Indicator Checkmark */}
               {isActive && (
-                <div className="bg-[#007acc] text-white rounded-full p-1 shadow-sm absolute -right-2 -top-2 border-2 border-[#1e1e1e]">
+                <div className="bg-brand-500 text-white rounded-full p-1 shadow-sm absolute -right-2 -top-2 border-2 border-bg-main">
                    <Check size={10} strokeWidth={4} />
                 </div>
               )}

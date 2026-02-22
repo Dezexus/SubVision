@@ -1,4 +1,6 @@
-// A reusable, styled button component with multiple variants and loading states.
+/**
+ * A reusable, styled button component with multiple variants and loading states using semantic theme colors.
+ */
 import React from 'react';
 import { cn } from '../../utils/cn';
 import { Loader2 } from 'lucide-react';
@@ -19,25 +21,19 @@ export const Button = ({
   ...props
 }: ButtonProps) => {
 
-  // Style variants mapping
   const variants = {
-    // VS Code Blue (Primary Action)
-    primary: "bg-[#007acc] hover:bg-[#005fb8] text-white shadow-sm",
-    // Green (Start / Confirm)
-    success: "bg-[#16a34a] hover:bg-[#15803d] text-white shadow-sm",
-    // Red (Destructive / Stop)
-    danger: "bg-[#ef4444] hover:bg-[#dc2626] text-white shadow-sm",
-    // Gray (Secondary) - VS Code Style
-    secondary: "bg-[#3c3c3c] hover:bg-[#4b4b4b] text-white border border-[#454545]",
-    // Ghost (Transparent)
-    ghost: "bg-transparent hover:bg-[#2a2d2e] text-[#cccccc] hover:text-white",
+    primary: "bg-brand-500 hover:bg-brand-hover text-white shadow-sm",
+    success: "bg-green-600 hover:bg-green-700 text-white shadow-sm",
+    danger: "bg-red-500 hover:bg-red-600 text-white shadow-sm",
+    secondary: "bg-bg-input hover:bg-bg-input-hover text-white border border-border-strong",
+    ghost: "bg-transparent hover:bg-bg-hover text-txt-muted hover:text-white",
   };
 
   return (
     <button
       disabled={disabled || isLoading}
       className={cn(
-        "flex items-center justify-center gap-2 px-4 py-2.5 rounded-sm text-sm font-medium transition-colors focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-offset-[#1e1e1e] focus:ring-[#007acc]",
+        "flex items-center justify-center gap-2 px-4 py-2.5 rounded-sm text-sm font-medium transition-colors focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-offset-bg-main focus:ring-brand-500",
         variants[variant],
         (disabled || isLoading) && "opacity-50 cursor-not-allowed contrast-50",
         className

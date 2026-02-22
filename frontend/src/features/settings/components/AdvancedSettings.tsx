@@ -12,14 +12,14 @@ export const AdvancedSettings = () => {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#C5C5C5] mb-2">
+      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-txt-muted mb-2">
         <Settings2 size={14} />
         <span>Fine Tuning</span>
       </div>
 
       <div className="space-y-3">
         <div className="flex justify-between items-end mb-1">
-          <label className="text-xs font-bold uppercase tracking-wide text-[#C5C5C5] select-none flex items-center gap-1.5">
+          <label className="text-xs font-bold uppercase tracking-wide text-txt-muted select-none flex items-center gap-1.5">
             <Globe size={12} /> OCR Language
           </label>
         </div>
@@ -27,7 +27,7 @@ export const AdvancedSettings = () => {
           <select
             value={config.languages || 'en'}
             onChange={(e) => updateConfig({ languages: e.target.value })}
-            className="w-full bg-[#3c3c3c] border border-[#454545] rounded-md text-sm text-white px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#007acc] appearance-none cursor-pointer font-medium"
+            className="w-full bg-bg-input border border-border-strong rounded-md text-sm text-txt-main px-3 py-2 focus:outline-none focus:ring-1 focus:ring-brand-500 appearance-none cursor-pointer font-medium"
           >
             <option value="en">English (en)</option>
             <option value="ru">Russian (ru)</option>
@@ -38,7 +38,7 @@ export const AdvancedSettings = () => {
             <option value="japan">Japanese (japan)</option>
             <option value="es">Spanish (es)</option>
           </select>
-          <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-[#858585]">
+          <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-txt-subtle">
             <svg className="w-4 h-4 fill-current" viewBox="0 0 20 20">
                 <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" fillRule="evenodd"></path>
             </svg>
@@ -62,7 +62,7 @@ export const AdvancedSettings = () => {
         onChange={(e) => updateConfig({ step: Number(e.target.value) })}
       />
 
-      <div className="space-y-1 pt-2 border-t border-[#333333]">
+      <div className="space-y-1 pt-2 border-t border-border-main">
         <Switch
           label="Smart Skip (Static Scenes)"
           checked={config.smart_skip ?? true}
