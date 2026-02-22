@@ -1,5 +1,5 @@
 """
-Router module handling OCR processing jobs, subtitle imports, and blur rendering.
+Router module handling OCR processing jobs, subtitle imports, and blur rendering synchronized with S3.
 """
 import os
 import asyncio
@@ -15,12 +15,13 @@ from api.websockets.manager import connection_manager
 from ocr.process_manager import ProcessManager
 from media.blur_manager import BlurManager
 from core.srt_parser import parse_srt
+from core.storage import storage_manager
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 process_mgr = ProcessManager()
-UPLOAD_DIR = "uploads"
+CACHE_DIR = "cache"
 
 render_registry: dict[str, BlurManager] = {}
 render_lock = threading.Lock()
@@ -28,12 +29,15 @@ render_lock = threading.Lock()
 @router.post("/start")
 async def start_process(config: ProcessConfig):
     """
-    Initiates a background OCR process for a specific video session.
+    Initiates a background OCR process ensuring the video is cached from S3.
     """
     safe_filename = os.path.basename(config.filename)
-    file_path = os.path.join(UPLOAD_DIR, safe_filename)
+    file_path = os.path.join(CACHE_DIR, safe_filename)
+
     if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Video file not found")
+        success = await asyncio.to_thread(storage_manager.download_file, safe_filename, file_path)
+        if not success:
+            raise HTTPException(status_code=404, detail="Video file not found in storage.")
 
     loop = asyncio.get_event_loop()
 
@@ -106,13 +110,15 @@ async def import_srt(file: UploadFile = File(...)):
 @router.post("/preview_blur")
 async def preview_blur_frame(config: BlurPreviewConfig):
     """
-    Generates a preview frame demonstrating the requested blur configuration.
+    Generates a preview frame fetching the source video from S3 if absent.
     """
     safe_filename = os.path.basename(config.filename)
-    file_path = os.path.join(UPLOAD_DIR, safe_filename)
+    file_path = os.path.join(CACHE_DIR, safe_filename)
 
     if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Video file not found")
+        success = await asyncio.to_thread(storage_manager.download_file, safe_filename, file_path)
+        if not success:
+            raise HTTPException(status_code=404, detail="Video file not found in storage.")
 
     blur_mgr = BlurManager()
     try:
@@ -136,16 +142,13 @@ async def preview_blur_frame(config: BlurPreviewConfig):
 @router.post("/render_blur")
 async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTasks):
     """
-    Starts a background task to render the final blurred video.
+    Starts a background render task, uploading the output video to S3 upon completion.
     """
     safe_filename = os.path.basename(config.filename)
-    file_path = os.path.join(UPLOAD_DIR, safe_filename)
-
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Video file not found")
+    file_path = os.path.join(CACHE_DIR, safe_filename)
 
     output_filename = f"blurred_{safe_filename}"
-    output_path = os.path.join(UPLOAD_DIR, output_filename)
+    output_path = os.path.join(CACHE_DIR, output_filename)
 
     if os.path.exists(output_path):
         try:
@@ -179,6 +182,9 @@ async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTa
         success = False
         error_msg = None
         try:
+            if not os.path.exists(file_path):
+                storage_manager.download_file(safe_filename, file_path)
+
             blur_mgr.apply_blur_task(
                 file_path,
                 config.subtitles,
@@ -186,6 +192,11 @@ async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTa
                 output_path,
                 progress_cb
             )
+
+            upload_ok = storage_manager.upload_file(output_path, output_filename)
+            if not upload_ok:
+                raise Exception("Failed to upload rendered video to S3.")
+
             success = True
         except InterruptedError:
             error_msg = "Stopped by user"
@@ -201,7 +212,7 @@ async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTa
 
             payload = {"type": "finish", "success": success}
             if success:
-                payload["download_url"] = f"/uploads/{output_filename}"
+                payload["download_url"] = f"/api/video/download/{output_filename}"
             if error_msg:
                 payload["error"] = error_msg
 

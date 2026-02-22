@@ -1,5 +1,5 @@
 """
-Router module for handling video uploads, frame extraction, and preview generation.
+Router module for handling video uploads, frame extraction, and preview generation using S3 storage.
 """
 import os
 import re
@@ -8,20 +8,21 @@ import cv2
 import asyncio
 from typing import Union, List, Dict
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import StreamingResponse, RedirectResponse
 from io import BytesIO
 
 from media.video.manager import VideoManager
 from media.video.upload import UploadManager
 from api.schemas import VideoMetadata, PreviewConfig
 from api.websockets.manager import connection_manager
+from core.storage import storage_manager
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+CACHE_DIR = "cache"
+os.makedirs(CACHE_DIR, exist_ok=True)
 
-upload_manager = UploadManager(UPLOAD_DIR)
+upload_manager = UploadManager(CACHE_DIR)
 
 ALLOWED_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm"}
 
@@ -48,7 +49,7 @@ async def upload_video(
         client_id: str = Form(None)
 ) -> Union[VideoMetadata, dict]:
     """
-    Handles reliable chunked video uploads with isolated state management and automatic codec transcoding.
+    Handles reliable chunked video uploads and synchronization with S3 storage.
     """
     if not re.match(r"^[a-zA-Z0-9\-]+$", upload_id):
         raise HTTPException(
@@ -83,7 +84,7 @@ async def upload_video(
         frame, total_frames = await asyncio.to_thread(VideoManager.get_video_info, final_path)
 
         if frame is None:
-            logger.warning(f"OpenCV failed to decode {final_filename}. Attempting automatic H.264 fallback conversion.")
+            logger.warning(f"OpenCV failed to decode {final_filename}. Attempting H.264 fallback.")
             if client_id:
                 await connection_manager.send_json(client_id, {"type": "log", "message": "CONVERTING_CODEC"})
 
@@ -99,8 +100,12 @@ async def upload_video(
                 os.remove(final_path)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid video format or unsupported codec. Automatic H.264 conversion failed."
+                detail="Invalid video format or unsupported codec."
             )
+
+        upload_success = await asyncio.to_thread(storage_manager.upload_file, final_path, final_filename)
+        if not upload_success:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="S3 upload failed.")
 
         height, width, _ = frame.shape
         cap = cv2.VideoCapture(final_path)
@@ -122,30 +127,28 @@ async def upload_video(
 @router.get("/download/{filename}")
 async def download_file(filename: str):
     """
-    Provides a download stream for the requested video file.
+    Redirects the user to a secure Presigned URL for downloading the file directly from S3.
     """
     safe_filename = os.path.basename(filename)
-    file_path = os.path.join(UPLOAD_DIR, safe_filename)
+    url = storage_manager.get_presigned_url(safe_filename)
 
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    if not url:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found in storage.")
 
-    return FileResponse(
-        path=file_path,
-        filename=safe_filename,
-        media_type='application/octet-stream'
-    )
+    return RedirectResponse(url=url)
 
 @router.get("/frame/{filename}/{frame_index}")
 async def get_frame(filename: str, frame_index: int):
     """
-    Extracts and returns a specific video frame as a JPEG image.
+    Extracts a frame, fetching the video from S3 into local cache if necessary.
     """
     safe_filename = os.path.basename(filename)
-    file_path = os.path.join(UPLOAD_DIR, safe_filename)
+    file_path = os.path.join(CACHE_DIR, safe_filename)
 
     if not os.path.exists(file_path):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+        success = await asyncio.to_thread(storage_manager.download_file, safe_filename, file_path)
+        if not success:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found in storage.")
 
     image = await asyncio.to_thread(VideoManager.get_frame_image, file_path, frame_index)
     if image is None:
@@ -159,13 +162,15 @@ async def get_frame(filename: str, frame_index: int):
 @router.post("/preview")
 async def get_preview(config: PreviewConfig):
     """
-    Generates and returns a processed preview frame based on configuration.
+    Generates a processed preview frame, fetching the video from S3 into local cache if necessary.
     """
     safe_filename = os.path.basename(config.filename)
-    file_path = os.path.join(UPLOAD_DIR, safe_filename)
+    file_path = os.path.join(CACHE_DIR, safe_filename)
 
     if not os.path.exists(file_path):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+        success = await asyncio.to_thread(storage_manager.download_file, safe_filename, file_path)
+        if not success:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found in storage.")
 
     preview_image = await asyncio.to_thread(
         VideoManager.generate_preview,

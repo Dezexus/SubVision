@@ -1,6 +1,6 @@
 """
-This module provides a cleanup utility to periodically remove old files
-and abandoned upload chunks to conserve disk space.
+This module provides a cleanup utility to periodically remove old cached files
+and abandoned upload chunks to conserve local disk space.
 """
 import os
 import time
@@ -8,25 +8,25 @@ import logging
 import shutil
 
 logger = logging.getLogger(__name__)
-UPLOAD_DIR = "uploads"
-TEMP_UPLOAD_DIR = os.path.join(UPLOAD_DIR, ".temp")
+CACHE_DIR = "cache"
+TEMP_UPLOAD_DIR = os.path.join(CACHE_DIR, ".temp")
 
 def cleanup_old_files(max_age_hours: int = 24) -> None:
     """
-    Deletes outdated files and abandoned temporary upload directories.
+    Deletes outdated files and abandoned temporary upload directories from the local cache.
     """
-    if not os.path.exists(UPLOAD_DIR):
+    if not os.path.exists(CACHE_DIR):
         return
 
-    logger.info(f"Running cleanup task for files older than {max_age_hours} hours...")
+    logger.info(f"Running cleanup task for cached files older than {max_age_hours} hours...")
     now = time.time()
     cutoff = now - (max_age_hours * 3600)
     count = 0
     deleted_size = 0
 
     try:
-        for filename in os.listdir(UPLOAD_DIR):
-            file_path = os.path.join(UPLOAD_DIR, filename)
+        for filename in os.listdir(CACHE_DIR):
+            file_path = os.path.join(CACHE_DIR, filename)
 
             if not os.path.isfile(file_path) or filename.startswith("."):
                 continue
