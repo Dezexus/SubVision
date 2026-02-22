@@ -27,6 +27,7 @@ export const SettingsPanel = () => {
   } = useAppStore();
 
   const handleStart = async () => {
+    // [Logic remains unchanged]
     if (!metadata) return;
     setProcessing(true);
     addLog('--- Starting Process ---');
@@ -46,6 +47,7 @@ export const SettingsPanel = () => {
   };
 
   const handleStop = async () => {
+    // [Logic remains unchanged]
     try {
       await api.stopProcessing(clientId);
     } catch (e) {
@@ -55,6 +57,7 @@ export const SettingsPanel = () => {
   };
 
   return (
+    // Restored the w-[360px] width definition
     <GlassPanel className="w-[360px] flex flex-col h-full z-20 bg-bg-main">
       <div className="p-5 border-b border-border-main flex justify-between items-center bg-bg-panel">
         <h2 className="font-bold text-txt-main uppercase tracking-wider text-sm">

@@ -18,7 +18,6 @@ function App() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Let the browser handle native text undo inside inputs/textareas
       if (e.target instanceof HTMLElement) {
         const tag = e.target.tagName.toLowerCase();
         if (tag === 'input' || tag === 'textarea') return;
@@ -50,7 +49,8 @@ function App() {
 
       <div className="flex h-full p-4 gap-4">
         {file && (
-          <div className="h-full z-20">
+          // Added min-w and w- classes to ensure fixed sidebar width
+          <div className="h-full z-20 flex-shrink-0">
             <SettingsPanel />
           </div>
         )}
@@ -60,7 +60,8 @@ function App() {
         </div>
 
         {file && (
-          <div className="h-full z-20">
+          // Added width constraints back for the results panel
+          <div className="h-full z-20 flex-shrink-0">
             <ResultsPanel />
           </div>
         )}

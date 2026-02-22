@@ -95,6 +95,7 @@ export const ResultsPanel = () => {
   };
 
   return (
+    // Restored the w-full lg:w-1/4 min-w-[320px] width definition
     <GlassPanel className="w-full lg:w-1/4 min-w-[320px] flex flex-col h-full z-20 bg-bg-main">
       <ProgressHeader />
 

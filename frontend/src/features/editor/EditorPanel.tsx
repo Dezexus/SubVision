@@ -33,7 +33,8 @@ export const EditorPanel = () => {
 
   if (!file) {
     return (
-      <div className="flex-1 m-4 border border-border-main rounded-xl bg-bg-deep overflow-hidden shadow-2xl flex items-center justify-center">
+      // Added h-full and w-full to make WelcomeScreen fill the empty EditorPanel
+      <div className="w-full h-full border border-border-main rounded-xl bg-bg-deep overflow-hidden shadow-2xl flex items-center justify-center">
          <WelcomeScreen />
       </div>
     );
