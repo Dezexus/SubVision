@@ -2,7 +2,7 @@
  * Advanced settings component including OCR threshold, frame stepping, and language selection.
  */
 import React from 'react';
-import { Settings2, Globe } from 'lucide-react';
+import { Globe } from 'lucide-react';
 import { useAppStore } from '../../../store/useAppStore';
 import { Slider } from '../../../components/ui/Slider';
 import { Switch } from '../../../components/ui/Switch';
@@ -12,11 +12,6 @@ export const AdvancedSettings = () => {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-txt-muted mb-2">
-        <Settings2 size={14} />
-        <span>Fine Tuning</span>
-      </div>
-
       <div className="space-y-3">
         <div className="flex justify-between items-end mb-1">
           <label className="text-xs font-bold uppercase tracking-wide text-txt-muted select-none flex items-center gap-1.5">
@@ -29,14 +24,14 @@ export const AdvancedSettings = () => {
             onChange={(e) => updateConfig({ languages: e.target.value })}
             className="w-full bg-bg-input border border-border-strong rounded-md text-sm text-txt-main px-3 py-2 focus:outline-none focus:ring-1 focus:ring-brand-500 appearance-none cursor-pointer font-medium"
           >
-            <option value="en">English (en)</option>
-            <option value="ru">Russian (ru)</option>
-            <option value="ch">Chinese (ch)</option>
-            <option value="fr">French (fr)</option>
-            <option value="german">German (german)</option>
-            <option value="korean">Korean (korean)</option>
-            <option value="japan">Japanese (japan)</option>
-            <option value="es">Spanish (es)</option>
+            <option value="en">English</option>
+            <option value="ru">Russian</option>
+            <option value="ch">Chinese</option>
+            <option value="fr">French</option>
+            <option value="german">German</option>
+            <option value="korean">Korean</option>
+            <option value="japan">Japanese</option>
+            <option value="es">Spanish</option>
           </select>
           <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-txt-subtle">
             <svg className="w-4 h-4 fill-current" viewBox="0 0 20 20">
