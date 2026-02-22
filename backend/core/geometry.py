@@ -2,31 +2,23 @@
 Module for calculating geometries, bounding boxes, and text dimensions.
 """
 import math
-import unicodedata
 from typing import Any, Tuple, List, Dict
 import cv2
 import numpy as np
 
 def estimate_text_width(text: str, font_size: int, width_multiplier: float) -> int:
     """
-    Calculates conservative pixel width of text using Unicode character weighting.
+    Calculates precise pixel width of text using OpenCV font rendering metrics.
     """
-    width = 0.0
-    for char in text:
-        ea = unicodedata.east_asian_width(char)
-        if ea in ('W', 'F'):
-            width += 1.1
-        elif char in 'mwWM@OQG':
-            width += 0.95
-        elif char.isupper():
-            width += 0.8
-        elif char.isdigit():
-            width += 0.65
-        elif char in 'il1.,!I|:;tfj':
-            width += 0.35
-        else:
-            width += 0.65
-    return int(math.ceil(width * font_size * width_multiplier))
+    if not text:
+        return 0
+
+    font_scale = font_size / 22.0
+    thickness = max(1, int(font_scale * 2))
+
+    size, _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+
+    return int(math.ceil(size[0] * width_multiplier))
 
 def calculate_blur_roi(text: str, width: int, height: int, settings: Dict[str, Any]) -> Tuple[int, int, int, int]:
     """
