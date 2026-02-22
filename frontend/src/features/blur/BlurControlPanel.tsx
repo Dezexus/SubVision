@@ -1,12 +1,11 @@
 /**
  * Control panel for configuring blur effect geometry and appearance parameters.
- * Uses a card-based layout for logical grouping of settings.
+ * Uses a card-based layout for logical grouping of settings without redundant headers.
  */
 import React, { useEffect } from 'react';
 import {
-  Sliders, Video, RotateCcw,
-  Wand2, ScanLine, BoxSelect,
-  Droplet, Loader2
+  Video, RotateCcw, Wand2,
+  ScanLine, BoxSelect, Droplet, Loader2
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { Slider } from '../../components/ui/Slider';
@@ -85,29 +84,25 @@ export const BlurControlPanel = () => {
 
   return (
     <div className="flex flex-col h-full bg-bg-main">
-      <div className="p-4 border-b border-border-main flex justify-between items-center bg-bg-panel">
-        <div className="flex items-center gap-2 text-txt-main">
-            <Sliders size={16} className="text-brand-400" />
-            <h3 className="font-bold uppercase text-xs tracking-widest">Effect Controls</h3>
-        </div>
-        <div className="flex items-center gap-3">
-            {isPreviewUpdating && (
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
+
+        {/* Compact Actions Row */}
+        <div className="flex justify-between items-center mb-1">
+            {isPreviewUpdating ? (
                 <div className="flex items-center gap-1.5 text-[10px] text-brand-500 font-mono animate-pulse">
                     <Loader2 size={10} className="animate-spin" />
-                    PREVIEW
+                    UPDATING PREVIEW
                 </div>
-            )}
+            ) : <div />}
             <button
                 onClick={handleReset}
-                className="p-1.5 text-txt-subtle hover:text-white hover:bg-bg-surface rounded transition-colors"
-                title="Reset to defaults"
+                className="flex items-center gap-1.5 text-[10px] font-bold text-txt-subtle hover:text-txt-main transition-colors"
+                title="Reset all blur settings to defaults"
             >
-                <RotateCcw size={14} />
+                <RotateCcw size={10} />
+                RESET ALL
             </button>
         </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
 
         <div className="bg-bg-panel border border-border-main rounded-lg p-3 space-y-3 shadow-sm">
             <div className="flex items-center gap-2 text-[11px] font-bold text-txt-subtle uppercase tracking-wider mb-2">
@@ -133,11 +128,6 @@ export const BlurControlPanel = () => {
                     HYBRID INPAINT
                 </button>
             </div>
-            {blurSettings.mode === 'hybrid' && (
-                <p className="text-[10px] text-txt-subtle leading-tight">
-                    Reconstructs the background using Inpaint and smooths artifacts. Best for readability.
-                </p>
-            )}
         </div>
 
         <div className="bg-bg-panel border border-border-main rounded-lg p-3 space-y-4 shadow-sm">
