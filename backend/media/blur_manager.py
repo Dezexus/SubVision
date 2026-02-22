@@ -11,7 +11,7 @@ import queue
 import unicodedata
 import math
 from typing import Optional, Tuple, List, Dict
-from core.image_ops import extract_frame_cv2
+from core.video_io import extract_frame_cv2
 
 logger = logging.getLogger(__name__)
 

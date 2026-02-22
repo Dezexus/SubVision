@@ -7,8 +7,8 @@ from collections.abc import Callable
 from typing import Any
 import threading
 
-from core.image_ops import calculate_roi_from_mask
-from core.worker import OCRWorker
+from core.geometry import calculate_roi_from_mask
+from ocr.worker import OCRWorker
 
 logger = logging.getLogger(__name__)
 

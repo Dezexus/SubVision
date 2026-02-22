@@ -10,15 +10,15 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from media.image_filters.filters import apply_sharpening, denoise_frame
-from media.image_filters.geometry import calculate_roi_from_mask
-from media.video.io import extract_frame_cv2
+from core.filters import apply_sharpening, denoise_frame
+from core.geometry import calculate_roi_from_mask
+from core.video_io import extract_frame_cv2
 
 logger = logging.getLogger(__name__)
 
 class VideoManager:
     """
-    A collection of static methods for video conversion, metadata, and previews.
+    A collection of static methods for video conversion, metadata extraction, and previews.
     """
 
     @staticmethod
@@ -52,7 +52,7 @@ class VideoManager:
     @staticmethod
     def get_video_info(video_path: str | None) -> tuple[np.ndarray | None, int]:
         """
-        Extracts the total frame count and the first valid frame from a video with a software decoding fallback.
+        Extracts the total frame count and the first valid frame from a video with fallback.
         """
         if not video_path:
             return None, 1
@@ -100,7 +100,7 @@ class VideoManager:
             scale_factor: float,
     ) -> Image.Image | None:
         """
-        Generates a processed preview image for a specific frame.
+        Generates a processed preview image for a specific frame based on UI parameters.
         """
         if not video_path:
             return None

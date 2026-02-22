@@ -5,12 +5,12 @@ of image processing operations on a frame.
 from typing import Any
 import numpy as np
 import cv2
-from media.image_filters.filters import (
+from core.filters import (
     apply_scaling, apply_sharpening,
     denoise_frame, apply_scaling_paddle,
     apply_sharpening_paddle
 )
-from media.motion import detect_change_absolute, detect_change_paddle
+from core.motion import detect_change_absolute, detect_change_paddle
 
 try:
     import paddle
