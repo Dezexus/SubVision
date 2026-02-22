@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from api.routers import video, processing
 from api.routers.processing import process_mgr
 from api.websockets.manager import connection_manager
-from core.cleanup import cleanup_old_files
+from services.cleanup import cleanup_old_files
 
 async def periodic_cleanup(interval_seconds: int = 3600, max_age_hours: int = 12) -> None:
     """
