@@ -1,5 +1,6 @@
 /**
- * Optimized slider component utilizing semantic theme variables.
+ * A minimalist, highly optimized slider component designed for dense control panels.
+ * Features a slim track, clean typography, and deferred global state commits.
  */
 import React, { useEffect, useState, useCallback } from 'react';
 import { cn } from '../../utils/cn';
@@ -51,46 +52,46 @@ export const Slider = ({ label, valueDisplay, suffix, className, onChange, ...pr
   };
 
   return (
-    <div className={cn("w-full space-y-3 font-sans", className)}>
-      <div className="flex justify-between items-end">
+    <div className={cn("w-full space-y-1.5 font-sans group/slider", className)}>
+      <div className="flex justify-between items-center">
         {label ? (
-          <label className="text-xs font-bold uppercase tracking-wide text-txt-muted select-none mb-1">
+          <label className="text-[11px] font-medium text-txt-muted select-none">
             {label}
           </label>
         ) : <span />}
 
         {isEditable ? (
-           <div className="flex items-center bg-bg-input border border-border-strong rounded-md overflow-hidden focus-within:ring-1 focus-within:ring-brand-500 shadow-sm h-7">
+           <div className="flex items-center text-[11px] font-mono">
               <input
                   type="number"
                   value={localValue}
                   onChange={handleLocalChange}
                   onBlur={handleCommit}
                   onKeyDown={handleKeyDown}
-                  className="w-14 bg-transparent text-txt-main text-sm font-mono font-bold text-center focus:outline-none p-1 h-full appearance-none"
+                  className="w-10 bg-transparent text-txt-main text-right focus:text-brand-400 focus:bg-bg-hover rounded px-1 transition-colors outline-none appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   min={min}
                   max={max}
                   step={step}
               />
               {suffix && (
-                  <span className="text-[10px] text-txt-dim font-bold bg-bg-surface h-full px-1.5 flex items-center justify-center border-l border-border-strong select-none">
+                  <span className="text-txt-subtle ml-0.5 select-none">
                       {suffix}
                   </span>
               )}
            </div>
         ) : (
             valueDisplay && (
-                <div className="font-mono text-sm font-bold text-txt-main bg-bg-input border border-border-strong px-3 py-1 rounded-md min-w-[4rem] text-center select-all shadow-sm">
+                <div className="text-[11px] font-mono text-txt-main pr-1">
                     {valueDisplay}
                 </div>
             )
         )}
       </div>
 
-      <div className="relative h-8 flex items-center group">
+      <div className="relative h-4 flex items-center group/track cursor-pointer">
         <input
           type="range"
-          className="w-full absolute z-20 opacity-0 cursor-pointer h-full appearance-none bg-transparent"
+          className="w-full absolute z-20 opacity-0 cursor-pointer h-full m-0"
           value={localValue}
           onChange={handleLocalChange}
           onMouseUp={handleCommit}
@@ -103,7 +104,7 @@ export const Slider = ({ label, valueDisplay, suffix, className, onChange, ...pr
           {...restProps}
         />
 
-        <div className="w-full h-3 bg-bg-track rounded-full overflow-hidden border border-border-main relative z-10 pointer-events-none shadow-inner">
+        <div className="w-full h-1 bg-border-main rounded-full overflow-hidden relative z-10 pointer-events-none transition-colors group-hover/track:bg-border-strong">
           <div
             className="h-full bg-brand-500 transition-all duration-75 ease-out"
             style={{ width: `${percentage}%` }}
@@ -111,8 +112,8 @@ export const Slider = ({ label, valueDisplay, suffix, className, onChange, ...pr
         </div>
 
         <div
-          className="absolute h-5 w-5 bg-txt-main border-2 border-bg-main rounded-full shadow-[0_2px_4px_rgba(0,0,0,0.3)] z-10 pointer-events-none transition-transform duration-75 ease-out group-hover:scale-110 group-active:scale-95"
-          style={{ left: `calc(${percentage}% - 10px)` }}
+          className="absolute h-2.5 w-2.5 bg-white rounded-full shadow-sm z-10 pointer-events-none transition-transform duration-75 ease-out group-hover/slider:scale-125"
+          style={{ left: `calc(${percentage}% - 5px)` }}
         />
       </div>
     </div>
