@@ -13,7 +13,7 @@ import cv2
 from api.schemas import ProcessConfig, RenderConfig, BlurPreviewConfig
 from api.websockets.manager import connection_manager
 from ocr.process_manager import ProcessManager
-from media.blur_manager import BlurManager
+from media.video.writer import BlurManager
 from core.srt_parser import parse_srt
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,6 @@ UPLOAD_DIR = "uploads"
 
 render_registry: dict[str, BlurManager] = {}
 render_lock = threading.Lock()
-
 
 @router.post("/start")
 async def start_process(config: ProcessConfig):
@@ -69,7 +68,6 @@ async def start_process(config: ProcessConfig):
         logger.error(f"Error starting process: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.post("/stop/{client_id}")
 async def stop_process(client_id: str):
     """
@@ -84,7 +82,6 @@ async def stop_process(client_id: str):
             render_stopped = True
 
     return {"status": "stopped", "ocr_stopped": ocr_stopped, "render_stopped": render_stopped}
-
 
 @router.post("/import_srt")
 async def import_srt(file: UploadFile = File(...)):
@@ -105,7 +102,6 @@ async def import_srt(file: UploadFile = File(...)):
             raise HTTPException(status_code=400, detail="Invalid file encoding")
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to parse SRT: {str(e)}")
-
 
 @router.post("/preview_blur")
 async def preview_blur_frame(config: BlurPreviewConfig):
@@ -136,7 +132,6 @@ async def preview_blur_frame(config: BlurPreviewConfig):
     except Exception as e:
         logger.error(f"Preview generation failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @router.post("/render_blur")
 async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTasks):
