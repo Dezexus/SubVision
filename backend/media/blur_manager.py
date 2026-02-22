@@ -1,11 +1,11 @@
 """
-Manager responsible for multi-threaded video rendering and FFmpeg orchestration.
+Manager responsible for multi-threaded video rendering and async FFmpeg orchestration.
 """
 import cv2
 import numpy as np
 import logging
 import os
-import subprocess
+import asyncio
 import threading
 import queue
 from typing import Optional, Tuple, List, Dict, Any
@@ -24,7 +24,7 @@ except AttributeError:
 
 class BlurManager:
     """
-    Manages the accelerated rendering pipeline handling queues and subprocess execution.
+    Manages the accelerated rendering pipeline handling queues and async subprocess execution.
     """
 
     def __init__(self) -> None:
@@ -52,30 +52,32 @@ class BlurManager:
         roi = calculate_blur_roi(text, width, height, settings)
         return apply_blur_to_frame(frame, roi, settings)
 
-    def _run_subprocess_cancellable(self, cmd: List[str]) -> None:
+    async def _run_subprocess_cancellable(self, cmd: List[str]) -> None:
         """
-        Executes a subprocess and safely terminates it if the stop event is triggered.
+        Executes a subprocess asynchronously and safely terminates it if the stop event is triggered.
         """
-        process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        process = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+        )
 
-        while process.poll() is None:
+        while process.returncode is None:
             if self._stop_event.is_set():
-                process.terminate()
                 try:
-                    process.wait(timeout=2.0)
-                except subprocess.TimeoutExpired:
+                    process.terminate()
+                    await asyncio.wait_for(process.wait(), timeout=2.0)
+                except asyncio.TimeoutError:
                     process.kill()
                 raise InterruptedError("Process was cancelled by user.")
 
             try:
-                process.wait(timeout=0.5)
-            except subprocess.TimeoutExpired:
+                await asyncio.wait_for(process.wait(), timeout=0.5)
+            except asyncio.TimeoutError:
                 continue
 
         if process.returncode != 0:
-            raise subprocess.CalledProcessError(process.returncode, cmd)
+            raise RuntimeError(f"Command failed with code {process.returncode}")
 
-    def apply_blur_task(
+    async def apply_blur_task(
             self,
             video_path: str,
             subtitles: List[Dict[str, Any]],
@@ -84,7 +86,7 @@ class BlurManager:
             progress_callback=None
     ) -> str:
         """
-        Executes the full video obscuring and accelerated hardware rendering pipeline.
+        Executes the full video obscuring and accelerated hardware rendering pipeline asynchronously.
         """
         self._is_running = True
         self._stop_event.clear()
@@ -191,7 +193,7 @@ class BlurManager:
             t_write.start()
 
             while t_write.is_alive():
-                t_write.join(timeout=0.5)
+                await asyncio.sleep(0.5)
                 if self._stop_event.is_set():
                     task_stop.set()
                     raise InterruptedError("Stopped by user")
@@ -244,16 +246,16 @@ class BlurManager:
 
                 try:
                     cmd_nvenc_copy = base_cmd + nvenc_params + ["-c:a", "copy", output_path]
-                    self._run_subprocess_cancellable(cmd_nvenc_copy)
-                except subprocess.CalledProcessError:
+                    await self._run_subprocess_cancellable(cmd_nvenc_copy)
+                except RuntimeError:
                     try:
                         logger.warning("NVENC audio copy failed, falling back to AAC with NVENC...")
                         cmd_nvenc_aac = base_cmd + nvenc_params + ["-c:a", "aac", output_path]
-                        self._run_subprocess_cancellable(cmd_nvenc_aac)
-                    except subprocess.CalledProcessError:
+                        await self._run_subprocess_cancellable(cmd_nvenc_aac)
+                    except RuntimeError:
                         logger.warning("NVENC encoding failed, falling back to software libx264...")
                         cmd_x264_aac = base_cmd + x264_params + ["-c:a", "aac", output_path]
-                        self._run_subprocess_cancellable(cmd_x264_aac)
+                        await self._run_subprocess_cancellable(cmd_x264_aac)
 
                 if os.path.exists(temp_video_path):
                     os.remove(temp_video_path)

@@ -89,7 +89,7 @@ async def upload_video(
             if client_id:
                 await connection_manager.send_json(client_id, {"type": "log", "message": "CONVERTING_CODEC"})
 
-            converted_path = await asyncio.to_thread(VideoManager.convert_video_to_h264, final_path)
+            converted_path = await VideoManager.convert_video_to_h264(final_path)
             if converted_path and os.path.exists(converted_path):
                 os.remove(final_path)
                 final_path = converted_path

@@ -1,9 +1,9 @@
 """
-Module for handling standard video metadata parsing and conversions.
+Module for handling standard video metadata parsing and conversions asynchronously.
 """
 import logging
 import os
-import subprocess
+import asyncio
 from typing import Any
 
 import cv2
@@ -22,9 +22,9 @@ class VideoManager:
     """
 
     @staticmethod
-    def convert_video_to_h264(input_path: str) -> str | None:
+    async def convert_video_to_h264(input_path: str) -> str | None:
         """
-        Converts a video to a standard MP4 format using FFmpeg with robust audio encoding.
+        Converts a video to a standard MP4 format using FFmpeg with robust audio encoding asynchronously.
         """
         if not input_path:
             return None
@@ -40,10 +40,22 @@ class VideoManager:
             output_path,
         ]
         try:
-            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            logger.info("Conversion successful.")
-            return output_path
-        except (subprocess.CalledProcessError, FileNotFoundError):
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL
+            )
+            await process.wait()
+
+            if process.returncode == 0:
+                logger.info("Conversion successful.")
+                return output_path
+
+            logger.error("FFmpeg conversion failed.")
+            if os.path.exists(output_path):
+                os.remove(output_path)
+            return None
+        except Exception:
             logger.error("FFmpeg conversion failed.")
             if os.path.exists(output_path):
                 os.remove(output_path)

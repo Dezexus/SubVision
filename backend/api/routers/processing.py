@@ -170,8 +170,7 @@ async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTa
         try:
             file_path = await ensure_video_cached(config.filename)
 
-            await asyncio.to_thread(
-                blur_mgr.apply_blur_task,
+            await blur_mgr.apply_blur_task(
                 file_path,
                 config.subtitles,
                 config.blur_settings.dict(),
