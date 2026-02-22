@@ -1,5 +1,6 @@
 /**
  * Control panel for configuring blur effect geometry and appearance parameters.
+ * Uses a card-based layout for logical grouping of settings.
  */
 import React, { useEffect } from 'react';
 import {
@@ -99,23 +100,25 @@ export const BlurControlPanel = () => {
             <button
                 onClick={handleReset}
                 className="p-1.5 text-txt-subtle hover:text-white hover:bg-bg-surface rounded transition-colors"
+                title="Reset to defaults"
             >
                 <RotateCcw size={14} />
             </button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-hide">
-        <div className="space-y-3">
-            <div className="flex items-center gap-2 text-[11px] font-bold text-txt-subtle uppercase tracking-wider">
-                 <Wand2 size={14} /> Obscuring Mode
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
+
+        <div className="bg-bg-panel border border-border-main rounded-lg p-3 space-y-3 shadow-sm">
+            <div className="flex items-center gap-2 text-[11px] font-bold text-txt-subtle uppercase tracking-wider mb-2">
+                 <Wand2 size={14} className="text-brand-500" /> Algorithm
             </div>
             <div className="flex bg-bg-track p-1 rounded-md border border-border-main gap-1">
                 <button
                     onClick={() => setBlurSettings({ mode: 'blur' })}
                     className={cn(
                       "flex-1 text-[10px] py-1.5 font-bold rounded transition",
-                      blurSettings.mode === 'blur' ? "bg-bg-surface text-white shadow" : "text-txt-subtle hover:text-txt-muted"
+                      blurSettings.mode === 'blur' ? "bg-bg-surface text-white shadow-sm" : "text-txt-subtle hover:text-txt-muted"
                     )}
                 >
                     BOX BLUR
@@ -124,25 +127,24 @@ export const BlurControlPanel = () => {
                     onClick={() => setBlurSettings({ mode: 'hybrid' })}
                     className={cn(
                       "flex-1 text-[10px] py-1.5 font-bold rounded transition",
-                      blurSettings.mode === 'hybrid' ? "bg-brand-500 text-white shadow" : "text-txt-subtle hover:text-txt-muted"
+                      blurSettings.mode === 'hybrid' ? "bg-brand-500 text-white shadow-sm" : "text-txt-subtle hover:text-txt-muted"
                     )}
                 >
-                    HYBRID
+                    HYBRID INPAINT
                 </button>
             </div>
             {blurSettings.mode === 'hybrid' && (
-                <p className="text-[10px] text-txt-subtle italic leading-tight mt-1">
-                    Best quality. Reconstructs background using Inpaint and smooths artifacts with a light Blur.
+                <p className="text-[10px] text-txt-subtle leading-tight">
+                    Reconstructs the background using Inpaint and smooths artifacts. Best for readability.
                 </p>
             )}
         </div>
 
-        <div className="space-y-4">
-            <div className="flex items-center gap-2 text-[11px] font-bold text-txt-subtle uppercase tracking-wider">
-                 <ScanLine size={14} /> Target Geometry (Green)
+        <div className="bg-bg-panel border border-border-main rounded-lg p-3 space-y-4 shadow-sm">
+            <div className="flex items-center gap-2 text-[11px] font-bold text-txt-subtle uppercase tracking-wider mb-1">
+                 <ScanLine size={14} className="text-green-500" /> Target Area
             </div>
-
-            <div className="pl-2 border-l-2 border-border-main space-y-4 ml-1">
+            <div className="space-y-4">
                 <Slider
                   label="Vertical Position (Y)"
                   max={videoHeight}
@@ -166,61 +168,56 @@ export const BlurControlPanel = () => {
             </div>
         </div>
 
-        <div className="space-y-4">
-            <div className="flex items-center gap-2 text-[11px] font-bold text-txt-subtle uppercase tracking-wider">
-                 <BoxSelect size={14} /> Effect Coverage (Red)
+        <div className="bg-bg-panel border border-border-main rounded-lg p-3 space-y-4 shadow-sm">
+            <div className="flex items-center gap-2 text-[11px] font-bold text-txt-subtle uppercase tracking-wider mb-1">
+                 <BoxSelect size={14} className="text-red-500" /> Padding Coverage
             </div>
-
-            <div className="pl-2 border-l-2 border-border-main space-y-4 ml-1">
-                <div className="grid grid-cols-2 gap-4">
-                    <Slider
-                      label="Spread X"
-                      max={150}
-                      value={blurSettings.padding_x}
-                      suffix="px"
-                      onChange={(e) => setBlurSettings({ padding_x: Number(e.target.value) })}
-                    />
-                    <Slider
-                      label="Spread Y"
-                      min={0} max={4.0} step={0.1}
-                      value={blurSettings.padding_y}
-                      suffix="x"
-                      onChange={(e) => setBlurSettings({ padding_y: Number(e.target.value) })}
-                    />
-                </div>
-            </div>
-        </div>
-
-        <div className="h-px bg-border-main" />
-
-        <div className="space-y-4">
-            <div className="flex items-center gap-2 text-[11px] font-bold text-txt-subtle uppercase tracking-wider">
-                <Droplet size={14} /> Appearance
-            </div>
-
-            <div className="bg-bg-panel p-3 rounded border border-border-main space-y-4">
+            <div className="grid grid-cols-2 gap-4">
                 <Slider
-                label="Intensity"
-                max={100}
-                value={blurSettings.sigma}
-                suffix="%"
-                onChange={(e) => setBlurSettings({ sigma: Number(e.target.value) })}
+                  label="Spread X"
+                  max={150}
+                  value={blurSettings.padding_x}
+                  suffix="px"
+                  onChange={(e) => setBlurSettings({ padding_x: Number(e.target.value) })}
                 />
                 <Slider
-                label="Feather / Softness"
-                max={100}
-                value={blurSettings.feather}
-                suffix="px"
-                onChange={(e) => setBlurSettings({ feather: Number(e.target.value) })}
+                  label="Spread Y"
+                  min={0} max={4.0} step={0.1}
+                  value={blurSettings.padding_y}
+                  suffix="x"
+                  onChange={(e) => setBlurSettings({ padding_y: Number(e.target.value) })}
                 />
             </div>
         </div>
+
+        <div className="bg-bg-panel border border-border-main rounded-lg p-3 space-y-4 shadow-sm">
+            <div className="flex items-center gap-2 text-[11px] font-bold text-txt-subtle uppercase tracking-wider mb-1">
+                <Droplet size={14} className="text-brand-400" /> Appearance
+            </div>
+            <div className="space-y-4">
+                <Slider
+                  label="Intensity (Sigma)"
+                  max={100}
+                  value={blurSettings.sigma}
+                  suffix="%"
+                  onChange={(e) => setBlurSettings({ sigma: Number(e.target.value) })}
+                />
+                <Slider
+                  label="Edge Softness"
+                  max={100}
+                  value={blurSettings.feather}
+                  suffix="px"
+                  onChange={(e) => setBlurSettings({ feather: Number(e.target.value) })}
+                />
+            </div>
+        </div>
+
       </div>
 
       <div className="p-4 border-t border-border-main bg-bg-panel">
         <Button
           variant="primary"
-          className="w-full py-3 text-sm font-semibold tracking-wide shadow-lg hover:shadow-brand-500/20 transition-all"
+          className="w-full py-3 text-sm font-semibold tracking-wide shadow-md"
           icon={<Video size={16} />}
           onClick={handleRender}
           isLoading={isProcessing}
