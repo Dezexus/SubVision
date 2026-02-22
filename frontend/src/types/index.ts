@@ -1,3 +1,6 @@
+/**
+ * Global application types and interfaces.
+ */
 export interface VideoMetadata {
   filename: string;
   total_frames: number;
@@ -50,6 +53,12 @@ export interface SubtitleItem {
   text: string;
   conf: number;
   isEdited?: boolean;
+}
+
+export interface ToastMessage {
+  id: string;
+  type: 'success' | 'error' | 'info';
+  message: string;
 }
 
 export type WebSocketMessage =

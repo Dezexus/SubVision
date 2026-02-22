@@ -6,7 +6,7 @@ import { useAppStore } from '../../../store/useAppStore';
 import { api } from '../../../services/api';
 
 export const useVideoUpload = () => {
-  const { setFile, setMetadata, addLog, clientId, logs } = useAppStore();
+  const { setFile, setMetadata, addLog, clientId, logs, addToast } = useAppStore();
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -21,7 +21,9 @@ export const useVideoUpload = () => {
     const isVideoType = selectedFile.type.startsWith('video/');
 
     if (!isVideoType && !hasValidExt) {
-      setErrorMsg('Invalid file type. Please upload MP4, MKV, AVI, MOV or WEBM.');
+      const msg = 'Invalid file type. Please upload MP4, MKV, AVI, MOV or WEBM.';
+      setErrorMsg(msg);
+      addToast(msg, 'error');
       return;
     }
 
@@ -33,6 +35,7 @@ export const useVideoUpload = () => {
       const metadata = await api.uploadVideo(selectedFile, clientId, (pct) => setUploadProgress(pct));
       setMetadata(metadata);
       setFile(selectedFile);
+      addToast('Video uploaded successfully', 'success');
     } catch (error: any) {
       console.error(error);
       const msg = error.code === "ERR_NETWORK"
@@ -41,10 +44,11 @@ export const useVideoUpload = () => {
 
       setErrorMsg(msg);
       addLog(`Error: ${msg}`);
+      addToast(msg, 'error');
     } finally {
       setIsUploading(false);
     }
-  }, [setFile, setMetadata, addLog, clientId]);
+  }, [setFile, setMetadata, addLog, clientId, addToast]);
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
