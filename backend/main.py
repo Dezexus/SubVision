@@ -2,7 +2,6 @@
 Main application module for the SubVision API with modular monolithic architecture.
 """
 import asyncio
-import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +13,7 @@ from api.websockets.manager import connection_manager
 from api.schemas import WebSocketMessage
 from core.cleanup import cleanup_old_files
 from ocr.process_manager import ProcessManager
+from core.config import settings
 
 async def periodic_cleanup(interval_seconds: int = 3600, max_age_hours: int = 12) -> None:
     """
@@ -41,8 +41,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="SubVision API", version="1.0.0", lifespan=lifespan)
 
-allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "http://localhost:7860,http://127.0.0.1:7860")
-allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
+allowed_origins = [origin.strip() for origin in settings.allowed_origins.split(",") if origin.strip()]
 
 app.add_middleware(
     CORSMiddleware,

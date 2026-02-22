@@ -7,6 +7,8 @@ from typing import Optional, Any
 import aioboto3
 from botocore.exceptions import ClientError
 
+from core.config import settings
+
 logger = logging.getLogger(__name__)
 
 class StorageManager:
@@ -15,15 +17,15 @@ class StorageManager:
     """
 
     def __init__(self) -> None:
-        self.endpoint = os.getenv('S3_ENDPOINT')
-        self.bucket_name = os.getenv('S3_BUCKET', 'subvision')
+        self.endpoint = settings.s3_endpoint
+        self.bucket_name = settings.s3_bucket
         self._bucket_checked = False
 
         if self.endpoint:
             self.session = aioboto3.Session(
-                aws_access_key_id=os.getenv('S3_ACCESS_KEY', 'minioadmin'),
-                aws_secret_access_key=os.getenv('S3_SECRET_KEY', 'minioadmin'),
-                region_name=os.getenv('S3_REGION', 'us-east-1')
+                aws_access_key_id=settings.s3_access_key,
+                aws_secret_access_key=settings.s3_secret_key,
+                region_name=settings.s3_region
             )
         else:
             self.session = None

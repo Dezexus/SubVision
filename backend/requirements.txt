@@ -10,3 +10,4 @@ paddleocr
 requests
 pynvvideocodec
 aioboto3
+pydantic-settings
