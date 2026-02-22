@@ -1,0 +1,77 @@
+"""
+Module for calculating geometries, bounding boxes, and text dimensions.
+"""
+import math
+import unicodedata
+from typing import Any, Tuple, List, Dict
+import cv2
+import numpy as np
+
+def estimate_text_width(text: str, font_size: int, width_multiplier: float) -> int:
+    """
+    Calculates conservative pixel width of text using Unicode character weighting.
+    """
+    width = 0.0
+    for char in text:
+        ea = unicodedata.east_asian_width(char)
+        if ea in ('W', 'F'):
+            width += 1.1
+        elif char in 'mwWM@OQG':
+            width += 0.95
+        elif char.isupper():
+            width += 0.8
+        elif char.isdigit():
+            width += 0.65
+        elif char in 'il1.,!I|:;tfj':
+            width += 0.35
+        else:
+            width += 0.65
+    return int(math.ceil(width * font_size * width_multiplier))
+
+def calculate_blur_roi(text: str, width: int, height: int, settings: Dict[str, Any]) -> Tuple[int, int, int, int]:
+    """
+    Calculates the Region of Interest bounding box for the given text.
+    """
+    if not text:
+        return 0, 0, 0, 0
+
+    y_pos = int(settings.get('y', height - 50))
+    font_size_px = int(settings.get('font_size', 21))
+    width_multiplier = float(settings.get('width_multiplier', 1.0))
+
+    text_h = font_size_px + 4
+    text_w = estimate_text_width(text, font_size_px, width_multiplier)
+
+    padding_x = int(settings.get('padding_x', 40))
+    padding_y_factor = float(settings.get('padding_y', 2.0))
+    padding_y_px = int(text_h * padding_y_factor)
+
+    x = (width - text_w) // 2
+    y = y_pos - text_h
+
+    final_x = max(0, x - padding_x)
+    final_y = max(0, y - padding_y_px)
+
+    raw_w = text_w + (padding_x * 2)
+    raw_h = text_h + (padding_y_px * 2)
+
+    final_w = min(width - final_x, raw_w)
+    final_h = min(height - final_y, raw_h)
+
+    return final_x, final_y, final_w, final_h
+
+def calculate_roi_from_mask(image_dict: Dict[str, Any] | None) -> List[int]:
+    """
+    Calculates ROI bounding box from a UI mask layer.
+    """
+    if not image_dict:
+        return [0, 0, 0, 0]
+    layers = image_dict.get("layers")
+    if layers and len(layers) > 0:
+        mask = layers[0]
+        if isinstance(mask, np.ndarray) and mask.ndim == 3 and mask.shape[2] == 4:
+            coords = cv2.findNonZero(mask[:, :, 3])
+            if coords is not None:
+                x, y, w, h = cv2.boundingRect(coords)
+                return [int(x), int(y), int(w), int(h)]
+    return [0, 0, 0, 0]
