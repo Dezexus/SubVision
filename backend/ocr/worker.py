@@ -1,7 +1,6 @@
 """
 Module executing frame extraction, processing, and batch OCR inference inside a background thread.
 """
-import gc
 import logging
 import queue
 import threading
@@ -116,12 +115,6 @@ class OCRWorker(threading.Thread):
 
             aggregator.add_result(text, conf, timestamp)
 
-        if HAS_PADDLE:
-            try:
-                paddle.device.cuda.empty_cache()
-            except Exception:
-                pass
-
     def run(self) -> None:
         """
         Main execution loop accumulating batches for the OCR pipeline with Watchdog monitoring.
@@ -230,14 +223,6 @@ class OCRWorker(threading.Thread):
                     self.frame_queue.get_nowait()
             except Exception:
                 pass
-
-            if HAS_PADDLE:
-                try:
-                    paddle.device.cuda.empty_cache()
-                except Exception:
-                    pass
-
-            gc.collect()
 
     def _update_progress(self, current: int, total: int, start_time: float) -> None:
         """
