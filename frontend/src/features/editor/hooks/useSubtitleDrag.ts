@@ -18,14 +18,13 @@ export const useSubtitleDrag = (scrollContainerRef: React.RefObject<HTMLDivEleme
   const [draggedEdge, setDraggedEdge] = useState<{ id: number, edge: 'start' | 'end' } | null>(null);
 
   const handleEdgeMouseMove = useCallback((e: MouseEvent) => {
+    // [Logic remains unchanged]
     if (!dragRef.current || !scrollContainerRef.current) return;
-
     const state = useAppStore.getState();
     const currentMetadata = state.metadata;
     if (!currentMetadata) return;
 
     const { subId, edge, startX, initialStart, initialEnd } = dragRef.current;
-
     const calculatedDuration = currentMetadata.total_frames / currentMetadata.fps;
     const deltaX = e.clientX - startX;
     const containerWidth = scrollContainerRef.current.scrollWidth;
@@ -39,7 +38,6 @@ export const useSubtitleDrag = (scrollContainerRef: React.RefObject<HTMLDivEleme
     let targetFrame = Math.round(rawNewTime * fps);
 
     const updatedSub = { ...currentSub };
-
     if (edge === 'start') {
         const maxStartFrame = Math.floor((currentSub.end - 0.1) * fps);
         targetFrame = Math.min(Math.max(0, targetFrame), maxStartFrame);
@@ -49,7 +47,6 @@ export const useSubtitleDrag = (scrollContainerRef: React.RefObject<HTMLDivEleme
         targetFrame = Math.max(Math.min(currentMetadata.total_frames, targetFrame), minEndFrame);
         updatedSub.end = targetFrame / fps;
     }
-
     state.updateSubtitle(updatedSub);
   }, [scrollContainerRef]);
 
@@ -57,19 +54,18 @@ export const useSubtitleDrag = (scrollContainerRef: React.RefObject<HTMLDivEleme
     dragRef.current = null;
     setDraggedEdge(null);
     document.body.style.cursor = '';
-
     window.removeEventListener('mousemove', handleEdgeMouseMove);
     window.removeEventListener('mouseup', handleEdgeMouseUp);
     document.removeEventListener('mouseleave', handleEdgeMouseUp);
-
-    setTimeout(() => {
-      isDraggingRef.current = false;
-    }, 100);
+    setTimeout(() => { isDraggingRef.current = false; }, 100);
   }, [handleEdgeMouseMove]);
 
   const handleEdgeMouseDown = (e: React.MouseEvent, sub: SubtitleItem, edge: 'start' | 'end') => {
     e.stopPropagation();
     e.preventDefault();
+
+    // Save history right before a drag mutation begins
+    useAppStore.getState().saveHistory();
 
     isDraggingRef.current = true;
     dragRef.current = {
@@ -79,10 +75,8 @@ export const useSubtitleDrag = (scrollContainerRef: React.RefObject<HTMLDivEleme
       initialStart: sub.start,
       initialEnd: sub.end
     };
-
     setDraggedEdge({ id: sub.id, edge });
     document.body.style.cursor = 'col-resize';
-
     window.addEventListener('mousemove', handleEdgeMouseMove);
     window.addEventListener('mouseup', handleEdgeMouseUp);
     document.addEventListener('mouseleave', handleEdgeMouseUp);

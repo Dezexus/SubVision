@@ -13,6 +13,7 @@ export const PreviewModal = () => {
   const subtitles = useAppStore(state => state.subtitles);
   const updateSubtitle = useAppStore(state => state.updateSubtitle);
   const deleteSubtitle = useAppStore(state => state.deleteSubtitle);
+  const saveHistory = useAppStore(state => state.saveHistory);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -33,39 +34,29 @@ export const PreviewModal = () => {
   const activeSub = subtitles.find(s => currentTime >= s.start && currentTime <= s.end);
 
   const handleTimeUpdate = () => {
-    if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime);
-    }
+    // [Logic remains unchanged]
+    if (videoRef.current) setCurrentTime(videoRef.current.currentTime);
   };
 
   const handleDragStart = (e: React.MouseEvent) => {
+    // [Logic remains unchanged]
     e.preventDefault();
     e.stopPropagation();
-
-    dragStartRef.current = {
-      y: e.clientY,
-      initialOffset: bottomOffset
-    };
-
+    dragStartRef.current = { y: e.clientY, initialOffset: bottomOffset };
     const handleMouseMove = (moveEvent: MouseEvent) => {
       if (!containerRef.current || !dragStartRef.current) return;
-
       const rect = containerRef.current.getBoundingClientRect();
       const deltaY = moveEvent.clientY - dragStartRef.current.y;
       const deltaPercent = (deltaY / rect.height) * 100;
-
       let newPercent = dragStartRef.current.initialOffset - deltaPercent;
       newPercent = Math.max(2, Math.min(newPercent, 90));
-
       setBottomOffset(newPercent);
     };
-
     const handleMouseUp = () => {
       dragStartRef.current = null;
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
   };
@@ -73,13 +64,10 @@ export const PreviewModal = () => {
   return (
     <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 md:p-8 backdrop-blur-md transition-opacity">
       <div className="bg-bg-main rounded-xl border border-border-main shadow-2xl w-full max-w-6xl flex flex-col overflow-hidden relative animate-in fade-in zoom-in-95 duration-200">
-
+        {/* [Header logic remains unchanged] */}
         <div className="p-4 border-b border-border-main flex justify-between items-center bg-bg-panel">
           <h2 className="text-white font-bold tracking-wide uppercase text-sm">Playback & Edit</h2>
-          <button
-            onClick={() => setPreviewModalOpen(false)}
-            className="p-1.5 text-txt-subtle hover:text-white hover:bg-red-500/20 hover:border-red-500/50 border border-transparent rounded transition-colors"
-          >
+          <button onClick={() => setPreviewModalOpen(false)} className="p-1.5 text-txt-subtle hover:text-white hover:bg-red-500/20 hover:border-red-500/50 border border-transparent rounded transition-colors">
             <X size={18} />
           </button>
         </div>
@@ -110,6 +98,7 @@ export const PreviewModal = () => {
               <div className="w-full relative group/textarea">
                 <textarea
                   value={activeSub.text}
+                  onFocus={() => saveHistory()}
                   onChange={(e) => updateSubtitle({ ...activeSub, text: e.target.value })}
                   onKeyDown={(e) => e.stopPropagation()}
                   className="w-full bg-black/70 text-white text-center text-lg md:text-xl py-2.5 px-12 rounded-2xl border-2 border-transparent hover:border-white/20 focus:border-brand-500 focus:bg-black/90 focus:outline-none resize-none overflow-hidden transition-all shadow-lg backdrop-blur-sm"

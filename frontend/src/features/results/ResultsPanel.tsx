@@ -2,7 +2,7 @@
  * Sidebar panel displaying OCR progress, extracted subtitles, and export actions.
  */
 import React, { useMemo, useRef } from 'react';
-import { Download, ScanFace, ArrowLeft, Upload, FileVideo, Play } from 'lucide-react';
+import { Download, ScanFace, ArrowLeft, Upload, FileVideo, Play, Undo, Redo } from 'lucide-react';
 import { GlassPanel } from '../../components/ui/GlassPanel';
 import { Button } from '../../components/ui/Button';
 import { ProgressHeader } from './components/ProgressHeader';
@@ -28,7 +28,11 @@ export const ResultsPanel = () => {
     setSubtitles,
     addLog,
     renderedVideoUrl,
-    setPreviewModalOpen
+    setPreviewModalOpen,
+    undo,
+    redo,
+    pastSubtitles,
+    futureSubtitles
   } = useAppStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -39,15 +43,14 @@ export const ResultsPanel = () => {
   }, [subtitles]);
 
   const handleDownloadSrt = () => {
+    // [Logic remains unchanged]
     if (!metadata || subtitles.length === 0) return;
-
     let srtContent = "";
     subtitles.forEach((sub, index) => {
       srtContent += `${index + 1}\n`;
       srtContent += `${formatSrtTime(sub.start)} --> ${formatSrtTime(sub.end)}\n`;
       srtContent += `${sub.text}\n\n`;
     });
-
     const blob = new Blob(['\uFEFF', srtContent], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -61,9 +64,9 @@ export const ResultsPanel = () => {
   };
 
   const handleImportSrt = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    // [Logic remains unchanged]
     const file = e.target.files?.[0];
     if (!file) return;
-
     addLog(`Importing ${file.name}...`);
     try {
       const subs = await api.importSrt(file);
@@ -73,17 +76,15 @@ export const ResultsPanel = () => {
       console.error(err);
       addLog("Error importing SRT.");
     }
-
     e.target.value = '';
   };
 
   const handleDownloadVideo = () => {
+    // [Logic remains unchanged]
     if (!renderedVideoUrl || !metadata) return;
-
     const downloadLink = renderedVideoUrl.startsWith('http')
         ? renderedVideoUrl
         : `${import.meta.env.VITE_API_URL || 'http://localhost:7860'}${renderedVideoUrl}`;
-
     const link = document.createElement('a');
     link.href = downloadLink;
     const safeName = metadata.filename.replace(/\.[^/.]+$/, "");
@@ -98,7 +99,27 @@ export const ResultsPanel = () => {
       <ProgressHeader />
 
       <div className="flex items-center justify-between p-2 border-b border-border-main bg-bg-panel">
-         <span className="text-xs font-bold text-txt-subtle px-2">SUBTITLES</span>
+         <div className="flex items-center gap-1">
+             <span className="text-xs font-bold text-txt-subtle px-2">SUBTITLES</span>
+             <div className="flex items-center gap-0.5 border-l border-border-strong pl-1">
+                <button
+                  onClick={undo}
+                  disabled={pastSubtitles.length === 0}
+                  className="p-1 rounded text-txt-muted hover:text-txt-main hover:bg-bg-hover disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                  title="Undo (Ctrl+Z)"
+                >
+                  <Undo size={14} />
+                </button>
+                <button
+                  onClick={redo}
+                  disabled={futureSubtitles.length === 0}
+                  className="p-1 rounded text-txt-muted hover:text-txt-main hover:bg-bg-hover disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                  title="Redo (Ctrl+Y)"
+                >
+                  <Redo size={14} />
+                </button>
+             </div>
+         </div>
          <button
            onClick={() => fileInputRef.current?.click()}
            className="flex items-center gap-1 text-[10px] bg-bg-surface hover:bg-bg-input-hover text-txt-muted px-2 py-1 rounded transition"
@@ -121,6 +142,7 @@ export const ResultsPanel = () => {
       </div>
 
       <div className="p-4 border-t border-border-main bg-bg-panel space-y-3">
+        {/* [Footer buttons logic remains unchanged] */}
         {subtitles.length > 0 && (
           <div className="flex justify-between text-xs text-txt-subtle font-mono px-1">
             <span>Lines: <b className="text-txt-main">{stats.total}</b></span>

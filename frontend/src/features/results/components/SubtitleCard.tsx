@@ -9,7 +9,7 @@ import { cn } from '../../../utils/cn';
 import { formatTimeDisplay } from '../../../utils/format';
 
 export const SubtitleCard = ({ item, index }: { item: SubtitleItem, index: number }) => {
-  const { updateSubtitle, deleteSubtitle, mergeSubtitles, setCurrentFrame, metadata, subtitles, addToast } = useAppStore();
+  const { updateSubtitle, deleteSubtitle, mergeSubtitles, setCurrentFrame, metadata, subtitles, addToast, saveHistory } = useAppStore();
   const [isHovered, setIsHovered] = useState(false);
 
   const isActive = useAppStore(state => {
@@ -65,6 +65,7 @@ export const SubtitleCard = ({ item, index }: { item: SubtitleItem, index: numbe
     >
       <textarea
         value={item.text}
+        onFocus={() => saveHistory()}
         onChange={(e) => updateSubtitle({ ...item, text: e.target.value })}
         className="w-full bg-transparent text-sm text-txt-main resize-none focus:outline-none focus:ring-1 focus:ring-brand-500 rounded px-1 pr-16 leading-snug min-h-[40px] scrollbar-hide"
         rows={2}
