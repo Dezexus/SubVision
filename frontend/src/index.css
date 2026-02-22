@@ -1,4 +1,42 @@
+/* Imports Tailwind's base, components, and utilities. */
 @import "tailwindcss";
+
+/* Tailwind CSS v4 Theme Configuration */
+@theme {
+  --font-sans: Inter, Segoe UI, sans-serif;
+  --font-mono: JetBrains Mono, Fira Code, monospace;
+
+  /* Background Colors */
+  --color-bg-deep: #0c0c0c;
+  --color-bg-main: #1e1e1e;
+  --color-bg-panel: #252526;
+  --color-bg-surface: #333333;
+  --color-bg-hover: #2a2d2e;
+  --color-bg-input: #3c3c3c;
+  --color-bg-input-hover: #4b4b4b;
+  --color-bg-track: #18181b;
+
+  /* Brand Colors */
+  --color-brand-400: #4daafc;
+  --color-brand-500: #007acc;
+  --color-brand-600: #005a9e;
+  --color-brand-hover: #005fb8;
+  --color-brand-active: #04395e;
+
+  /* Text Colors */
+  --color-txt-main: #F0F0F0;
+  --color-txt-muted: #C5C5C5;
+  --color-txt-dim: #9E9E9E;
+  --color-txt-subtle: #858585;
+
+  /* Border Colors */
+  --color-border-main: #333333;
+  --color-border-strong: #454545;
+  --color-border-hover: #6b6b6b;
+
+  /* Shadows */
+  --shadow-panel: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
 
 @layer base {
   body {
@@ -25,8 +63,8 @@
     display: none;
   }
   .scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none;    /* Firefox */
   }
 }
 
