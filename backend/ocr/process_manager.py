@@ -3,8 +3,9 @@ Process manager for handling background OCR worker threads safely using per-sess
 """
 import os
 import logging
+import concurrent.futures
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Optional
 import threading
 
 from core.geometry import calculate_roi_from_mask
@@ -44,6 +45,7 @@ class ProcessManager:
         smart_skip: bool,
         visual_cutoff: bool,
         callbacks: dict[str, Callable[..., Any]],
+        thread_pool: Optional[concurrent.futures.ThreadPoolExecutor] = None,
     ) -> str:
         """
         Starts a new OCR worker thread for a session without blocking other clients.
@@ -82,6 +84,7 @@ class ProcessManager:
                 "scale_factor": scale_val,
                 "smart_skip": smart_skip,
                 "visual_cutoff": visual_cutoff,
+                "thread_pool": thread_pool,
             }
 
             worker = OCRWorker(params, callbacks)

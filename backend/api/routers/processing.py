@@ -27,6 +27,7 @@ async def start_process(config: ProcessConfig, request: Request):
     Initiates a background OCR process ensuring the video is cached from S3.
     """
     process_mgr = request.app.state.process_mgr
+    thread_pool = getattr(request.app.state, "thread_pool", None)
     file_path = await ensure_video_cached(config.filename)
 
     loop = asyncio.get_event_loop()
@@ -55,7 +56,8 @@ async def start_process(config: ProcessConfig, request: Request):
             scale_val=config.scale_factor,
             smart_skip=config.smart_skip,
             visual_cutoff=config.visual_cutoff,
-            callbacks=callbacks
+            callbacks=callbacks,
+            thread_pool=thread_pool
         )
         return {"status": "started", "job_id": config.client_id}
     except Exception as e:

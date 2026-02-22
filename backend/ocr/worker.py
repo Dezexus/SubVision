@@ -136,8 +136,10 @@ class OCRWorker(threading.Thread):
                 "min_conf": self.params.get("min_conf", 0.80),
             })
 
+            thread_pool = self.params.get("thread_pool")
+
             video = VideoProvider(str(self.params["video_path"]), step=int(config["step"]))
-            pipeline = ImagePipeline(roi=self.params.get("roi", [0, 0, 0, 0]), config=config)
+            pipeline = ImagePipeline(roi=self.params.get("roi", [0, 0, 0, 0]), config=config, thread_pool=thread_pool)
 
             if not self.is_running:
                 return

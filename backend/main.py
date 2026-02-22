@@ -2,6 +2,7 @@
 Main application module for the SubVision API with modular monolithic architecture.
 """
 import asyncio
+import concurrent.futures
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,10 +35,14 @@ async def lifespan(app: FastAPI):
     app.state.process_mgr = ProcessManager()
     app.state.render_registry = {}
     app.state.render_lock = asyncio.Lock()
+    app.state.thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 
     cleanup_task = asyncio.create_task(periodic_cleanup())
+
     yield
+
     cleanup_task.cancel()
+    app.state.thread_pool.shutdown(wait=True)
 
 app = FastAPI(title="SubVision API", version="1.0.0", lifespan=lifespan)
 
