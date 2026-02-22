@@ -1,7 +1,7 @@
 """
 Pydantic models for data validation and API request schemas.
 """
-from typing import List
+from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 
 class VideoMetadata(BaseModel):
@@ -73,3 +73,10 @@ class BlurPreviewConfig(BaseModel):
     frame_index: int
     blur_settings: BlurSettings
     subtitle_text: str
+
+class WebSocketMessage(BaseModel):
+    """
+    Schema for validating incoming WebSocket messages.
+    """
+    type: str
+    payload: Optional[Dict[str, Any]] = None
