@@ -1,18 +1,19 @@
 """
 This module provides a cleanup utility to periodically remove old files
-from the upload directory to conserve disk space.
+and abandoned upload chunks to conserve disk space.
 """
 import os
 import time
 import logging
+import shutil
 
 logger = logging.getLogger(__name__)
 UPLOAD_DIR = "uploads"
+TEMP_UPLOAD_DIR = os.path.join(UPLOAD_DIR, ".temp")
 
 def cleanup_old_files(max_age_hours: int = 24) -> None:
     """
-    Deletes files in the specified upload directory that are older than
-    the given number of hours.
+    Deletes outdated files and abandoned temporary upload directories.
     """
     if not os.path.exists(UPLOAD_DIR):
         return
@@ -40,9 +41,24 @@ def cleanup_old_files(max_age_hours: int = 24) -> None:
             except OSError as e:
                 logger.warning(f"Could not delete file {filename}: {e}")
 
+        if os.path.exists(TEMP_UPLOAD_DIR):
+            for temp_dir_name in os.listdir(TEMP_UPLOAD_DIR):
+                temp_dir_path = os.path.join(TEMP_UPLOAD_DIR, temp_dir_name)
+
+                if not os.path.isdir(temp_dir_path):
+                    continue
+
+                try:
+                    dir_mtime = os.path.getmtime(temp_dir_path)
+                    if dir_mtime < cutoff:
+                        shutil.rmtree(temp_dir_path)
+                        count += 1
+                except OSError as e:
+                    logger.warning(f"Could not delete temp directory {temp_dir_name}: {e}")
+
         if count > 0:
             mb_size = deleted_size / (1024 * 1024)
-            logger.info(f"Cleanup complete. Removed {count} old files, freeing {mb_size:.2f} MB.")
+            logger.info(f"Cleanup complete. Removed {count} old items, freeing {mb_size:.2f} MB.")
 
     except Exception as e:
         logger.error(f"An unexpected error occurred during the cleanup process: {e}")

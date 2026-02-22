@@ -6,12 +6,13 @@ import re
 import logging
 import cv2
 import asyncio
-from typing import Union
+from typing import Union, List, Dict
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
 from fastapi.responses import StreamingResponse, FileResponse
 from io import BytesIO
 
 from media.video.manager import VideoManager
+from media.video.upload import UploadManager
 from api.schemas import VideoMetadata, PreviewConfig
 from api.websockets.manager import connection_manager
 
@@ -20,7 +21,22 @@ router = APIRouter()
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+upload_manager = UploadManager(UPLOAD_DIR)
+
 ALLOWED_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm"}
+
+@router.get("/upload/status/{upload_id}")
+async def get_upload_status(upload_id: str, total_chunks: int) -> Dict[str, List[int]]:
+    """
+    Returns a list of missing chunk indices for a specific upload session to support resuming.
+    """
+    if not re.match(r"^[a-zA-Z0-9\-]+$", upload_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid upload_id format."
+        )
+    missing = upload_manager.get_missing_chunks(upload_id, total_chunks)
+    return {"missing_chunks": missing}
 
 @router.post("/upload")
 async def upload_video(
@@ -32,7 +48,7 @@ async def upload_video(
         client_id: str = Form(None)
 ) -> Union[VideoMetadata, dict]:
     """
-    Handles chunked video uploads with strict validation and automatic codec transcoding.
+    Handles reliable chunked video uploads with isolated state management and automatic codec transcoding.
     """
     if not re.match(r"^[a-zA-Z0-9\-]+$", upload_id):
         raise HTTPException(
@@ -48,18 +64,21 @@ async def upload_video(
             detail=f"Extension not allowed. Supported: {', '.join(ALLOWED_EXTENSIONS)}"
         )
 
-    temp_path = os.path.join(UPLOAD_DIR, f"{upload_id}.part")
-
     try:
-        with open(temp_path, "ab") as buffer:
-            buffer.write(await file.read())
+        chunk_data = await file.read()
+        await asyncio.to_thread(upload_manager.save_chunk, upload_id, chunk_index, chunk_data)
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to save chunk: {e}")
+        logger.error(f"Failed to save chunk {chunk_index} for {upload_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to save chunk.")
 
-    if chunk_index == total_chunks - 1:
+    if upload_manager.is_upload_complete(upload_id, total_chunks):
         final_filename = f"{upload_id}{ext}"
-        final_path = os.path.join(UPLOAD_DIR, final_filename)
-        os.rename(temp_path, final_path)
+
+        try:
+            final_path = await asyncio.to_thread(upload_manager.assemble_file, upload_id, total_chunks, final_filename)
+        except Exception as e:
+            logger.error(f"Failed to assemble file {final_filename}: {e}")
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="File assembly failed.")
 
         frame, total_frames = await asyncio.to_thread(VideoManager.get_video_info, final_path)
 
