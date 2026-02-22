@@ -8,7 +8,7 @@ import cv2
 import asyncio
 from typing import Union, List, Dict
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
-from fastapi.responses import StreamingResponse, RedirectResponse
+from fastapi.responses import StreamingResponse, RedirectResponse, FileResponse
 from io import BytesIO
 
 from media.video.manager import VideoManager
@@ -127,15 +127,23 @@ async def upload_video(
 @router.get("/download/{filename}")
 async def download_file(filename: str):
     """
-    Redirects the user to a secure Presigned URL for downloading the file directly from S3.
+    Redirects the user to a secure Presigned URL or serves the file locally if S3 is disabled.
     """
     safe_filename = os.path.basename(filename)
-    url = storage_manager.get_presigned_url(safe_filename)
 
-    if not url:
+    url = storage_manager.get_presigned_url(safe_filename)
+    if url:
+        return RedirectResponse(url=url)
+
+    file_path = os.path.join(CACHE_DIR, safe_filename)
+    if not os.path.exists(file_path):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found in storage.")
 
-    return RedirectResponse(url=url)
+    return FileResponse(
+        path=file_path,
+        filename=safe_filename,
+        media_type='application/octet-stream'
+    )
 
 @router.get("/frame/{filename}/{frame_index}")
 async def get_frame(filename: str, frame_index: int):
