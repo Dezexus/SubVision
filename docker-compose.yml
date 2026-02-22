@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   subvision:
     build: .
@@ -27,4 +25,4 @@ services:
 
 volumes:
   paddle_models:
-  paddlex_cache:   # <--- ДОБАВИТЬ ЭТУ СТРОКУ В КОНЦЕ ФАЙЛА
+  paddlex_cache:
