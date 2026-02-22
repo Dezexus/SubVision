@@ -4,7 +4,7 @@ Router module handling OCR processing jobs, subtitle imports, and blur rendering
 import os
 import asyncio
 import logging
-from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File
+from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Request
 from fastapi.responses import StreamingResponse
 from io import BytesIO
 import cv2
@@ -12,7 +12,6 @@ import cv2
 from api.schemas import ProcessConfig, RenderConfig, BlurPreviewConfig
 from api.websockets.manager import connection_manager
 from api.dependencies import ensure_video_cached
-from ocr.process_manager import ProcessManager
 from media.blur_manager import BlurManager
 from core.srt_parser import parse_srt
 from core.storage import storage_manager
@@ -20,17 +19,14 @@ from core.storage import storage_manager
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-process_mgr = ProcessManager()
 CACHE_DIR = "cache"
 
-render_registry: dict[str, BlurManager] = {}
-render_lock = asyncio.Lock()
-
 @router.post("/start")
-async def start_process(config: ProcessConfig):
+async def start_process(config: ProcessConfig, request: Request):
     """
     Initiates a background OCR process ensuring the video is cached from S3.
     """
+    process_mgr = request.app.state.process_mgr
     file_path = await ensure_video_cached(config.filename)
 
     loop = asyncio.get_event_loop()
@@ -67,10 +63,14 @@ async def start_process(config: ProcessConfig):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/stop/{client_id}")
-async def stop_process(client_id: str):
+async def stop_process(client_id: str, request: Request):
     """
     Terminates active OCR or rendering tasks for a specific client session.
     """
+    process_mgr = request.app.state.process_mgr
+    render_registry = request.app.state.render_registry
+    render_lock = request.app.state.render_lock
+
     ocr_stopped = process_mgr.stop_process(client_id)
 
     render_stopped = False
@@ -128,10 +128,13 @@ async def preview_blur_frame(config: BlurPreviewConfig):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/render_blur")
-async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTasks):
+async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTasks, request: Request):
     """
     Starts a background render task, uploading the output video to S3 upon completion.
     """
+    render_registry = request.app.state.render_registry
+    render_lock = request.app.state.render_lock
+
     safe_filename = os.path.basename(config.filename)
     output_filename = f"blurred_{safe_filename}"
     output_path = os.path.join(CACHE_DIR, output_filename)

@@ -10,10 +10,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
 from api.routers import video, processing
-from api.routers.processing import process_mgr
 from api.websockets.manager import connection_manager
 from api.schemas import WebSocketMessage
 from core.cleanup import cleanup_old_files
+from ocr.process_manager import ProcessManager
 
 async def periodic_cleanup(interval_seconds: int = 3600, max_age_hours: int = 12) -> None:
     """
@@ -29,8 +29,12 @@ async def periodic_cleanup(interval_seconds: int = 3600, max_age_hours: int = 12
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Manages application startup and shutdown lifecycle events.
+    Manages application startup and shutdown lifecycle events, including global state initialization.
     """
+    app.state.process_mgr = ProcessManager()
+    app.state.render_registry = {}
+    app.state.render_lock = asyncio.Lock()
+
     cleanup_task = asyncio.create_task(periodic_cleanup())
     yield
     cleanup_task.cancel()
@@ -59,6 +63,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
     Handles WebSocket connections with strict message validation and routing.
     """
     await connection_manager.connect(websocket, client_id)
+    process_mgr = websocket.app.state.process_mgr
     try:
         while True:
             data = await asyncio.wait_for(websocket.receive_text(), timeout=60.0)
@@ -70,5 +75,4 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
                 pass
     except (WebSocketDisconnect, asyncio.TimeoutError):
         connection_manager.disconnect(client_id)
-        if process_mgr:
-            process_mgr.stop_process(client_id)
+        process_mgr.stop_process(client_id)
