@@ -12,6 +12,7 @@ import cv2
 
 from api.schemas import ProcessConfig, RenderConfig, BlurPreviewConfig
 from api.websockets.manager import connection_manager
+from api.dependencies import ensure_video_cached
 from ocr.process_manager import ProcessManager
 from media.blur_manager import BlurManager
 from core.srt_parser import parse_srt
@@ -31,13 +32,7 @@ async def start_process(config: ProcessConfig):
     """
     Initiates a background OCR process ensuring the video is cached from S3.
     """
-    safe_filename = os.path.basename(config.filename)
-    file_path = os.path.join(CACHE_DIR, safe_filename)
-
-    if not os.path.exists(file_path):
-        success = await storage_manager.download_file(safe_filename, file_path)
-        if not success:
-            raise HTTPException(status_code=404, detail="Video file not found in storage.")
+    file_path = await ensure_video_cached(config.filename)
 
     loop = asyncio.get_event_loop()
 
@@ -112,15 +107,9 @@ async def preview_blur_frame(config: BlurPreviewConfig):
     """
     Generates a preview frame fetching the source video from S3 if absent.
     """
-    safe_filename = os.path.basename(config.filename)
-    file_path = os.path.join(CACHE_DIR, safe_filename)
-
-    if not os.path.exists(file_path):
-        success = await storage_manager.download_file(safe_filename, file_path)
-        if not success:
-            raise HTTPException(status_code=404, detail="Video file not found in storage.")
-
+    file_path = await ensure_video_cached(config.filename)
     blur_mgr = BlurManager()
+
     try:
         preview_image = blur_mgr.generate_preview(
             video_path=file_path,
@@ -145,8 +134,6 @@ async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTa
     Starts a background render task, uploading the output video to S3 upon completion.
     """
     safe_filename = os.path.basename(config.filename)
-    file_path = os.path.join(CACHE_DIR, safe_filename)
-
     output_filename = f"blurred_{safe_filename}"
     output_path = os.path.join(CACHE_DIR, output_filename)
 
@@ -182,8 +169,7 @@ async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTa
         success = False
         error_msg = None
         try:
-            if not os.path.exists(file_path):
-                await storage_manager.download_file(safe_filename, file_path)
+            file_path = await ensure_video_cached(config.filename)
 
             await asyncio.to_thread(
                 blur_mgr.apply_blur_task,

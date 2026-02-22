@@ -7,7 +7,7 @@ import logging
 import cv2
 import asyncio
 from typing import Union, List, Dict
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Depends
 from fastapi.responses import StreamingResponse, RedirectResponse, FileResponse
 from io import BytesIO
 
@@ -15,6 +15,7 @@ from media.video.manager import VideoManager
 from media.video.upload import UploadManager
 from api.schemas import VideoMetadata, PreviewConfig
 from api.websockets.manager import connection_manager
+from api.dependencies import ensure_video_cached
 from core.storage import storage_manager
 
 logger = logging.getLogger(__name__)
@@ -146,18 +147,10 @@ async def download_file(filename: str):
     )
 
 @router.get("/frame/{filename}/{frame_index}")
-async def get_frame(filename: str, frame_index: int):
+async def get_frame(frame_index: int, file_path: str = Depends(ensure_video_cached)):
     """
     Extracts a frame, fetching the video from S3 into local cache if necessary.
     """
-    safe_filename = os.path.basename(filename)
-    file_path = os.path.join(CACHE_DIR, safe_filename)
-
-    if not os.path.exists(file_path):
-        success = await storage_manager.download_file(safe_filename, file_path)
-        if not success:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found in storage.")
-
     image = await asyncio.to_thread(VideoManager.get_frame_image, file_path, frame_index)
     if image is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Frame not found")
@@ -172,13 +165,7 @@ async def get_preview(config: PreviewConfig):
     """
     Generates a processed preview frame, fetching the video from S3 into local cache if necessary.
     """
-    safe_filename = os.path.basename(config.filename)
-    file_path = os.path.join(CACHE_DIR, safe_filename)
-
-    if not os.path.exists(file_path):
-        success = await storage_manager.download_file(safe_filename, file_path)
-        if not success:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found in storage.")
+    file_path = await ensure_video_cached(config.filename)
 
     preview_image = await asyncio.to_thread(
         VideoManager.generate_preview,
