@@ -1,8 +1,7 @@
 /**
- * Timeline component with playhead snapping, drag-and-drop subtitle trimming,
- * anchor-based zooming, and hover-delete hotkey support.
+ * Timeline component for playback navigation and subtitle modification.
  */
-import React, { useState, useMemo, useRef, useLayoutEffect, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   ChevronLeft, ChevronRight,
   Clock, ZoomIn, ZoomOut
@@ -10,9 +9,9 @@ import {
 import { useAppStore } from '../../../store/useAppStore';
 import { cn } from '../../../utils/cn';
 import { formatTimeDisplay } from '../../../utils/format';
-import type { SubtitleItem } from '../../../types';
-
-type ProcessedSubtitle = SubtitleItem & { track: number };
+import { calculateTracks, type ProcessedSubtitle } from '../utils/timelineUtils';
+import { useTimelineZoom } from '../hooks/useTimelineZoom';
+import { useSubtitleDrag } from '../hooks/useSubtitleDrag';
 
 export const HybridTimeline = () => {
   const {
@@ -24,22 +23,13 @@ export const HybridTimeline = () => {
 
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const zoomAnchorRef = useRef<{ newScrollLeft: number } | null>(null);
-  const dragRef = useRef<{
-    subId: number;
-    edge: 'start' | 'end';
-    startX: number;
-    initialStart: number;
-    initialEnd: number;
-  } | null>(null);
 
-  const isDraggingRef = useRef(false);
-  const hoveredSubIdRef = useRef<number | null>(null);
+  const { zoomLevel, applyAnchorZoom, handleZoomButton, resetZoom } = useTimelineZoom(scrollContainerRef);
+  const { isDraggingRef, draggedEdge, handleEdgeMouseDown } = useSubtitleDrag(scrollContainerRef);
 
-  const [zoomLevel, setZoomLevel] = useState(1);
   const [hoveredSub, setHoveredSub] = useState<ProcessedSubtitle | null>(null);
   const [hoverPos, setHoverPos] = useState<number>(0);
-  const [draggedEdge, setDraggedEdge] = useState<{ id: number, edge: 'start' | 'end' } | null>(null);
+  const hoveredSubIdRef = useRef<number | null>(null);
 
   const { currentTime, totalTime, exactDuration } = useMemo(() => {
     if (!metadata) return { currentTime: "00:00:00.00", totalTime: "00:00:00.00", exactDuration: 1 };
@@ -51,68 +41,11 @@ export const HybridTimeline = () => {
     };
   }, [metadata, currentFrameIndex]);
 
-  const processedSubtitles = useMemo((): ProcessedSubtitle[] => {
-    const sortedSubs = [...subtitles].sort((a, b) => a.start - b.start);
-    const lanes: number[] = [];
-    return sortedSubs.map(sub => {
-      let assignedTrack = lanes.findIndex(laneEndTime => laneEndTime <= sub.start);
-      if (assignedTrack === -1) {
-        assignedTrack = lanes.length;
-      }
-      lanes[assignedTrack] = sub.end;
-      return { ...sub, track: assignedTrack };
-    });
-  }, [subtitles]);
+  const processedSubtitles = useMemo(() => calculateTracks(subtitles), [subtitles]);
 
   useEffect(() => {
     hoveredSubIdRef.current = hoveredSub ? hoveredSub.id : null;
   }, [hoveredSub]);
-
-  useLayoutEffect(() => {
-    if (zoomAnchorRef.current !== null && scrollContainerRef.current) {
-      scrollContainerRef.current.scrollLeft = zoomAnchorRef.current.newScrollLeft;
-      zoomAnchorRef.current = null;
-    }
-  }, [zoomLevel]);
-
-  const applyAnchorZoom = useCallback((delta: number, anchorX: number) => {
-    if (!scrollContainerRef.current) return;
-    const scrollLeft = scrollContainerRef.current.scrollLeft;
-
-    setZoomLevel(prev => {
-      const newZoom = Math.min(Math.max(1, prev + delta), 20);
-      if (newZoom !== prev) {
-        const zoomRatio = newZoom / prev;
-        const absoluteAnchorX = scrollLeft + anchorX;
-        const newAbsoluteAnchorX = absoluteAnchorX * zoomRatio;
-        zoomAnchorRef.current = {
-          newScrollLeft: newAbsoluteAnchorX - anchorX
-        };
-      }
-      return newZoom;
-    });
-  }, []);
-
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
-    const handleNativeWheel = (e: WheelEvent) => {
-      if (e.ctrlKey) {
-        e.preventDefault();
-        const rect = container.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const delta = e.deltaY > 0 ? -0.2 : 0.2;
-        applyAnchorZoom(delta, mouseX);
-      } else if (e.shiftKey) {
-        e.preventDefault();
-        container.scrollLeft += e.deltaY;
-      }
-    };
-
-    container.addEventListener('wheel', handleNativeWheel, { passive: false });
-    return () => container.removeEventListener('wheel', handleNativeWheel);
-  }, [applyAnchorZoom]);
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -136,19 +69,13 @@ export const HybridTimeline = () => {
         }
       } else if (e.ctrlKey && e.key === '0') {
         e.preventDefault();
-        setZoomLevel(1);
+        resetZoom();
       }
     };
 
     window.addEventListener('keydown', handleGlobalKeyDown, { passive: false });
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [applyAnchorZoom]);
-
-  const handleZoomButton = (delta: number) => {
-    if (!scrollContainerRef.current) return;
-    const rect = scrollContainerRef.current.getBoundingClientRect();
-    applyAnchorZoom(delta, rect.width / 2);
-  };
+  }, [applyAnchorZoom, resetZoom]);
 
   const handleTimelineClick = (e: React.MouseEvent) => {
     if (isDraggingRef.current) return;
@@ -171,77 +98,6 @@ export const HybridTimeline = () => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     setHoverPos(e.clientX - rect.left);
-  };
-
-  const handleEdgeMouseMove = useCallback((e: MouseEvent) => {
-    if (!dragRef.current || !scrollContainerRef.current) return;
-
-    const state = useAppStore.getState();
-    const currentMetadata = state.metadata;
-    if (!currentMetadata) return;
-
-    const { subId, edge, startX, initialStart, initialEnd } = dragRef.current;
-
-    const calculatedDuration = currentMetadata.total_frames / currentMetadata.fps;
-    const deltaX = e.clientX - startX;
-    const containerWidth = scrollContainerRef.current.scrollWidth;
-    const deltaTime = (deltaX / containerWidth) * calculatedDuration;
-
-    const currentSub = state.subtitles.find(s => s.id === subId);
-    if (!currentSub) return;
-
-    const rawNewTime = edge === 'start' ? initialStart + deltaTime : initialEnd + deltaTime;
-    const fps = currentMetadata.fps;
-    let targetFrame = Math.round(rawNewTime * fps);
-
-    const updatedSub = { ...currentSub };
-
-    if (edge === 'start') {
-        const maxStartFrame = Math.floor((currentSub.end - 0.1) * fps);
-        targetFrame = Math.min(Math.max(0, targetFrame), maxStartFrame);
-        updatedSub.start = targetFrame / fps;
-    } else {
-        const minEndFrame = Math.ceil((currentSub.start + 0.1) * fps);
-        targetFrame = Math.max(Math.min(currentMetadata.total_frames, targetFrame), minEndFrame);
-        updatedSub.end = targetFrame / fps;
-    }
-
-    state.updateSubtitle(updatedSub);
-  }, []);
-
-  const handleEdgeMouseUp = useCallback(() => {
-    dragRef.current = null;
-    setDraggedEdge(null);
-    document.body.style.cursor = '';
-
-    window.removeEventListener('mousemove', handleEdgeMouseMove);
-    window.removeEventListener('mouseup', handleEdgeMouseUp);
-    document.removeEventListener('mouseleave', handleEdgeMouseUp);
-
-    setTimeout(() => {
-      isDraggingRef.current = false;
-    }, 100);
-  }, [handleEdgeMouseMove]);
-
-  const handleEdgeMouseDown = (e: React.MouseEvent, sub: SubtitleItem, edge: 'start' | 'end') => {
-    e.stopPropagation();
-    e.preventDefault();
-
-    isDraggingRef.current = true;
-    dragRef.current = {
-      subId: sub.id,
-      edge,
-      startX: e.clientX,
-      initialStart: sub.start,
-      initialEnd: sub.end
-    };
-
-    setDraggedEdge({ id: sub.id, edge });
-    document.body.style.cursor = 'col-resize';
-
-    window.addEventListener('mousemove', handleEdgeMouseMove);
-    window.addEventListener('mouseup', handleEdgeMouseUp);
-    document.addEventListener('mouseleave', handleEdgeMouseUp);
   };
 
   if (!metadata) return null;
