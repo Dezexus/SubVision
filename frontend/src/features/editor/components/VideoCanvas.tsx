@@ -1,10 +1,12 @@
+/**
+ * Main video editing canvas with support for cropping and blur geometry adjustments.
+ */
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
-import axios from 'axios';
 import { useAppStore } from '../../../store/useAppStore';
-import { api } from '../../../services/api';
 import { Loader2, ImageOff, Eye, EyeOff, MoveVertical } from 'lucide-react';
+import { useVideoFrame } from '../hooks/useVideoFrame';
 
 const estimateTextWidth = (text: string, fontSizePx: number, multiplier: number): number => {
   let width = 0.0;
@@ -38,8 +40,6 @@ export const VideoCanvas = () => {
   const blurPreviewUrl = useAppStore(state => state.blurPreviewUrl);
 
   const [crop, setCrop] = useState<Crop>();
-  const [imgSrc, setImgSrc] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [showGuides, setShowGuides] = useState(true);
 
   const [isDragging, setIsDragging] = useState<'none' | 'move-y' | 'resize-x' | 'resize-y'>('none');
@@ -47,64 +47,13 @@ export const VideoCanvas = () => {
 
   const imgRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const currentUrlRef = useRef<string | null>(null);
 
   const aspectRatio = useMemo(() => {
     if (!metadata || metadata.height === 0) return 16 / 9;
     return metadata.width / metadata.height;
   }, [metadata]);
 
-  useEffect(() => {
-    if (!metadata) return;
-
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-
-    const abortController = new AbortController();
-    abortControllerRef.current = abortController;
-
-    setIsLoading(true);
-    let isActive = true;
-
-    const fetchFrame = async () => {
-      try {
-        const url = await api.getFrameBlob(metadata.filename, currentFrameIndex, abortController.signal);
-
-        if (isActive) {
-          if (currentUrlRef.current) {
-            URL.revokeObjectURL(currentUrlRef.current);
-          }
-          currentUrlRef.current = url;
-          setImgSrc(url);
-          setIsLoading(false);
-        } else {
-          URL.revokeObjectURL(url);
-        }
-      } catch (error) {
-        if (!axios.isCancel(error)) {
-          console.error(error);
-          if (isActive) setIsLoading(false);
-        }
-      }
-    };
-
-    fetchFrame();
-
-    return () => {
-      isActive = false;
-      abortController.abort();
-    };
-  }, [currentFrameIndex, metadata]);
-
-  useEffect(() => {
-    return () => {
-      if (currentUrlRef.current) {
-        URL.revokeObjectURL(currentUrlRef.current);
-      }
-    };
-  }, []);
+  const { imgSrc, isLoading } = useVideoFrame(metadata, currentFrameIndex);
 
   const onCropComplete = (crop: PixelCrop) => {
     if (!imgRef.current || !metadata) return;
@@ -120,7 +69,6 @@ export const VideoCanvas = () => {
 
   useEffect(() => {
     setCrop(undefined);
-    setImgSrc(null);
   }, [file]);
 
   const activeSubtitle = useMemo(() => {
