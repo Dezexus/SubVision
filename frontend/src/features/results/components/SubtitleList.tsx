@@ -1,5 +1,6 @@
 /**
  * Virtualized list component for rendering large arrays of subtitles efficiently.
+ * Auto-scrolls to the newly added subtitle during processing, or to the active subtitle during playback.
  */
 import React, { useRef, useEffect } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -7,8 +8,9 @@ import { useAppStore } from '../../../store/useAppStore';
 import { SubtitleCard } from './SubtitleCard';
 
 export const SubtitleList = () => {
-  const { subtitles } = useAppStore();
+  const { subtitles, isProcessing } = useAppStore();
   const parentRef = useRef<HTMLDivElement>(null);
+  const lastActiveIndexRef = useRef<number>(-1);
 
   const rowVirtualizer = useVirtualizer({
     count: subtitles.length,
@@ -18,10 +20,27 @@ export const SubtitleList = () => {
   });
 
   useEffect(() => {
-    if (subtitles.length > 0) {
+    if (isProcessing && subtitles.length > 0) {
       rowVirtualizer.scrollToIndex(subtitles.length - 1, { align: 'end', behavior: 'smooth' });
     }
-  }, [subtitles.length, rowVirtualizer]);
+  }, [subtitles.length, rowVirtualizer, isProcessing]);
+
+  useEffect(() => {
+    const unsub = useAppStore.subscribe((state) => {
+      if (state.isProcessing || !state.metadata || state.subtitles.length === 0) return;
+
+      const time = state.currentFrameIndex / state.metadata.fps;
+      const activeIndex = state.subtitles.findIndex(s => time >= s.start && time <= s.end);
+
+      if (activeIndex !== -1 && activeIndex !== lastActiveIndexRef.current) {
+        lastActiveIndexRef.current = activeIndex;
+        rowVirtualizer.scrollToIndex(activeIndex, { align: 'center', behavior: 'smooth' });
+      } else if (activeIndex === -1) {
+        lastActiveIndexRef.current = -1;
+      }
+    });
+    return unsub;
+  }, [rowVirtualizer]);
 
   if (subtitles.length === 0) {
     return (

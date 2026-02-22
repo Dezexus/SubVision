@@ -12,6 +12,12 @@ export const SubtitleCard = ({ item, index }: { item: SubtitleItem, index: numbe
   const { updateSubtitle, deleteSubtitle, mergeSubtitles, setCurrentFrame, metadata, subtitles, addToast } = useAppStore();
   const [isHovered, setIsHovered] = useState(false);
 
+  const isActive = useAppStore(state => {
+    if (!state.metadata) return false;
+    const time = state.currentFrameIndex / state.metadata.fps;
+    return time >= item.start && time <= item.end;
+  });
+
   const isHighConf = item.conf > 0.85;
   const isLowConf = item.conf < 0.6;
   const hasNext = index < subtitles.length - 1;
@@ -51,9 +57,10 @@ export const SubtitleCard = ({ item, index }: { item: SubtitleItem, index: numbe
       onMouseLeave={() => setIsHovered(false)}
       className={cn(
         "group relative flex flex-col gap-3 p-3 rounded-lg border transition-all duration-200",
-        "bg-bg-panel hover:bg-bg-hover",
-        item.isEdited ? "border-brand-500/50" :
-        isLowConf ? "border-red-500/30" : "border-border-main"
+        isActive ? "bg-bg-hover border-brand-500 ring-1 ring-brand-500 shadow-sm" : "bg-bg-panel hover:bg-bg-hover",
+        !isActive && item.isEdited ? "border-brand-500/50" : "",
+        !isActive && !item.isEdited && isLowConf ? "border-red-500/30" : "",
+        !isActive && !item.isEdited && !isLowConf ? "border-border-main" : ""
       )}
     >
       <textarea
