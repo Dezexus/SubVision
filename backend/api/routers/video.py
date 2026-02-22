@@ -1,3 +1,6 @@
+"""
+Router module for handling video uploads, frame extraction, and preview generation.
+"""
 import os
 import re
 import logging
@@ -8,9 +11,9 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
 from fastapi.responses import StreamingResponse, FileResponse
 from io import BytesIO
 
-from services.video_manager import VideoManager
-from app.schemas import VideoMetadata, PreviewConfig
-from app.websocket_manager import manager
+from media.video_manager import VideoManager
+from api.schemas import VideoMetadata, PreviewConfig
+from api.websockets.manager import connection_manager
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -28,7 +31,9 @@ async def upload_video(
         filename: str = Form(...),
         client_id: str = Form(None)
 ) -> Union[VideoMetadata, dict]:
-    """Handles chunked video uploads with strict validation, automatic codec transcoding, and non-blocking tasks."""
+    """
+    Handles chunked video uploads with strict validation and automatic codec transcoding.
+    """
     if not re.match(r"^[a-zA-Z0-9\-]+$", upload_id):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -61,7 +66,7 @@ async def upload_video(
         if frame is None:
             logger.warning(f"OpenCV failed to decode {final_filename}. Attempting automatic H.264 fallback conversion.")
             if client_id:
-                await manager.send_json(client_id, {"type": "log", "message": "CONVERTING_CODEC"})
+                await connection_manager.send_json(client_id, {"type": "log", "message": "CONVERTING_CODEC"})
 
             converted_path = await asyncio.to_thread(VideoManager.convert_video_to_h264, final_path)
             if converted_path and os.path.exists(converted_path):
@@ -97,7 +102,9 @@ async def upload_video(
 
 @router.get("/download/{filename}")
 async def download_file(filename: str):
-    """Provides a download stream for the requested video file."""
+    """
+    Provides a download stream for the requested video file.
+    """
     safe_filename = os.path.basename(filename)
     file_path = os.path.join(UPLOAD_DIR, safe_filename)
 
@@ -112,7 +119,9 @@ async def download_file(filename: str):
 
 @router.get("/frame/{filename}/{frame_index}")
 async def get_frame(filename: str, frame_index: int):
-    """Extracts and returns a specific video frame as a JPEG image."""
+    """
+    Extracts and returns a specific video frame as a JPEG image.
+    """
     safe_filename = os.path.basename(filename)
     file_path = os.path.join(UPLOAD_DIR, safe_filename)
 
@@ -130,7 +139,9 @@ async def get_frame(filename: str, frame_index: int):
 
 @router.post("/preview")
 async def get_preview(config: PreviewConfig):
-    """Generates and returns a processed preview frame based on configuration."""
+    """
+    Generates and returns a processed preview frame based on configuration.
+    """
     safe_filename = os.path.basename(config.filename)
     file_path = os.path.join(UPLOAD_DIR, safe_filename)
 

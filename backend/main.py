@@ -1,5 +1,5 @@
 """
-Main application module for the SubVision API with strict CORS policy and background tasks.
+Main application module for the SubVision API with modular monolithic architecture.
 """
 import asyncio
 import json
@@ -9,13 +9,15 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.routers import video, processing
-from app.routers.processing import process_mgr
-from app.websocket_manager import manager
-from services.cleanup import cleanup_old_files
+from api.routers import video, processing
+from api.routers.processing import process_mgr
+from api.websockets.manager import connection_manager
+from core.cleanup import cleanup_old_files
 
-async def periodic_cleanup(interval_seconds: int = 3600, max_age_hours: int = 12):
-    """Executes file cleanup periodically in the background."""
+async def periodic_cleanup(interval_seconds: int = 3600, max_age_hours: int = 12) -> None:
+    """
+    Executes file cleanup periodically in the background.
+    """
     while True:
         try:
             cleanup_old_files(max_age_hours=max_age_hours)
@@ -25,7 +27,9 @@ async def periodic_cleanup(interval_seconds: int = 3600, max_age_hours: int = 12
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Manages application startup and shutdown lifecycle events."""
+    """
+    Manages application startup and shutdown lifecycle events.
+    """
     cleanup_task = asyncio.create_task(periodic_cleanup())
     yield
     cleanup_task.cancel()
@@ -49,9 +53,11 @@ app.include_router(processing.router, prefix="/api/process", tags=["Processing"]
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 @app.websocket("/ws/{client_id}")
-async def websocket_endpoint(websocket: WebSocket, client_id: str):
-    """Handles WebSocket connections with a ping/pong Heartbeat mechanism."""
-    await manager.connect(websocket, client_id)
+async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
+    """
+    Handles WebSocket connections with a ping-pong heartbeat mechanism.
+    """
+    await connection_manager.connect(websocket, client_id)
     try:
         while True:
             data = await asyncio.wait_for(websocket.receive_text(), timeout=60.0)
@@ -62,6 +68,6 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
             except json.JSONDecodeError:
                 pass
     except (WebSocketDisconnect, asyncio.TimeoutError):
-        manager.disconnect(client_id)
+        connection_manager.disconnect(client_id)
         if process_mgr:
             process_mgr.stop_process(client_id)

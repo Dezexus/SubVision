@@ -1,3 +1,6 @@
+"""
+Router module handling OCR processing jobs, subtitle imports, and blur rendering.
+"""
 import os
 import asyncio
 import logging
@@ -7,10 +10,10 @@ from fastapi.responses import StreamingResponse
 from io import BytesIO
 import cv2
 
-from app.schemas import ProcessConfig, RenderConfig, BlurPreviewConfig
-from app.websocket_manager import manager
-from services.process_manager import ProcessManager
-from services.blur_manager import BlurManager
+from api.schemas import ProcessConfig, RenderConfig, BlurPreviewConfig
+from api.websockets.manager import connection_manager
+from ocr.process_manager import ProcessManager
+from media.blur_manager import BlurManager
 from core.srt_parser import parse_srt
 
 logger = logging.getLogger(__name__)
@@ -19,22 +22,27 @@ router = APIRouter()
 process_mgr = ProcessManager()
 UPLOAD_DIR = "uploads"
 
-# Registry to keep track of active renders so we can stop them
 render_registry: dict[str, BlurManager] = {}
 render_lock = threading.Lock()
 
+
 @router.post("/start")
 async def start_process(config: ProcessConfig):
-    # (Код без изменений, см. предыдущий шаг, просто убедитесь, что он там есть)
+    """
+    Initiates a background OCR process for a specific video session.
+    """
     safe_filename = os.path.basename(config.filename)
     file_path = os.path.join(UPLOAD_DIR, safe_filename)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Video file not found")
+
     loop = asyncio.get_event_loop()
-    def _emit(event_type: str, payload: dict):
+
+    def _emit(event_type: str, payload: dict) -> None:
         asyncio.run_coroutine_threadsafe(
-            manager.send_json(config.client_id, {"type": event_type, **payload}), loop
+            connection_manager.send_json(config.client_id, {"type": event_type, **payload}), loop
         )
+
     callbacks = {
         "log": lambda msg: _emit("log", {"message": msg}),
         "subtitle": lambda item: _emit("subtitle_new", {"item": item}),
@@ -64,15 +72,15 @@ async def start_process(config: ProcessConfig):
 
 @router.post("/stop/{client_id}")
 async def stop_process(client_id: str):
-    # 1. Stop OCR if running
+    """
+    Terminates active OCR or rendering tasks for a specific client session.
+    """
     ocr_stopped = process_mgr.stop_process(client_id)
 
-    # 2. Stop Render if running
     render_stopped = False
     with render_lock:
         if client_id in render_registry:
             render_registry[client_id].stop()
-            # We don't remove it immediately; the background task cleans it up
             render_stopped = True
 
     return {"status": "stopped", "ocr_stopped": ocr_stopped, "render_stopped": render_stopped}
@@ -80,7 +88,9 @@ async def stop_process(client_id: str):
 
 @router.post("/import_srt")
 async def import_srt(file: UploadFile = File(...)):
-    # (Без изменений)
+    """
+    Parses an uploaded SRT file and returns subtitle objects.
+    """
     try:
         content = await file.read()
         content_str = content.decode("utf-8")
@@ -99,7 +109,9 @@ async def import_srt(file: UploadFile = File(...)):
 
 @router.post("/preview_blur")
 async def preview_blur_frame(config: BlurPreviewConfig):
-    # (Без изменений, используется только статический метод, состояние не нужно)
+    """
+    Generates a preview frame demonstrating the requested blur configuration.
+    """
     safe_filename = os.path.basename(config.filename)
     file_path = os.path.join(UPLOAD_DIR, safe_filename)
 
@@ -128,6 +140,9 @@ async def preview_blur_frame(config: BlurPreviewConfig):
 
 @router.post("/render_blur")
 async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTasks):
+    """
+    Starts a background task to render the final blurred video.
+    """
     safe_filename = os.path.basename(config.filename)
     file_path = os.path.join(UPLOAD_DIR, safe_filename)
 
@@ -143,20 +158,20 @@ async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTa
         except OSError:
             pass
 
-    # Create instance and register it
     blur_mgr = BlurManager()
     with render_lock:
         render_registry[config.client_id] = blur_mgr
 
     loop = asyncio.get_event_loop()
 
-    def progress_cb(current, total):
-        if total <= 0: total = 1
+    def progress_cb(current: int, total: int) -> None:
+        if total <= 0:
+            total = 1
         pct = min(100, int((current / total) * 100))
         eta_str = f"{pct}%"
 
         asyncio.run_coroutine_threadsafe(
-            manager.send_json(config.client_id, {
+            connection_manager.send_json(config.client_id, {
                 "type": "progress",
                 "current": current,
                 "total": total,
@@ -165,7 +180,7 @@ async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTa
             loop
         )
 
-    def run_render_task():
+    def run_render_task() -> None:
         success = False
         error_msg = None
         try:
@@ -185,7 +200,6 @@ async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTa
             logger.error(f"Render task failed: {e}", exc_info=True)
             success = False
         finally:
-            # Cleanup registry
             with render_lock:
                 if config.client_id in render_registry:
                     del render_registry[config.client_id]
@@ -197,7 +211,7 @@ async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTa
                 payload["error"] = error_msg
 
             asyncio.run_coroutine_threadsafe(
-                manager.send_json(config.client_id, payload),
+                connection_manager.send_json(config.client_id, payload),
                 loop
             )
 

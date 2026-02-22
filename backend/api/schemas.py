@@ -1,7 +1,13 @@
-from typing import List, Optional
+"""
+Pydantic models for data validation and API request schemas.
+"""
+from typing import List
 from pydantic import BaseModel
 
 class VideoMetadata(BaseModel):
+    """
+    Schema defining the structural metadata of an uploaded video.
+    """
     filename: str
     total_frames: int
     width: int
@@ -10,6 +16,9 @@ class VideoMetadata(BaseModel):
     duration: float
 
 class PreviewConfig(BaseModel):
+    """
+    Configuration schema for requesting a processed frame preview.
+    """
     filename: str
     frame_index: int
     roi: List[int]
@@ -18,6 +27,9 @@ class PreviewConfig(BaseModel):
     denoise: float
 
 class ProcessConfig(BaseModel):
+    """
+    Configuration schema outlining parameters for the OCR extraction task.
+    """
     filename: str
     client_id: str
     roi: List[int]
@@ -31,6 +43,9 @@ class ProcessConfig(BaseModel):
     visual_cutoff: bool = True
 
 class BlurSettings(BaseModel):
+    """
+    Settings schema defining the dimensions and style of the text obscuring filter.
+    """
     mode: str = "blur"
     type: str = "box"
     y: int = 900
@@ -42,12 +57,18 @@ class BlurSettings(BaseModel):
     width_multiplier: float = 1.0
 
 class RenderConfig(BaseModel):
+    """
+    Configuration schema to initiate the final video rendering pipeline.
+    """
     filename: str
     client_id: str
     subtitles: List[dict]
     blur_settings: BlurSettings
 
 class BlurPreviewConfig(BaseModel):
+    """
+    Schema for generating a static frame preview of the selected blur settings.
+    """
     filename: str
     frame_index: int
     blur_settings: BlurSettings
