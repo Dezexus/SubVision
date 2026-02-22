@@ -1,8 +1,8 @@
 /**
- * A minimalist, highly optimized slider component designed for dense control panels.
- * Features a slim track, clean typography, and deferred global state commits.
+ * A minimalist slider component updated for real-time visual feedback.
+ * Range drags commit instantly, while manual number inputs commit on blur/enter.
  */
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { cn } from '../../utils/cn';
 
 interface SliderProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange'> {
@@ -20,6 +20,7 @@ export const Slider = ({ label, valueDisplay, suffix, className, onChange, ...pr
 
   const [localValue, setLocalValue] = useState<number>(Number(value) || 0);
 
+  // Sync local state when external value changes
   useEffect(() => {
     setLocalValue(Number(value) || 0);
   }, [value]);
@@ -27,27 +28,28 @@ export const Slider = ({ label, valueDisplay, suffix, className, onChange, ...pr
   const percentage = Math.min(Math.max(((localValue - min) / (max - min)) * 100, 0), 100);
   const isEditable = valueDisplay === undefined;
 
-  const handleLocalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Real-time update for the range slider (instant visual feedback on canvas)
+  const handleRangeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setLocalValue(Number(e.target.value));
+    if (onChange) onChange(e);
+  };
+
+  // Delayed update for the number input (prevents cursor jumping while typing)
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setLocalValue(Number(e.target.value));
   };
 
-  const handleCommit = useCallback(() => {
+  const handleInputCommit = () => {
     if (onChange && localValue !== Number(value)) {
       onChange({
         target: { value: String(localValue), name: name }
       } as React.ChangeEvent<HTMLInputElement>);
     }
-  }, [localValue, value, name, onChange]);
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      handleCommit();
-    }
-  };
-
-  const handleKeyUp = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-      handleCommit();
+      handleInputCommit();
     }
   };
 
@@ -65,10 +67,10 @@ export const Slider = ({ label, valueDisplay, suffix, className, onChange, ...pr
               <input
                   type="number"
                   value={localValue}
-                  onChange={handleLocalChange}
-                  onBlur={handleCommit}
+                  onChange={handleInputChange}
+                  onBlur={handleInputCommit}
                   onKeyDown={handleKeyDown}
-                  className="w-10 bg-transparent text-txt-main text-right focus:text-brand-400 focus:bg-bg-hover rounded px-1 transition-colors outline-none appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  className="w-10 bg-transparent text-txt-main text-right focus:text-brand-500 focus:bg-bg-hover rounded px-1 transition-colors outline-none appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   min={min}
                   max={max}
                   step={step}
@@ -89,14 +91,12 @@ export const Slider = ({ label, valueDisplay, suffix, className, onChange, ...pr
       </div>
 
       <div className="relative h-4 flex items-center group/track cursor-pointer">
+        {/* The range input now uses handleRangeChange for instant dispatch */}
         <input
           type="range"
           className="w-full absolute z-20 opacity-0 cursor-pointer h-full m-0"
           value={localValue}
-          onChange={handleLocalChange}
-          onMouseUp={handleCommit}
-          onTouchEnd={handleCommit}
-          onKeyUp={handleKeyUp}
+          onChange={handleRangeChange}
           min={min}
           max={max}
           step={step}
