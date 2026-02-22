@@ -13,6 +13,7 @@ from typing import Optional, Tuple, List, Dict, Any
 from core.geometry import calculate_blur_roi
 from core.blur_effects import apply_blur_to_frame
 from core.video_io import extract_frame_cv2, create_video_capture
+from core.constants import MAX_QUEUE_SIZE, DEFAULT_FPS
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +102,7 @@ class BlurManager:
 
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        fps = cap.get(cv2.CAP_PROP_FPS) or DEFAULT_FPS
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -120,8 +121,8 @@ class BlurManager:
             for f_idx in range(start_f, end_f):
                 frame_blur_map[f_idx] = roi
 
-        read_queue = queue.Queue(maxsize=30)
-        write_queue = queue.Queue(maxsize=30)
+        read_queue = queue.Queue(maxsize=MAX_QUEUE_SIZE)
+        write_queue = queue.Queue(maxsize=MAX_QUEUE_SIZE)
         exception_queue = queue.Queue()
 
         task_stop = threading.Event()

@@ -23,6 +23,7 @@ from core.presets import get_preset_config
 from ocr.aggregator import SubtitleAggregator
 from core.utils import format_timestamp
 from media.video.reader import VideoProvider
+from core.constants import MAX_QUEUE_SIZE, OCR_BATCH_SIZE, WATCHDOG_TIMEOUT_SEC, DEFAULT_FPS
 
 logger = logging.getLogger(__name__)
 SENTINEL = object()
@@ -37,7 +38,7 @@ class OCRWorker(threading.Thread):
         self.params = params
         self.cb = callbacks
         self.is_running = True
-        self.frame_queue: queue.Queue[Any] = queue.Queue(maxsize=30)
+        self.frame_queue: queue.Queue[Any] = queue.Queue(maxsize=MAX_QUEUE_SIZE)
         self.producer_error: Exception | None = None
         self._stop_event = threading.Event()
         self.last_ocr_result = ("", 0.0)
@@ -158,7 +159,7 @@ class OCRWorker(threading.Thread):
 
             pending_items = []
             valid_frames = []
-            batch_size = 4
+            batch_size = OCR_BATCH_SIZE
 
             while self.is_running and not self._stop_event.is_set():
                 try:
@@ -167,7 +168,7 @@ class OCRWorker(threading.Thread):
                         last_activity_time = time.time()
                 except queue.Empty:
                     item = None
-                    if time.time() - last_activity_time > 45.0:
+                    if time.time() - last_activity_time > WATCHDOG_TIMEOUT_SEC:
                         raise TimeoutError("Watchdog Timeout: Decoder or Processing Thread Deadlocked.")
 
                 if producer_thread and not producer_thread.is_alive() and self.frame_queue.empty() and item is None:

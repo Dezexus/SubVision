@@ -7,6 +7,7 @@ import cv2
 import logging
 
 from core.video_io import create_video_capture
+from core.constants import DEFAULT_FPS
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ class VideoProvider:
         self.cap = create_video_capture(video_path)
 
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 25.0
+        self.fps = self.cap.get(cv2.CAP_PROP_FPS) or DEFAULT_FPS
 
     def __iter__(self) -> Iterator[tuple[int, float, Any]]:
         """

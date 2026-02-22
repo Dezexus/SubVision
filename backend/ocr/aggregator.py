@@ -5,6 +5,7 @@ into coherent subtitle blocks based on text similarity and timing.
 from collections.abc import Callable
 from typing import Any
 from core.utils import is_similar
+from core.constants import SUBTITLE_SIMILARITY_THRESH
 
 SubtitleItem = dict[str, Any]
 
@@ -59,7 +60,7 @@ class SubtitleAggregator:
 
         if is_valid:
             if self.active_event:
-                if is_similar(self.active_event.text, text, 0.6):
+                if is_similar(self.active_event.text, text, SUBTITLE_SIMILARITY_THRESH):
                     self.active_event.extend(text, frame_end_time, conf)
                 else:
                     self._commit_event()

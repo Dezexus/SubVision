@@ -7,6 +7,8 @@ from typing import Any, Union, Optional
 import cv2
 import numpy as np
 
+from core.constants import SHARPEN_KERNEL_NP, SHARPEN_KERNEL_LIST
+
 try:
     import paddle
     import paddle.nn.functional as F
@@ -28,7 +30,6 @@ if HAS_CUDA:
         HAS_CUDA = False
 else:
     FrameType = np.ndarray
-
 
 def ensure_gpu(frame: FrameType) -> Any:
     """
@@ -125,12 +126,11 @@ def apply_sharpening(frame: FrameType | None) -> FrameType | None:
     """
     if frame is None:
         return None
-    kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]], dtype=np.float32)
 
     if HAS_CUDA:
         try:
             gpu_mat = ensure_gpu(frame)
-            filter_gpu = cv2.cuda.createLinearFilter(cv2.CV_8UC3, cv2.CV_8UC3, kernel)
+            filter_gpu = cv2.cuda.createLinearFilter(cv2.CV_8UC3, cv2.CV_8UC3, SHARPEN_KERNEL_NP)
             result_gpu = filter_gpu.apply(gpu_mat)
             if type(frame).__name__ == "GpuMat":
                 return result_gpu
@@ -139,7 +139,7 @@ def apply_sharpening(frame: FrameType | None) -> FrameType | None:
             pass
 
     cpu_frame = ensure_cpu(frame)
-    return cv2.filter2D(cpu_frame, -1, kernel)
+    return cv2.filter2D(cpu_frame, -1, SHARPEN_KERNEL_NP)
 
 def apply_scaling_paddle(tensor: Any, scale_factor: float) -> Any:
     """
@@ -156,7 +156,7 @@ def apply_sharpening_paddle(tensor: Any) -> Any:
     """
     Applies sharpening convolution on a Paddle GPU tensor.
     """
-    k = paddle.to_tensor([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]], dtype='float32')
+    k = paddle.to_tensor(SHARPEN_KERNEL_LIST, dtype='float32')
     k = k.unsqueeze(0).unsqueeze(0)
     weight = paddle.concat([k, k, k], axis=0)
     x = tensor.transpose([2, 0, 1]).unsqueeze(0).astype('float32')
