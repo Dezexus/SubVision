@@ -18,11 +18,11 @@ from core.config import settings
 
 async def periodic_cleanup(interval_seconds: int = 3600, max_age_hours: int = 12) -> None:
     """
-    Executes file cleanup periodically in the background.
+    Executes file cleanup periodically in the background asynchronously.
     """
     while True:
         try:
-            cleanup_old_files(max_age_hours=max_age_hours)
+            await asyncio.to_thread(cleanup_old_files, max_age_hours=max_age_hours)
         except Exception as e:
             print(f"Periodic cleanup error: {e}")
         await asyncio.sleep(interval_seconds)
