@@ -35,7 +35,7 @@ async def start_process(config: ProcessConfig):
     file_path = os.path.join(CACHE_DIR, safe_filename)
 
     if not os.path.exists(file_path):
-        success = await asyncio.to_thread(storage_manager.download_file, safe_filename, file_path)
+        success = await storage_manager.download_file(safe_filename, file_path)
         if not success:
             raise HTTPException(status_code=404, detail="Video file not found in storage.")
 
@@ -116,7 +116,7 @@ async def preview_blur_frame(config: BlurPreviewConfig):
     file_path = os.path.join(CACHE_DIR, safe_filename)
 
     if not os.path.exists(file_path):
-        success = await asyncio.to_thread(storage_manager.download_file, safe_filename, file_path)
+        success = await storage_manager.download_file(safe_filename, file_path)
         if not success:
             raise HTTPException(status_code=404, detail="Video file not found in storage.")
 
@@ -178,14 +178,15 @@ async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTa
             loop
         )
 
-    def run_render_task() -> None:
+    async def run_render_task() -> None:
         success = False
         error_msg = None
         try:
             if not os.path.exists(file_path):
-                storage_manager.download_file(safe_filename, file_path)
+                await storage_manager.download_file(safe_filename, file_path)
 
-            blur_mgr.apply_blur_task(
+            await asyncio.to_thread(
+                blur_mgr.apply_blur_task,
                 file_path,
                 config.subtitles,
                 config.blur_settings.dict(),
@@ -193,7 +194,7 @@ async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTa
                 progress_cb
             )
 
-            upload_ok = storage_manager.upload_file(output_path, output_filename)
+            upload_ok = await storage_manager.upload_file(output_path, output_filename)
             if not upload_ok:
                 raise Exception("Failed to upload rendered video to S3.")
 

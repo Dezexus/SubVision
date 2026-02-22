@@ -9,4 +9,4 @@ paddleocr
 # paddlepaddle-gpu==3.2.0
 requests
 pynvvideocodec
-boto3
+aioboto3

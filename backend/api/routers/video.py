@@ -103,7 +103,7 @@ async def upload_video(
                 detail="Invalid video format or unsupported codec."
             )
 
-        upload_success = await asyncio.to_thread(storage_manager.upload_file, final_path, final_filename)
+        upload_success = await storage_manager.upload_file(final_path, final_filename)
         if not upload_success:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="S3 upload failed.")
 
@@ -131,7 +131,7 @@ async def download_file(filename: str):
     """
     safe_filename = os.path.basename(filename)
 
-    url = storage_manager.get_presigned_url(safe_filename)
+    url = await storage_manager.get_presigned_url(safe_filename)
     if url:
         return RedirectResponse(url=url)
 
@@ -154,7 +154,7 @@ async def get_frame(filename: str, frame_index: int):
     file_path = os.path.join(CACHE_DIR, safe_filename)
 
     if not os.path.exists(file_path):
-        success = await asyncio.to_thread(storage_manager.download_file, safe_filename, file_path)
+        success = await storage_manager.download_file(safe_filename, file_path)
         if not success:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found in storage.")
 
@@ -176,7 +176,7 @@ async def get_preview(config: PreviewConfig):
     file_path = os.path.join(CACHE_DIR, safe_filename)
 
     if not os.path.exists(file_path):
-        success = await asyncio.to_thread(storage_manager.download_file, safe_filename, file_path)
+        success = await storage_manager.download_file(safe_filename, file_path)
         if not success:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found in storage.")
 
