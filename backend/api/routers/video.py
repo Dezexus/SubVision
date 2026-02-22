@@ -11,7 +11,7 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
 from fastapi.responses import StreamingResponse, FileResponse
 from io import BytesIO
 
-from services.video_manager import VideoManager
+from media.video_manager import VideoManager
 from api.schemas import VideoMetadata, PreviewConfig
 from api.websockets.manager import connection_manager
 

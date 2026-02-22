@@ -12,8 +12,8 @@ import cv2
 
 from api.schemas import ProcessConfig, RenderConfig, BlurPreviewConfig
 from api.websockets.manager import connection_manager
-from services.process_manager import ProcessManager
-from services.blur_manager import BlurManager
+from ocr.process_manager import ProcessManager
+from media.blur_manager import BlurManager
 from core.srt_parser import parse_srt
 
 logger = logging.getLogger(__name__)
