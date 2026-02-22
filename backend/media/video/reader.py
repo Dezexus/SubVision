@@ -6,6 +6,8 @@ from typing import Any
 import cv2
 import logging
 
+from core.video_io import create_video_capture
+
 logger = logging.getLogger(__name__)
 
 class VideoProvider:
@@ -17,25 +19,7 @@ class VideoProvider:
         self.path = video_path
         self.step = step
 
-        self.cap = cv2.VideoCapture(
-            video_path,
-            cv2.CAP_FFMPEG,
-            [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY]
-        )
-
-        ok, _ = self.cap.read()
-        if not ok:
-            self.cap.release()
-            self.cap = cv2.VideoCapture(
-                video_path,
-                cv2.CAP_FFMPEG,
-                [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_NONE]
-            )
-        else:
-            self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-
-        if not self.cap.isOpened():
-             self.cap = cv2.VideoCapture(video_path)
+        self.cap = create_video_capture(video_path)
 
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
         self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 25.0

@@ -12,7 +12,7 @@ from PIL import Image
 
 from core.filters import apply_sharpening, denoise_frame
 from core.geometry import calculate_roi_from_mask
-from core.video_io import extract_frame_cv2
+from core.video_io import extract_frame_cv2, create_video_capture
 
 logger = logging.getLogger(__name__)
 
@@ -69,13 +69,8 @@ class VideoManager:
         if not video_path:
             return None, 1
 
-        cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY])
+        cap = create_video_capture(video_path)
         ok, frame = cap.read()
-
-        if not ok:
-            cap.release()
-            cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_NONE])
-            ok, frame = cap.read()
 
         try:
             total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))

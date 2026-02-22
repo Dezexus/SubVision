@@ -12,7 +12,7 @@ from typing import Optional, Tuple, List, Dict, Any
 
 from core.geometry import calculate_blur_roi
 from core.blur_effects import apply_blur_to_frame
-from core.video_io import extract_frame_cv2
+from core.video_io import extract_frame_cv2, create_video_capture
 
 logger = logging.getLogger(__name__)
 
@@ -94,14 +94,7 @@ class BlurManager:
         base_name, ext = os.path.splitext(output_path)
         temp_video_path = f"{base_name}_temp{ext}"
 
-        cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY])
-        ok, _ = cap.read()
-
-        if not ok:
-            cap.release()
-            cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_NONE])
-        else:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        cap = create_video_capture(video_path)
 
         if not cap.isOpened():
             raise ValueError("Could not open video file")

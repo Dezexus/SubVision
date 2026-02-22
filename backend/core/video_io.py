@@ -7,6 +7,28 @@ import subprocess
 import cv2
 import numpy as np
 
+def create_video_capture(video_path: str) -> cv2.VideoCapture:
+    """
+    Creates a robust cv2.VideoCapture instance with hardware acceleration fallback.
+    """
+    cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY])
+    ok, _ = cap.read()
+
+    if not ok:
+        cap.release()
+        cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_NONE])
+        ok, _ = cap.read()
+
+    if not ok:
+        cap.release()
+        cap = cv2.VideoCapture(video_path)
+        cap.read()
+
+    if cap.isOpened():
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
+    return cap
+
 @functools.lru_cache(maxsize=32)
 def extract_frame_cv2(video_path: str, frame_index: int) -> np.ndarray | None:
     """
@@ -23,9 +45,7 @@ def extract_frame_cv2(video_path: str, frame_index: int) -> np.ndarray | None:
             success, frm = cap_obj.read()
         return success, frm
 
-    cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY])
-    if not cap.isOpened():
-        cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_NONE])
+    cap = create_video_capture(video_path)
 
     ok, frame = False, None
     fps = 25.0
@@ -40,12 +60,6 @@ def extract_frame_cv2(video_path: str, frame_index: int) -> np.ndarray | None:
                 safe_index = int(total - 1)
 
             ok, frame = _try_read(cap, safe_index, fps)
-
-            if not ok:
-                cap.release()
-                cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_NONE])
-                if cap.isOpened():
-                    ok, frame = _try_read(cap, safe_index, fps)
         finally:
             cap.release()
 
