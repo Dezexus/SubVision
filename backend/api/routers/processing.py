@@ -4,7 +4,6 @@ Router module handling OCR processing jobs, subtitle imports, and blur rendering
 import os
 import asyncio
 import logging
-import threading
 from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File
 from fastapi.responses import StreamingResponse
 from io import BytesIO
@@ -25,7 +24,7 @@ process_mgr = ProcessManager()
 CACHE_DIR = "cache"
 
 render_registry: dict[str, BlurManager] = {}
-render_lock = threading.Lock()
+render_lock = asyncio.Lock()
 
 @router.post("/start")
 async def start_process(config: ProcessConfig):
@@ -75,7 +74,7 @@ async def stop_process(client_id: str):
     ocr_stopped = process_mgr.stop_process(client_id)
 
     render_stopped = False
-    with render_lock:
+    async with render_lock:
         if client_id in render_registry:
             render_registry[client_id].stop()
             render_stopped = True
@@ -144,7 +143,7 @@ async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTa
             pass
 
     blur_mgr = BlurManager()
-    with render_lock:
+    async with render_lock:
         render_registry[config.client_id] = blur_mgr
 
     loop = asyncio.get_event_loop()
@@ -193,7 +192,7 @@ async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTa
             logger.error(f"Render task failed: {e}", exc_info=True)
             success = False
         finally:
-            with render_lock:
+            async with render_lock:
                 if config.client_id in render_registry:
                     del render_registry[config.client_id]
 
