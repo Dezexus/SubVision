@@ -113,7 +113,7 @@ async def preview_blur_frame(config: BlurPreviewConfig):
         preview_image = blur_mgr.generate_preview(
             video_path=file_path,
             frame_index=config.frame_index,
-            settings=config.blur_settings.dict(),
+            settings=config.blur_settings.model_dump(),
             text=config.subtitle_text
         )
         if preview_image is None:
@@ -173,7 +173,7 @@ async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTa
             await blur_mgr.apply_blur_task(
                 file_path,
                 config.subtitles,
-                config.blur_settings.dict(),
+                config.blur_settings.model_dump(),
                 output_path,
                 progress_cb
             )
