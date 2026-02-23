@@ -23,7 +23,7 @@ const Toast = ({ toast }: { toast: ToastMessage }) => {
 
   return (
     <div className={cn(
-      "flex items-start gap-3 p-4 rounded-lg border shadow-lg bg-bg-panel min-w-[300px] max-w-md animate-in slide-in-from-right-full fade-in duration-300",
+      "flex items-start gap-3 p-4 rounded-lg border shadow-lg bg-bg-panel min-w-[300px] max-w-md animate-in slide-in-from-top-full fade-in duration-300",
       toast.type === 'error' ? 'border-red-500/30' :
       toast.type === 'success' ? 'border-green-500/30' : 'border-brand-500/30'
     )}>
@@ -47,7 +47,7 @@ export const ToastContainer = () => {
   const toasts = useAppStore((state) => state.toasts);
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
+    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none">
       {toasts.map((toast) => (
         <div key={toast.id} className="pointer-events-auto">
           <Toast toast={toast} />
