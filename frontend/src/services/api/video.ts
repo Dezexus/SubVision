@@ -1,5 +1,5 @@
 /**
- * API methods related to video uploading and frame fetching.
+ * API methods related to video uploading, resuming, and frame fetching.
  */
 import axios from 'axios';
 import { API_URL } from './config';
@@ -9,11 +9,32 @@ export const videoApi = {
   uploadVideo: async (file: File, clientId: string, onProgress?: (pct: number) => void): Promise<VideoMetadata> => {
     const chunkSize = 10 * 1024 * 1024;
     const totalChunks = Math.ceil(file.size / chunkSize);
-    const uploadId = crypto.randomUUID();
+
+    const rawId = `${file.name}-${file.size}-${file.lastModified}`;
+    const uploadId = rawId.replace(/[^a-zA-Z0-9\-]/g, '');
+
+    const statusRes = await axios.get(`${API_URL}/video/upload/status/${uploadId}`, {
+      params: { total_chunks: totalChunks }
+    });
+
+    let missingChunks: number[] = statusRes.data.missing_chunks;
+
+    if (missingChunks.length === 0) {
+      missingChunks = [totalChunks - 1];
+    }
 
     let lastResponse: any;
+    let uploadedCount = totalChunks - missingChunks.length;
+
+    if (onProgress && uploadedCount > 0) {
+      onProgress(Math.round((uploadedCount / totalChunks) * 100));
+    }
 
     for (let i = 0; i < totalChunks; i++) {
+      if (!missingChunks.includes(i)) {
+        continue;
+      }
+
       const start = i * chunkSize;
       const end = Math.min(start + chunkSize, file.size);
       const chunk = file.slice(start, end);
@@ -31,9 +52,10 @@ export const videoApi = {
       });
 
       lastResponse = response.data;
+      uploadedCount++;
 
       if (onProgress) {
-        onProgress(Math.round(((i + 1) / totalChunks) * 100));
+        onProgress(Math.round((uploadedCount / totalChunks) * 100));
       }
     }
 
