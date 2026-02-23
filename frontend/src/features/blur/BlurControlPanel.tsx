@@ -14,22 +14,13 @@ import { api } from '../../services/api';
 import { cn } from '../../utils/cn';
 import { useBlurPreview } from './hooks/useBlurPreview';
 
-const DEFAULTS = {
-  mode: 'hybrid',
-  y: 912,
-  font_size: 22,
-  padding_x: 60,
-  padding_y: 2.0,
-  sigma: 5,
-  feather: 40,
-  width_multiplier: 1.0
-};
-
 export const BlurControlPanel = () => {
   const {
     metadata,
     blurSettings,
+    defaultBlurSettings,
     setBlurSettings,
+    setDefaultBlurSettings,
     subtitles,
     clientId,
     isProcessing,
@@ -50,6 +41,22 @@ export const BlurControlPanel = () => {
   );
 
   const videoHeight = metadata?.height || 1080;
+
+  useEffect(() => {
+    const fetchDefaults = async () => {
+      try {
+        const defaults = await api.getDefaultBlurSettings();
+        setDefaultBlurSettings(defaults);
+        setBlurSettings(defaults);
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    if (!defaultBlurSettings) {
+      fetchDefaults();
+    }
+  }, [defaultBlurSettings, setDefaultBlurSettings, setBlurSettings]);
 
   useEffect(() => {
     if (metadata && blurSettings.y === 900 && roi[1] > 0) {
@@ -79,14 +86,15 @@ export const BlurControlPanel = () => {
   };
 
   const handleReset = () => {
-      setBlurSettings(DEFAULTS);
+      if (defaultBlurSettings) {
+          setBlurSettings(defaultBlurSettings);
+      }
   };
 
   return (
     <div className="flex flex-col h-full bg-bg-main">
       <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
 
-        {/* Compact Actions Row */}
         <div className="flex justify-between items-center mb-1">
             {isPreviewUpdating ? (
                 <div className="flex items-center gap-1.5 text-[10px] text-brand-500 font-mono animate-pulse">

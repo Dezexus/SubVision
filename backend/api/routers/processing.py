@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from io import BytesIO
 import cv2
 
-from api.schemas import ProcessConfig, RenderConfig, BlurPreviewConfig
+from api.schemas import ProcessConfig, RenderConfig, BlurPreviewConfig, BlurSettings
 from api.websockets.manager import connection_manager
 from api.dependencies import ensure_video_cached
 from media.blur_manager import BlurManager
@@ -27,6 +27,13 @@ async def get_presets():
     Returns a list of all available OCR processing presets.
     """
     return get_all_presets()
+
+@router.get("/blur-defaults")
+async def get_blur_defaults():
+    """
+    Returns the default configuration values for blur settings.
+    """
+    return BlurSettings().model_dump()
 
 @router.post("/start")
 async def start_process(config: ProcessConfig, request: Request):

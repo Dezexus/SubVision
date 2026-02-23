@@ -11,6 +11,11 @@ export const processApi = {
     return response.data;
   },
 
+  getDefaultBlurSettings: async (): Promise<BlurSettings> => {
+    const response = await axios.get(`${API_URL}/process/blur-defaults`);
+    return response.data;
+  },
+
   getBlurPreview: async (config: {
     filename: string;
     frame_index: number;
