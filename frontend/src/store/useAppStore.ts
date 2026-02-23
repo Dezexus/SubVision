@@ -27,15 +27,10 @@ export const useAppStore = create<AppState>()(
         roi: state.roi,
         preset: state.preset,
         config: state.config,
-        defaultConfig: state.defaultConfig,
         isBlurMode: state.isBlurMode,
         blurSettings: state.blurSettings,
-        defaultBlurSettings: state.defaultBlurSettings,
         subtitles: state.subtitles,
-        clientId: state.clientId,
-        allowedExtensions: state.allowedExtensions,
-        availablePresets: state.availablePresets,
-        availableLanguages: state.availableLanguages
+        clientId: state.clientId
       }),
     }
   )
