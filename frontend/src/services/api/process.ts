@@ -3,9 +3,14 @@
  */
 import axios from 'axios';
 import { API_URL } from './config';
-import type { ProcessConfig, RenderConfig, SubtitleItem, BlurSettings } from '../../types';
+import type { ProcessConfig, RenderConfig, SubtitleItem, BlurSettings, Preset } from '../../types';
 
 export const processApi = {
+  getPresets: async (): Promise<Preset[]> => {
+    const response = await axios.get(`${API_URL}/process/presets`);
+    return response.data;
+  },
+
   getBlurPreview: async (config: {
     filename: string;
     frame_index: number;

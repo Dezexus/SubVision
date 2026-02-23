@@ -16,9 +16,17 @@ from media.blur_manager import BlurManager
 from core.srt_parser import parse_srt
 from core.storage import storage_manager
 from core.config import settings
+from core.presets import get_all_presets
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+@router.get("/presets")
+async def get_presets():
+    """
+    Returns a list of all available OCR processing presets.
+    """
+    return get_all_presets()
 
 @router.post("/start")
 async def start_process(config: ProcessConfig, request: Request):

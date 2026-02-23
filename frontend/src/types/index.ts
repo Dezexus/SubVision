@@ -10,6 +10,21 @@ export interface VideoMetadata {
   duration: number;
 }
 
+export interface PresetConfig {
+  step: number;
+  min_conf: number;
+  smart_skip: boolean;
+  denoise_strength: number;
+  scale_factor: number;
+}
+
+export interface Preset {
+  id: string;
+  label: string;
+  desc: string;
+  config: PresetConfig;
+}
+
 export interface ProcessConfig {
   filename: string;
   client_id: string;

@@ -1,17 +1,19 @@
 /**
- * Zustand slice for process configuration and presets.
+ * Zustand slice for process configuration and dynamic presets.
  */
 import { StateCreator } from 'zustand';
-import type { ProcessConfig } from '../../types';
+import type { ProcessConfig, Preset } from '../../types';
 import type { AppState } from '../types';
 
 export interface ConfigSlice {
   roi: [number, number, number, number];
   preset: string;
   config: Partial<ProcessConfig>;
+  availablePresets: Preset[];
   setRoi: (roi: [number, number, number, number]) => void;
   setPreset: (preset: string) => void;
   updateConfig: (updates: Partial<ProcessConfig>) => void;
+  setAvailablePresets: (presets: Preset[]) => void;
 }
 
 export const createConfigSlice: StateCreator<AppState, [], [], ConfigSlice> = (set) => ({
@@ -24,7 +26,9 @@ export const createConfigSlice: StateCreator<AppState, [], [], ConfigSlice> = (s
     smart_skip: true,
     languages: 'en',
   },
+  availablePresets: [],
   setRoi: (roi) => set({ roi }),
   setPreset: (preset) => set({ preset }),
   updateConfig: (updates) => set((state) => ({ config: { ...state.config, ...updates } })),
+  setAvailablePresets: (presets) => set({ availablePresets: presets }),
 });

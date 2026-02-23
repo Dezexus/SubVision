@@ -1,41 +1,46 @@
 /**
- * Component for selecting video processing presets.
+ * Component for selecting video processing presets dynamically fetched from backend.
  */
-import React from 'react';
-import { Zap, Shield, Eye } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { Zap, Shield, Eye, Settings } from 'lucide-react';
 import { useAppStore } from '../../../store/useAppStore';
 import { cn } from '../../../utils/cn';
-
-const PRESETS = [
-  {
-    id: '⚖️ Balance',
-    icon: <Shield size={18} />,
-    label: 'Balanced',
-    desc: 'Movies & TV Shows',
-    config: { step: 2, conf_threshold: 80, scale_factor: 2.0, smart_skip: true }
-  },
-  {
-    id: '🏎️ Speed',
-    icon: <Zap size={18} />,
-    label: 'Speed',
-    desc: 'Draft / Clean video',
-    config: { step: 4, conf_threshold: 70, scale_factor: 1.5, smart_skip: true }
-  },
-  {
-    id: '🎯 Quality',
-    icon: <Eye size={18} />,
-    label: 'Quality',
-    desc: 'Frame-perfect timing',
-    config: { step: 1, conf_threshold: 85, scale_factor: 2.5, smart_skip: false }
-  }
-];
+import { api } from '../../../services/api';
+import type { Preset } from '../../../types';
 
 export const PresetSelector = () => {
-  const { preset, setPreset, updateConfig } = useAppStore();
+  const { preset, setPreset, updateConfig, availablePresets, setAvailablePresets } = useAppStore();
 
-  const handleSelect = (p: typeof PRESETS[0]) => {
+  useEffect(() => {
+    const fetchPresets = async () => {
+      try {
+        const data = await api.getPresets();
+        setAvailablePresets(data);
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    if (availablePresets.length === 0) {
+      fetchPresets();
+    }
+  }, [availablePresets.length, setAvailablePresets]);
+
+  const handleSelect = (p: Preset) => {
     setPreset(p.id);
-    updateConfig(p.config);
+    updateConfig({
+      step: p.config.step,
+      conf_threshold: p.config.min_conf,
+      scale_factor: p.config.scale_factor,
+      smart_skip: p.config.smart_skip
+    });
+  };
+
+  const getIcon = (id: string) => {
+    if (id.includes('Balance')) return <Shield size={18} />;
+    if (id.includes('Speed')) return <Zap size={18} />;
+    if (id.includes('Quality')) return <Eye size={18} />;
+    return <Settings size={18} />;
   };
 
   return (
@@ -43,8 +48,8 @@ export const PresetSelector = () => {
       <label className="text-[11px] font-bold uppercase tracking-wider text-txt-subtle mb-1 block">
         Processing Mode
       </label>
-      <div className="grid grid-cols-3 gap-2">
-        {PRESETS.map((p) => {
+      <div className="grid grid-cols-2 gap-2">
+        {availablePresets.map((p) => {
           const isActive = preset === p.id;
           return (
             <button
@@ -62,7 +67,7 @@ export const PresetSelector = () => {
                 "transition-transform duration-200",
                 isActive ? "scale-110" : "scale-100"
               )}>
-                {p.icon}
+                {getIcon(p.id)}
               </div>
               <span className={cn(
                   "text-[11px] font-semibold tracking-wide uppercase",

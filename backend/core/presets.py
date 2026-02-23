@@ -1,6 +1,7 @@
 """
 Defines processing presets and helper functions for the OCR configuration.
 """
+from typing import Any
 
 ConfigType = dict[str, int | float | bool]
 
@@ -12,18 +13,26 @@ DEFAULT_CONFIG: ConfigType = {
     "scale_factor": 2.0,
 }
 
-PRESETS_DELTAS: dict[str, ConfigType] = {
+PRESETS_DELTAS: dict[str, dict[str, Any]] = {
     "⚖️ Balance": {
-        "step": 2, "min_conf": 80, "denoise_strength": 3, "scale_factor": 2.0
+        "label": "Balanced",
+        "desc": "Movies & TV Shows",
+        "config": {"step": 2, "min_conf": 80, "denoise_strength": 3, "scale_factor": 2.0}
     },
     "🏎️ Speed": {
-        "step": 4, "min_conf": 70, "denoise_strength": 0, "scale_factor": 1.5
+        "label": "Speed",
+        "desc": "Draft / Clean video",
+        "config": {"step": 4, "min_conf": 70, "denoise_strength": 0, "scale_factor": 1.5}
     },
     "🎯 Quality": {
-        "step": 1, "min_conf": 85, "smart_skip": False, "denoise_strength": 5, "scale_factor": 2.5
+        "label": "Quality",
+        "desc": "Frame-perfect timing",
+        "config": {"step": 1, "min_conf": 85, "smart_skip": False, "denoise_strength": 5, "scale_factor": 2.5}
     },
     "🔦 Hard / Low Quality": {
-        "step": 2, "min_conf": 60, "denoise_strength": 7, "scale_factor": 3.0
+        "label": "Hard / Low Quality",
+        "desc": "Aggressive enhancement",
+        "config": {"step": 2, "min_conf": 60, "denoise_strength": 7, "scale_factor": 3.0}
     },
 }
 
@@ -32,6 +41,23 @@ def get_preset_config(preset_name: str) -> ConfigType:
     Returns a full configuration dictionary for a given preset name.
     """
     config = DEFAULT_CONFIG.copy()
-    delta = PRESETS_DELTAS.get(preset_name, {})
-    config.update(delta)
+    preset_data = PRESETS_DELTAS.get(preset_name)
+    if preset_data:
+        config.update(preset_data.get("config", {}))
     return config
+
+def get_all_presets() -> list[dict[str, Any]]:
+    """
+    Returns a list of all available processing presets.
+    """
+    presets_list = []
+    for preset_id, preset_data in PRESETS_DELTAS.items():
+        full_config = DEFAULT_CONFIG.copy()
+        full_config.update(preset_data.get("config", {}))
+        presets_list.append({
+            "id": preset_id,
+            "label": preset_data["label"],
+            "desc": preset_data["desc"],
+            "config": full_config
+        })
+    return presets_list
