@@ -13,8 +13,11 @@ import { useSocket } from './hooks/useSocket';
 function App() {
   useSocket();
   const file = useAppStore((state) => state.file);
+  const metadata = useAppStore((state) => state.metadata);
   const undo = useAppStore((state) => state.undo);
   const redo = useAppStore((state) => state.redo);
+
+  const isProjectActive = !!file || !!metadata;
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -48,8 +51,7 @@ function App() {
       <div className="h-1 w-full bg-brand-500 flex-shrink-0" />
 
       <div className="flex h-full p-4 gap-4">
-        {file && (
-          // Added min-w and w- classes to ensure fixed sidebar width
+        {isProjectActive && (
           <div className="h-full z-20 flex-shrink-0">
             <SettingsPanel />
           </div>
@@ -59,8 +61,7 @@ function App() {
           <EditorPanel />
         </div>
 
-        {file && (
-          // Added width constraints back for the results panel
+        {isProjectActive && (
           <div className="h-full z-20 flex-shrink-0">
             <ResultsPanel />
           </div>

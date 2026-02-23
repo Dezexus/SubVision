@@ -182,7 +182,7 @@ export const VideoCanvas = () => {
       };
   };
 
-  if (!file || !metadata) {
+  if (!file && !metadata) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-txt-subtle">
         <ImageOff size={48} className="mb-4 opacity-20" />

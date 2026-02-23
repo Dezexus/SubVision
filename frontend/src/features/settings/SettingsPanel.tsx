@@ -26,7 +26,9 @@ export const SettingsPanel = () => {
     isBlurMode,
     defaultConfig,
     setDefaultConfig,
-    setPreset
+    setPreset,
+    setMetadata,
+    setSubtitles
   } = useAppStore();
 
   useEffect(() => {
@@ -85,7 +87,11 @@ export const SettingsPanel = () => {
             {isBlurMode ? 'Blur Settings' : 'Project Settings'}
         </h2>
         <button
-          onClick={() => setFile(null as any)}
+          onClick={() => {
+            setFile(null);
+            setMetadata(null);
+            setSubtitles([]);
+          }}
           className="p-2 hover:bg-bg-surface rounded text-txt-dim hover:text-txt-main transition"
           title="New Project"
         >

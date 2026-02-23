@@ -12,7 +12,7 @@ export interface VideoSlice {
   isPreviewModalOpen: boolean;
   allowedExtensions: string[];
   setFile: (file: File | null) => void;
-  setMetadata: (meta: VideoMetadata) => void;
+  setMetadata: (meta: VideoMetadata | null) => void;
   setCurrentFrame: (index: number | ((prev: number) => number)) => void;
   setPreviewModalOpen: (isOpen: boolean) => void;
   setAllowedExtensions: (extensions: string[]) => void;

@@ -2,12 +2,13 @@ import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { X, MoveVertical, Trash2 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { PlaybackControls } from './components/PlaybackControls';
+import { API_BASE } from '../../services/api';
 import type { SubtitleItem } from '../../types';
 
 /**
  * Modal component for previewing video playback and editing subtitles.
  * Manages playback state, precise frame stepping, initialization locks,
- * and dynamic subtitle positioning.
+ * and dynamic subtitle positioning. Rehydrates from API if local file is missing.
  */
 export const PreviewModal = () => {
   const {
@@ -95,16 +96,27 @@ export const PreviewModal = () => {
   }, [isPlaying, animate]);
 
   useEffect(() => {
-    if (file && isPreviewModalOpen) {
-      const url = URL.createObjectURL(file);
-      setVideoUrl(url);
+    if (isPreviewModalOpen && metadata) {
+      if (file) {
+        const url = URL.createObjectURL(file);
+        setVideoUrl(url);
 
-      return () => {
-        URL.revokeObjectURL(url);
-        setVideoUrl(null);
-      };
+        return () => {
+          URL.revokeObjectURL(url);
+          setVideoUrl(null);
+        };
+      } else {
+        const url = `${API_BASE}/api/video/download/${metadata.filename}`;
+        setVideoUrl(url);
+
+        return () => {
+          setVideoUrl(null);
+        };
+      }
+    } else {
+      setVideoUrl(null);
     }
-  }, [file, isPreviewModalOpen]);
+  }, [file, isPreviewModalOpen, metadata]);
 
   useEffect(() => {
     if (!isPreviewModalOpen) {

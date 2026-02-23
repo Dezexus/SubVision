@@ -31,9 +31,8 @@ export const EditorPanel = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [metadata, setCurrentFrame]);
 
-  if (!file) {
+  if (!file && !metadata) {
     return (
-      // Added h-full and w-full to make WelcomeScreen fill the empty EditorPanel
       <div className="w-full h-full border border-border-main rounded-xl bg-bg-deep overflow-hidden shadow-2xl flex items-center justify-center">
          <WelcomeScreen />
       </div>
