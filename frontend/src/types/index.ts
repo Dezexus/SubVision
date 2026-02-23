@@ -24,7 +24,6 @@ export interface ProcessConfig {
 
 export interface BlurSettings {
   mode: string;
-  type: string;
   y: number;
   font_size: number;
   padding_x: number;
@@ -32,9 +31,6 @@ export interface BlurSettings {
   sigma: number;
   feather: number;
   width_multiplier: number;
-  x?: number;
-  w?: number;
-  h?: number;
 }
 
 export interface RenderConfig {

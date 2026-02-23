@@ -18,7 +18,6 @@ export const createBlurSlice: StateCreator<AppState, [], [], BlurSlice> = (set) 
   isBlurMode: false,
   blurSettings: {
     mode: 'hybrid',
-    type: 'box',
     y: 912,
     font_size: 22,
     padding_x: 60,

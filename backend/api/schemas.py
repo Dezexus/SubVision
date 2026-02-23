@@ -47,7 +47,6 @@ class BlurSettings(BaseModel):
     Settings schema defining the dimensions and style of the text obscuring filter.
     """
     mode: str = "blur"
-    type: str = "box"
     y: int = 900
     font_size: int = 21
     padding_x: int = 40
