@@ -25,7 +25,6 @@ class PreviewConfig(BaseModel):
     frame_index: int
     roi: List[int]
     scale_factor: float
-    denoise: float
 
 
 class ProcessConfig(BaseModel):

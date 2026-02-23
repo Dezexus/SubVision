@@ -75,7 +75,6 @@ export const videoApi = {
     frame_index: number;
     roi: number[];
     scale_factor: number;
-    denoise: number;
   }, signal?: AbortSignal) => {
     const response = await axios.post(`${API_URL}/video/preview`, config, {
       responseType: 'blob',

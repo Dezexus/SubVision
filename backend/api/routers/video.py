@@ -171,7 +171,7 @@ async def get_preview(config: PreviewConfig):
         VideoManager.generate_preview,
         video_path=file_path,
         frame_index=config.frame_index,
-        editor_data={"layers": [], "roi_override": config.roi},
+        editor_data={"roi_override": config.roi},
         scale_factor=config.scale_factor
     )
 

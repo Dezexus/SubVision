@@ -31,8 +31,7 @@ export const FilterPreview = () => {
           filename: metadata.filename,
           frame_index: currentFrameIndex,
           roi: roi,
-          scale_factor: config.scale_factor || 1.0,
-          denoise: 3.0
+          scale_factor: config.scale_factor || 1.0
         });
 
         if (isActive) {
