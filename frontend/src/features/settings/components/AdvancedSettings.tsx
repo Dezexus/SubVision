@@ -1,14 +1,30 @@
 /**
- * Advanced settings component including OCR threshold, frame stepping, and language selection.
+ * Advanced settings component including OCR threshold, frame stepping, and language selection dynamically loaded.
  */
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Globe } from 'lucide-react';
 import { useAppStore } from '../../../store/useAppStore';
 import { Slider } from '../../../components/ui/Slider';
 import { Switch } from '../../../components/ui/Switch';
+import { api } from '../../../services/api';
 
 export const AdvancedSettings = () => {
-  const { config, updateConfig } = useAppStore();
+  const { config, updateConfig, availableLanguages, setAvailableLanguages } = useAppStore();
+
+  useEffect(() => {
+    const fetchLanguages = async () => {
+      try {
+        const data = await api.getLanguages();
+        setAvailableLanguages(data);
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    if (availableLanguages.length === 0) {
+      fetchLanguages();
+    }
+  }, [availableLanguages.length, setAvailableLanguages]);
 
   return (
     <div className="space-y-5">
@@ -24,14 +40,15 @@ export const AdvancedSettings = () => {
             onChange={(e) => updateConfig({ languages: e.target.value })}
             className="w-full bg-bg-input border border-border-strong rounded-md text-sm text-txt-main px-3 py-2 focus:outline-none focus:ring-1 focus:ring-brand-500 appearance-none cursor-pointer font-medium"
           >
-            <option value="en">English</option>
-            <option value="ru">Russian</option>
-            <option value="ch">Chinese</option>
-            <option value="fr">French</option>
-            <option value="german">German</option>
-            <option value="korean">Korean</option>
-            <option value="japan">Japanese</option>
-            <option value="es">Spanish</option>
+            {availableLanguages.length === 0 ? (
+                <option value="en">English</option>
+            ) : (
+                availableLanguages.map((lang) => (
+                    <option key={lang.code} value={lang.code}>
+                        {lang.name}
+                    </option>
+                ))
+            )}
           </select>
           <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-txt-subtle">
             <svg className="w-4 h-4 fill-current" viewBox="0 0 20 20">

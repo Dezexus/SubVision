@@ -1,5 +1,5 @@
 """
-Defines processing presets and helper functions for the OCR configuration.
+Defines processing presets, supported languages, and helper functions for the OCR configuration.
 """
 from typing import Any
 
@@ -36,6 +36,17 @@ PRESETS_DELTAS: dict[str, dict[str, Any]] = {
     },
 }
 
+SUPPORTED_LANGUAGES: list[dict[str, str]] = [
+    {"code": "en", "name": "English"},
+    {"code": "ru", "name": "Russian"},
+    {"code": "ch", "name": "Chinese"},
+    {"code": "fr", "name": "French"},
+    {"code": "german", "name": "German"},
+    {"code": "korean", "name": "Korean"},
+    {"code": "japan", "name": "Japanese"},
+    {"code": "es", "name": "Spanish"}
+]
+
 def get_preset_config(preset_name: str) -> ConfigType:
     """
     Returns a full configuration dictionary for a given preset name.
@@ -61,3 +72,9 @@ def get_all_presets() -> list[dict[str, Any]]:
             "config": full_config
         })
     return presets_list
+
+def get_supported_languages() -> list[dict[str, str]]:
+    """
+    Returns a list of all supported OCR languages.
+    """
+    return SUPPORTED_LANGUAGES

@@ -3,11 +3,16 @@
  */
 import axios from 'axios';
 import { API_URL } from './config';
-import type { ProcessConfig, RenderConfig, SubtitleItem, BlurSettings, Preset } from '../../types';
+import type { ProcessConfig, RenderConfig, SubtitleItem, BlurSettings, Preset, Language } from '../../types';
 
 export const processApi = {
   getPresets: async (): Promise<Preset[]> => {
     const response = await axios.get(`${API_URL}/process/presets`);
+    return response.data;
+  },
+
+  getLanguages: async (): Promise<Language[]> => {
+    const response = await axios.get(`${API_URL}/process/languages`);
     return response.data;
   },
 
