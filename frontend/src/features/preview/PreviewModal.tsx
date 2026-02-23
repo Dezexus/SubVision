@@ -1,19 +1,23 @@
 /**
  * Modal component providing an interactive playback interface and subtitle editor.
+ * This version uses a local Blob URL and a single-line input for subtitles.
  */
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { X, MoveVertical, Trash2 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
-import { API_BASE } from '../../services/api';
 
 export const PreviewModal = () => {
-  const isPreviewModalOpen = useAppStore(state => state.isPreviewModalOpen);
-  const setPreviewModalOpen = useAppStore(state => state.setPreviewModalOpen);
-  const metadata = useAppStore(state => state.metadata);
-  const subtitles = useAppStore(state => state.subtitles);
-  const updateSubtitle = useAppStore(state => state.updateSubtitle);
-  const deleteSubtitle = useAppStore(state => state.deleteSubtitle);
-  const saveHistory = useAppStore(state => state.saveHistory);
+  const {
+    file,
+    metadata,
+    subtitles,
+    currentFrameIndex,
+    isPreviewModalOpen,
+    setPreviewModalOpen,
+    updateSubtitle,
+    deleteSubtitle,
+    saveHistory
+  } = useAppStore();
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -21,25 +25,42 @@ export const PreviewModal = () => {
 
   const [currentTime, setCurrentTime] = useState(0);
   const [bottomOffset, setBottomOffset] = useState(10);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+
+  const activeSub = useMemo(() => {
+    return subtitles.find(s => currentTime >= s.start && currentTime <= s.end);
+  }, [currentTime, subtitles]);
 
   useEffect(() => {
-    if (!isPreviewModalOpen && videoRef.current) {
-      videoRef.current.pause();
+    if (file && isPreviewModalOpen) {
+      const url = URL.createObjectURL(file);
+      setVideoUrl(url);
+
+      return () => {
+        URL.revokeObjectURL(url);
+        setVideoUrl(null);
+      };
     }
-  }, [isPreviewModalOpen]);
+  }, [file, isPreviewModalOpen]);
 
-  if (!isPreviewModalOpen || !metadata) return null;
+  useEffect(() => {
+    const video = videoRef.current;
+    if (video && isPreviewModalOpen && metadata) {
+        video.currentTime = currentFrameIndex / metadata.fps;
+    } else if (video && !isPreviewModalOpen) {
+        video.pause();
+    }
+  }, [isPreviewModalOpen, metadata, currentFrameIndex]);
 
-  const videoUrl = `${API_BASE}/uploads/${encodeURIComponent(metadata.filename)}`;
-  const activeSub = subtitles.find(s => currentTime >= s.start && currentTime <= s.end);
+  if (!isPreviewModalOpen || !metadata) {
+    return null;
+  }
 
-  const handleTimeUpdate = () => {
-    // [Logic remains unchanged]
-    if (videoRef.current) setCurrentTime(videoRef.current.currentTime);
+  const handleTimeUpdate = (e: React.SyntheticEvent<HTMLVideoElement>) => {
+    setCurrentTime(e.currentTarget.currentTime);
   };
 
   const handleDragStart = (e: React.MouseEvent) => {
-    // [Logic remains unchanged]
     e.preventDefault();
     e.stopPropagation();
     dragStartRef.current = { y: e.clientY, initialOffset: bottomOffset };
@@ -64,7 +85,6 @@ export const PreviewModal = () => {
   return (
     <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 md:p-8 backdrop-blur-md transition-opacity">
       <div className="bg-bg-main rounded-xl border border-border-main shadow-2xl w-full max-w-6xl flex flex-col overflow-hidden relative animate-in fade-in zoom-in-95 duration-200">
-        {/* [Header logic remains unchanged] */}
         <div className="p-4 border-b border-border-main flex justify-between items-center bg-bg-panel">
           <h2 className="text-white font-bold tracking-wide uppercase text-sm">Playback & Edit</h2>
           <button onClick={() => setPreviewModalOpen(false)} className="p-1.5 text-txt-subtle hover:text-white hover:bg-red-500/20 hover:border-red-500/50 border border-transparent rounded transition-colors">
@@ -73,14 +93,16 @@ export const PreviewModal = () => {
         </div>
 
         <div ref={containerRef} className="relative w-full aspect-video bg-black flex items-center justify-center group/video">
-          <video
-            ref={videoRef}
-            src={videoUrl}
-            controls
-            autoPlay
-            className="w-full h-full object-contain"
-            onTimeUpdate={handleTimeUpdate}
-          />
+          {videoUrl && (
+            <video
+              ref={videoRef}
+              src={videoUrl}
+              controls
+              autoPlay
+              className="w-full h-full object-contain"
+              onTimeUpdate={handleTimeUpdate}
+            />
+          )}
 
           {activeSub && (
             <div
@@ -96,13 +118,13 @@ export const PreviewModal = () => {
               </div>
 
               <div className="w-full relative group/textarea">
-                <textarea
+                <input
+                  type="text"
                   value={activeSub.text}
                   onFocus={() => saveHistory()}
                   onChange={(e) => updateSubtitle({ ...activeSub, text: e.target.value })}
                   onKeyDown={(e) => e.stopPropagation()}
-                  className="w-full bg-black/70 text-white text-center text-lg md:text-xl py-2.5 px-12 rounded-2xl border-2 border-transparent hover:border-white/20 focus:border-brand-500 focus:bg-black/90 focus:outline-none resize-none overflow-hidden transition-all shadow-lg backdrop-blur-sm"
-                  rows={2}
+                  className="w-full bg-black/70 text-white text-center text-lg md:text-xl py-2.5 px-12 rounded-2xl border-2 border-transparent hover:border-white/20 focus:border-brand-500 focus:bg-black/90 focus:outline-none transition-all shadow-lg backdrop-blur-sm"
                 />
                 <button
                   onClick={(e) => {
