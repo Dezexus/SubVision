@@ -40,10 +40,6 @@ export const videoApi = {
     return lastResponse as VideoMetadata;
   },
 
-  getFrameUrl: (filename: string, frameIndex: number) => {
-    return `${API_URL}/video/frame/${filename}/${frameIndex}`;
-  },
-
   getFrameBlob: async (filename: string, frameIndex: number, signal?: AbortSignal) => {
     const response = await axios.get(`${API_URL}/video/frame/${filename}/${frameIndex}`, {
       responseType: 'blob',
