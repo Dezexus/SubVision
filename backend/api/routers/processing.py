@@ -42,6 +42,14 @@ async def get_blur_defaults():
     """
     return BlurSettings().model_dump()
 
+@router.get("/process-defaults")
+async def get_process_defaults():
+    """
+    Returns the default configuration values for process settings.
+    """
+    dummy = ProcessConfig(filename="", client_id="", roi=[0,0,0,0])
+    return dummy.model_dump(exclude={"filename", "client_id", "roi"})
+
 @router.post("/start")
 async def start_process(config: ProcessConfig, request: Request):
     """

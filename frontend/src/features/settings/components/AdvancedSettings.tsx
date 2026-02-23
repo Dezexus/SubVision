@@ -9,7 +9,7 @@ import { Switch } from '../../../components/ui/Switch';
 import { api } from '../../../services/api';
 
 export const AdvancedSettings = () => {
-  const { config, updateConfig, availableLanguages, setAvailableLanguages } = useAppStore();
+  const { config, updateConfig, availableLanguages, setAvailableLanguages, defaultConfig } = useAppStore();
 
   useEffect(() => {
     const fetchLanguages = async () => {
@@ -36,7 +36,7 @@ export const AdvancedSettings = () => {
         </div>
         <div className="relative">
           <select
-            value={config.languages || 'en'}
+            value={config.languages || defaultConfig?.languages || 'en'}
             onChange={(e) => updateConfig({ languages: e.target.value })}
             className="w-full bg-bg-input border border-border-strong rounded-md text-sm text-txt-main px-3 py-2 focus:outline-none focus:ring-1 focus:ring-brand-500 appearance-none cursor-pointer font-medium"
           >
@@ -61,28 +61,28 @@ export const AdvancedSettings = () => {
       <Slider
         label="Min Confidence"
         min={50} max={100} step={1}
-        value={config.conf_threshold || 80}
-        valueDisplay={`${config.conf_threshold}%`}
+        value={config.conf_threshold ?? defaultConfig?.conf_threshold ?? 0}
+        valueDisplay={`${config.conf_threshold ?? defaultConfig?.conf_threshold ?? 0}%`}
         onChange={(e) => updateConfig({ conf_threshold: Number(e.target.value) })}
       />
 
       <Slider
         label="Scan Step (Frames)"
         min={1} max={10} step={1}
-        value={config.step || 2}
-        valueDisplay={config.step}
+        value={config.step ?? defaultConfig?.step ?? 0}
+        valueDisplay={config.step ?? defaultConfig?.step ?? 0}
         onChange={(e) => updateConfig({ step: Number(e.target.value) })}
       />
 
       <div className="space-y-1 pt-2 border-t border-border-main">
         <Switch
           label="Smart Skip (Static Scenes)"
-          checked={config.smart_skip ?? true}
+          checked={config.smart_skip ?? defaultConfig?.smart_skip ?? false}
           onChange={(val) => updateConfig({ smart_skip: val })}
         />
         <Switch
           label="Upscale (2x Resolution)"
-          checked={(config.scale_factor || 1) > 1.5}
+          checked={(config.scale_factor ?? defaultConfig?.scale_factor ?? 1.0) > 1.5}
           onChange={(val) => updateConfig({ scale_factor: val ? 2.0 : 1.0 })}
         />
       </div>

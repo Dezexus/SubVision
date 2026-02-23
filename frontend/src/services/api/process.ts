@@ -21,6 +21,11 @@ export const processApi = {
     return response.data;
   },
 
+  getDefaultProcessConfig: async (): Promise<Partial<ProcessConfig>> => {
+    const response = await axios.get(`${API_URL}/process/process-defaults`);
+    return response.data;
+  },
+
   getBlurPreview: async (config: {
     filename: string;
     frame_index: number;
