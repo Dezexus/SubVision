@@ -1,5 +1,5 @@
 """
-Module providing text obscuring effects combining targeted mask inpainting with regional blurring and unified alpha blending.
+Module providing text obscuring effects combining targeted mask inpainting with regional box blurring and unified alpha blending.
 """
 from typing import Tuple, Dict, Any
 import cv2
@@ -13,7 +13,7 @@ except AttributeError:
 
 def _apply_hybrid_inpaint(frame: np.ndarray, roi: Tuple[int, int, int, int], font_size_px: int) -> None:
     """
-    Applies text-aware inpainting exclusively to the text mask to reconstruct the background context.
+    Applies text-aware inpainting utilizing Navier-Stokes for gradient fills and an internal Gaussian smoothing pass to completely eliminate faceted artifacts before blending.
     """
     bx, by, bw, bh = roi
     pad = 15
@@ -25,20 +25,22 @@ def _apply_hybrid_inpaint(frame: np.ndarray, roi: Tuple[int, int, int, int], fon
     x2 = min(w, bx + bw + pad)
 
     roi_expanded = frame[y1:y2, x1:x2].copy()
+    original_expanded = roi_expanded.copy()
     roi_inner = frame[by:by+bh, bx:bx+bw]
 
     gray = cv2.cvtColor(roi_inner, cv2.COLOR_BGR2GRAY)
+    gray = cv2.GaussianBlur(gray, (5, 5), 0)
 
     grad_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
     grad = cv2.morphologyEx(gray, cv2.MORPH_GRADIENT, grad_kernel)
 
     _, text_mask = cv2.threshold(grad, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
 
-    fill_ksize = max(3, int(font_size_px * 0.4))
+    fill_ksize = max(5, int(font_size_px * 0.5))
     fill_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (fill_ksize, fill_ksize))
     text_mask = cv2.morphologyEx(text_mask, cv2.MORPH_CLOSE, fill_kernel)
 
-    dilate_ksize = max(7, int(font_size_px * 0.4))
+    dilate_ksize = max(9, int(font_size_px * 0.6))
     dilate_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (dilate_ksize, dilate_ksize))
     text_mask = cv2.dilate(text_mask, dilate_kernel, iterations=1)
 
@@ -51,12 +53,30 @@ def _apply_hybrid_inpaint(frame: np.ndarray, roi: Tuple[int, int, int, int], fon
 
     local_mask[ly1:ly2, lx1:lx2] = text_mask
 
-    inpainted = cv2.inpaint(roi_expanded, local_mask, 7, cv2.INPAINT_TELEA)
-    frame[y1:y2, x1:x2] = inpainted
+    inpaint_radius = max(5, int(font_size_px * 0.25))
+    inpainted = cv2.inpaint(roi_expanded, local_mask, inpaint_radius, cv2.INPAINT_NS)
+
+    smooth_k = max(7, int(font_size_px * 0.7))
+    if smooth_k % 2 == 0:
+        smooth_k += 1
+    inpainted_smooth = cv2.GaussianBlur(inpainted, (smooth_k, smooth_k), 0)
+
+    blend_k = max(5, int(font_size_px * 0.5))
+    if blend_k % 2 == 0:
+        blend_k += 1
+
+    soft_mask = cv2.GaussianBlur(local_mask, (blend_k, blend_k), 0).astype(np.float32) / 255.0
+    soft_mask_3ch = cv2.merge([soft_mask, soft_mask, soft_mask])
+
+    inpainted_float = inpainted_smooth.astype(np.float32)
+    original_float = original_expanded.astype(np.float32)
+
+    blended = inpainted_float * soft_mask_3ch + original_float * (1.0 - soft_mask_3ch)
+    frame[y1:y2, x1:x2] = blended.astype(np.uint8)
 
 def _apply_cuda_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original_roi: np.ndarray, sigma: int, feather: int, alpha: float) -> np.ndarray:
     """
-    Applies hardware-accelerated box blur to the region and blends it with the original frame using spatial and temporal alpha masks.
+    Applies hardware-accelerated 3-pass box blur to the region and blends it with the original frame.
     """
     bx, by, bw, bh = roi
     gpu_frame = cv2.cuda_GpuMat()
@@ -127,7 +147,7 @@ def _apply_cuda_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original
 
 def _apply_cpu_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original_roi: np.ndarray, sigma: int, feather: int, alpha: float) -> np.ndarray:
     """
-    Applies software-based box blur to the region and blends it with the original frame using spatial and temporal alpha masks.
+    Applies software-based 3-pass box blur to the region and blends it with the original frame.
     """
     bx, by, bw, bh = roi
     roi_img = frame[by:by+bh, bx:bx+bw]
