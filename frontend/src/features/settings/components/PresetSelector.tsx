@@ -48,7 +48,7 @@ export const PresetSelector = () => {
       <label className="text-[11px] font-bold uppercase tracking-wider text-txt-subtle mb-1 block">
         Processing Mode
       </label>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         {availablePresets.map((p) => {
           const isActive = preset === p.id;
           return (

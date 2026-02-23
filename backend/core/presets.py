@@ -28,12 +28,7 @@ PRESETS_DELTAS: dict[str, dict[str, Any]] = {
         "label": "Quality",
         "desc": "Frame-perfect timing",
         "config": {"step": 1, "min_conf": 85, "smart_skip": False, "denoise_strength": 5, "scale_factor": 2.5}
-    },
-    "🔦 Hard / Low Quality": {
-        "label": "Hard / Low Quality",
-        "desc": "Aggressive enhancement",
-        "config": {"step": 2, "min_conf": 60, "denoise_strength": 7, "scale_factor": 3.0}
-    },
+    }
 }
 
 SUPPORTED_LANGUAGES: list[dict[str, str]] = [
