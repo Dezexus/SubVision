@@ -1,3 +1,6 @@
+/**
+ * Component for selecting video processing presets.
+ */
 import React from 'react';
 import { Zap, Shield, Eye } from 'lucide-react';
 import { useAppStore } from '../../../store/useAppStore';
@@ -28,10 +31,10 @@ const PRESETS = [
 ];
 
 export const PresetSelector = () => {
-  const { preset, updateConfig } = useAppStore();
+  const { preset, setPreset, updateConfig } = useAppStore();
 
   const handleSelect = (p: typeof PRESETS[0]) => {
-    useAppStore.setState({ preset: p.id } as any);
+    setPreset(p.id);
     updateConfig(p.config);
   };
 
