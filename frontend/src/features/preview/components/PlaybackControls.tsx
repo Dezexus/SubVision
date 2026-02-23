@@ -5,11 +5,6 @@ import { cn } from '../../../utils/cn';
 import { formatTimeDisplay } from '../../../utils/format';
 import type { SubtitleItem } from '../../../types';
 
-/**
- * Component for advanced playback controls and timeline representation.
- * Features strict playhead-anchored zooming, auto-scrolling,
- * precise frame-by-frame seeking, and visual subtitle tracks.
- */
 interface PlaybackControlsProps {
   currentTime: number;
   duration: number;
@@ -182,16 +177,16 @@ export const PlaybackControls = ({
 
       <div
         ref={containerRef}
-        className="relative w-full h-32 overflow-x-auto overflow-y-hidden bg-bg-surface scroll-smooth"
+        className="relative w-full h-20 overflow-x-auto overflow-y-hidden bg-bg-surface scroll-smooth"
       >
         <div
           className="h-full relative cursor-text min-w-full"
           style={{ width: `${zoom * 100}%` }}
           onClick={handleTimelineClick}
         >
-          <div className="absolute top-0 w-full h-6 border-b border-border-main bg-black/20 pointer-events-none" />
+          <div className="absolute top-0 w-full h-5 border-b border-border-main bg-black/20 pointer-events-none" />
 
-          <div className="absolute top-8 left-0 right-0 bottom-4 bg-bg-track/30 rounded border border-white/5 mx-2" />
+          <div className="absolute top-5 left-0 right-0 bottom-2 bg-bg-track/30 rounded border border-white/5 mx-2" />
 
           {subtitles.map((sub) => {
             const startPercent = (sub.start / duration) * 100;
@@ -202,7 +197,7 @@ export const PlaybackControls = ({
               <div
                 key={sub.id}
                 className={cn(
-                  "absolute top-8 bottom-4 rounded border flex items-center overflow-hidden transition-colors shadow-sm",
+                  "absolute top-5 bottom-2 rounded border flex items-center overflow-hidden transition-colors shadow-sm",
                   isActive
                     ? "bg-brand-500/80 border-brand-400 z-10"
                     : "bg-bg-panel border-white/10 hover:bg-bg-panel/80 hover:border-white/20"
