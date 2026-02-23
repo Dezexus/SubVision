@@ -1,5 +1,5 @@
 """
-PaddleOCR wrapper with singleton management, inference locks, and memory-safe contiguous array enforcement.
+PaddleOCR wrapper with singleton management, inference locks, and batch processing.
 """
 import logging
 import threading
@@ -14,6 +14,7 @@ try:
 except ImportError:
     HAS_PADDLE = False
     PaddleOCR = object
+
 
 class PaddleWrapper:
     """
@@ -59,16 +60,6 @@ class PaddleWrapper:
             logging.warning(f"Failed to set Paddle device, falling back to CPU: {e}")
             paddle.set_device("cpu")
 
-    def predict(self, frame: np.ndarray) -> Any:
-        """
-        Executes thread-safe OCR prediction enforcing contiguous memory layout.
-        """
-        with self._inference_lock:
-            safe_frame = np.ascontiguousarray(frame)
-            if hasattr(self.ocr, 'predict'):
-                return self.ocr.predict(safe_frame)
-            return self.ocr.ocr(safe_frame)
-
     def predict_batch(self, frames: list[np.ndarray]) -> list[Any]:
         """
         Safely processes a batch of frames preventing memory access violations.
@@ -93,6 +84,9 @@ class PaddleWrapper:
 
     @staticmethod
     def parse_results(result_list: Any, conf_thresh: float) -> tuple[str, float]:
+        """
+        Extracts the highest confidence text from raw OCR outputs.
+        """
         if not result_list:
             return "", 0.0
 
@@ -138,6 +132,7 @@ class PaddleWrapper:
 
 _engine_lock = threading.Lock()
 _engines: dict[tuple[str, bool], PaddleWrapper] = {}
+
 
 def get_paddle_engine(lang: str = "en", use_gpu: bool = True) -> PaddleWrapper:
     """
