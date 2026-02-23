@@ -8,7 +8,6 @@ from collections.abc import Callable
 from typing import Any, Optional
 import threading
 
-from core.geometry import calculate_roi_from_mask
 from ocr.worker import OCRWorker
 
 logger = logging.getLogger(__name__)
@@ -59,9 +58,7 @@ class ProcessManager:
             if has_active_worker:
                 self._stop_worker_sync(session_id)
 
-            roi_state = editor_data.get("roi_override") if editor_data else None
-            if not roi_state:
-                roi_state = calculate_roi_from_mask(editor_data)
+            roi_state = editor_data.get("roi_override", [0, 0, 0, 0]) if editor_data else [0, 0, 0, 0]
 
             base_name, _ = os.path.splitext(video_file)
             output_srt = f"{base_name}.srt"

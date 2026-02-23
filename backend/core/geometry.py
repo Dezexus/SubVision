@@ -2,9 +2,9 @@
 Module for calculating geometries, bounding boxes, and text dimensions.
 """
 import math
-from typing import Any, Tuple, List, Dict
+from typing import Any, Tuple, Dict
 import cv2
-import numpy as np
+
 
 def estimate_text_width(text: str, font_size: int, width_multiplier: float) -> int:
     """
@@ -19,6 +19,7 @@ def estimate_text_width(text: str, font_size: int, width_multiplier: float) -> i
     size, _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
 
     return int(math.ceil(size[0] * width_multiplier))
+
 
 def calculate_blur_roi(text: str, width: int, height: int, settings: Dict[str, Any]) -> Tuple[int, int, int, int]:
     """
@@ -51,19 +52,3 @@ def calculate_blur_roi(text: str, width: int, height: int, settings: Dict[str, A
     final_h = min(height - final_y, raw_h)
 
     return final_x, final_y, final_w, final_h
-
-def calculate_roi_from_mask(image_dict: Dict[str, Any] | None) -> List[int]:
-    """
-    Calculates ROI bounding box from a UI mask layer.
-    """
-    if not image_dict:
-        return [0, 0, 0, 0]
-    layers = image_dict.get("layers")
-    if layers and len(layers) > 0:
-        mask = layers[0]
-        if isinstance(mask, np.ndarray) and mask.ndim == 3 and mask.shape[2] == 4:
-            coords = cv2.findNonZero(mask[:, :, 3])
-            if coords is not None:
-                x, y, w, h = cv2.boundingRect(coords)
-                return [int(x), int(y), int(w), int(h)]
-    return [0, 0, 0, 0]

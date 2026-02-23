@@ -11,7 +11,6 @@ import numpy as np
 from PIL import Image
 
 from core.filters import apply_sharpening, denoise_frame
-from core.geometry import calculate_roi_from_mask
 from core.video_io import extract_frame_cv2, create_video_capture
 
 logger = logging.getLogger(__name__)
@@ -116,7 +115,7 @@ class VideoManager:
         if frame_bgr is None:
             return None
 
-        roi = editor_data.get("roi_override") or calculate_roi_from_mask(editor_data)
+        roi = editor_data.get("roi_override", [0, 0, 0, 0]) if editor_data else [0, 0, 0, 0]
 
         if len(roi) == 4 and roi[2] > 0 and roi[3] > 0:
             h_img, w_img = frame_bgr.shape[:2]
