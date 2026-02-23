@@ -15,11 +15,10 @@ from api.dependencies import ensure_video_cached
 from media.blur_manager import BlurManager
 from core.srt_parser import parse_srt
 from core.storage import storage_manager
+from core.config import settings
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter()
-CACHE_DIR = "cache"
 
 @router.post("/start")
 async def start_process(config: ProcessConfig, request: Request):
@@ -138,7 +137,7 @@ async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTa
 
     safe_filename = os.path.basename(config.filename)
     output_filename = f"blurred_{safe_filename}"
-    output_path = os.path.join(CACHE_DIR, output_filename)
+    output_path = os.path.join(settings.cache_dir, output_filename)
 
     if os.path.exists(output_path):
         try:

@@ -4,9 +4,7 @@ Common dependencies and helper functions for FastAPI routers.
 import os
 from fastapi import HTTPException
 from core.storage import storage_manager
-
-CACHE_DIR = "cache"
-os.makedirs(CACHE_DIR, exist_ok=True)
+from core.config import settings
 
 async def ensure_video_cached(filename: str) -> str:
     """
@@ -14,7 +12,7 @@ async def ensure_video_cached(filename: str) -> str:
     fetching it from S3 if necessary. Returns the local file path.
     """
     safe_filename = os.path.basename(filename)
-    file_path = os.path.join(CACHE_DIR, safe_filename)
+    file_path = os.path.join(settings.cache_dir, safe_filename)
 
     if not os.path.exists(file_path):
         success = await storage_manager.download_file(safe_filename, file_path)

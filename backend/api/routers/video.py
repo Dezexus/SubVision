@@ -17,14 +17,12 @@ from api.schemas import VideoMetadata, PreviewConfig
 from api.websockets.manager import connection_manager
 from api.dependencies import ensure_video_cached
 from core.storage import storage_manager
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-CACHE_DIR = "cache"
-os.makedirs(CACHE_DIR, exist_ok=True)
 
-upload_manager = UploadManager(CACHE_DIR)
-
+upload_manager = UploadManager(settings.cache_dir)
 ALLOWED_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm"}
 
 @router.get("/upload/status/{upload_id}")
@@ -136,7 +134,7 @@ async def download_file(filename: str):
     if url:
         return RedirectResponse(url=url)
 
-    file_path = os.path.join(CACHE_DIR, safe_filename)
+    file_path = os.path.join(settings.cache_dir, safe_filename)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found in storage.")
 

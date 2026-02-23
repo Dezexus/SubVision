@@ -6,16 +6,17 @@ import os
 import time
 import logging
 import shutil
+from core.config import settings
 
 logger = logging.getLogger(__name__)
-CACHE_DIR = "cache"
-TEMP_UPLOAD_DIR = os.path.join(CACHE_DIR, ".temp")
+TEMP_UPLOAD_DIR = os.path.join(settings.cache_dir, ".temp")
+
 
 def cleanup_old_files(max_age_hours: int = 24) -> None:
     """
     Deletes outdated files and abandoned temporary upload directories from the local cache.
     """
-    if not os.path.exists(CACHE_DIR):
+    if not os.path.exists(settings.cache_dir):
         return
 
     logger.info(f"Running cleanup task for cached files older than {max_age_hours} hours...")
@@ -25,8 +26,8 @@ def cleanup_old_files(max_age_hours: int = 24) -> None:
     deleted_size = 0
 
     try:
-        for filename in os.listdir(CACHE_DIR):
-            file_path = os.path.join(CACHE_DIR, filename)
+        for filename in os.listdir(settings.cache_dir):
+            file_path = os.path.join(settings.cache_dir, filename)
 
             if not os.path.isfile(file_path) or filename.startswith("."):
                 continue
