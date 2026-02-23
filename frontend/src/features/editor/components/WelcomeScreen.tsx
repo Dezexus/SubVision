@@ -1,10 +1,13 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Upload, AlertCircle, Loader2, Video, FileText, Wand2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '../../../utils/cn';
 import { useVideoUpload } from '../hooks/useVideoUpload';
+import { useAppStore } from '../../../store/useAppStore';
+import { api } from '../../../services/api';
 
 export const WelcomeScreen = () => {
+  const { allowedExtensions, setAllowedExtensions } = useAppStore();
   const {
     isDragging,
     isUploading,
@@ -14,6 +17,24 @@ export const WelcomeScreen = () => {
     dragHandlers,
     onFileInputChange
   } = useVideoUpload();
+
+  useEffect(() => {
+    const fetchExtensions = async () => {
+      try {
+        const data = await api.getAllowedExtensions();
+        setAllowedExtensions(data);
+      } catch (error) {
+        console.error(error);
+      }
+    };
+    if (allowedExtensions.length === 0) {
+      fetchExtensions();
+    }
+  }, [allowedExtensions.length, setAllowedExtensions]);
+
+  const exts = allowedExtensions.length > 0 ? allowedExtensions : ['.mp4', '.mkv', '.avi', '.mov', '.webm'];
+  const acceptString = `video/*,${exts.join(',')}`;
+  const displayExts = exts.map(e => e.replace('.', '').toUpperCase()).join(', ');
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -60,7 +81,7 @@ export const WelcomeScreen = () => {
         >
           <input
             type="file"
-            accept="video/*,.mkv,.avi,.mov,.webm"
+            accept={acceptString}
             className="hidden"
             id="central-upload"
             disabled={isUploading}
@@ -91,7 +112,7 @@ export const WelcomeScreen = () => {
                 {isUploading ? (uploadProgress === 100 ? 'Processing...' : `Uploading ${uploadProgress}%...`) : 'Select or drop video'}
               </h2>
               <p className={cn("text-xs", isConverting ? "text-amber-500 animate-pulse font-medium" : "text-txt-subtle")}>
-                {isUploading ? (isConverting ? 'Converting to H.264 format...' : 'Analyzing file structure...') : 'MP4, MKV, AVI, MOV, WEBM'}
+                {isUploading ? (isConverting ? 'Converting to H.264 format...' : 'Analyzing file structure...') : displayExts}
               </p>
               {errorMsg && (
                 <div className="flex items-center justify-center gap-1.5 text-red-400 text-xs mt-3 font-medium bg-red-500/10 py-1 px-3 rounded border border-red-500/20">

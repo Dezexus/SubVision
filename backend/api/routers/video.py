@@ -25,6 +25,13 @@ router = APIRouter()
 upload_manager = UploadManager(settings.cache_dir)
 ALLOWED_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm"}
 
+@router.get("/allowed-extensions")
+async def get_allowed_extensions() -> List[str]:
+    """
+    Returns a list of allowed video file extensions.
+    """
+    return list(ALLOWED_EXTENSIONS)
+
 @router.get("/upload/status/{upload_id}")
 async def get_upload_status(upload_id: str, total_chunks: int) -> Dict[str, List[int]]:
     """

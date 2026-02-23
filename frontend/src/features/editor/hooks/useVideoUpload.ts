@@ -1,12 +1,12 @@
 /**
- * Hook to manage video file upload logic, drag-and-drop state, and error handling.
+ * Hook to manage video file upload logic, drag-and-drop state, and error handling dynamically validating allowed extensions.
  */
 import { useState, useCallback } from 'react';
 import { useAppStore } from '../../../store/useAppStore';
 import { api } from '../../../services/api';
 
 export const useVideoUpload = () => {
-  const { setFile, setMetadata, addLog, clientId, logs, addToast } = useAppStore();
+  const { setFile, setMetadata, addLog, clientId, logs, addToast, allowedExtensions } = useAppStore();
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -16,12 +16,13 @@ export const useVideoUpload = () => {
 
   const handleFile = useCallback(async (selectedFile: File) => {
     setErrorMsg(null);
-    const validExtensions = ['.mp4', '.mkv', '.avi', '.mov', '.webm'];
+    const validExtensions = allowedExtensions.length > 0 ? allowedExtensions : ['.mp4', '.mkv', '.avi', '.mov', '.webm'];
     const hasValidExt = validExtensions.some(ext => selectedFile.name.toLowerCase().endsWith(ext));
     const isVideoType = selectedFile.type.startsWith('video/');
 
     if (!isVideoType && !hasValidExt) {
-      const msg = 'Invalid file type. Please upload MP4, MKV, AVI, MOV or WEBM.';
+      const formattedExts = validExtensions.map(e => e.replace('.', '').toUpperCase()).join(', ');
+      const msg = `Invalid file type. Please upload ${formattedExts}.`;
       setErrorMsg(msg);
       addToast(msg, 'error');
       return;
@@ -48,7 +49,7 @@ export const useVideoUpload = () => {
     } finally {
       setIsUploading(false);
     }
-  }, [setFile, setMetadata, addLog, clientId, addToast]);
+  }, [setFile, setMetadata, addLog, clientId, addToast, allowedExtensions]);
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();

@@ -10,10 +10,12 @@ export interface VideoSlice {
   metadata: VideoMetadata | null;
   currentFrameIndex: number;
   isPreviewModalOpen: boolean;
+  allowedExtensions: string[];
   setFile: (file: File | null) => void;
   setMetadata: (meta: VideoMetadata) => void;
   setCurrentFrame: (index: number | ((prev: number) => number)) => void;
   setPreviewModalOpen: (isOpen: boolean) => void;
+  setAllowedExtensions: (extensions: string[]) => void;
 }
 
 export const createVideoSlice: StateCreator<AppState, [], [], VideoSlice> = (set) => ({
@@ -21,6 +23,7 @@ export const createVideoSlice: StateCreator<AppState, [], [], VideoSlice> = (set
   metadata: null,
   currentFrameIndex: 0,
   isPreviewModalOpen: false,
+  allowedExtensions: [],
   setFile: (file) => set({
     file,
     subtitles: [],
@@ -36,4 +39,5 @@ export const createVideoSlice: StateCreator<AppState, [], [], VideoSlice> = (set
     blurPreviewUrl: null
   })),
   setPreviewModalOpen: (isOpen) => set({ isPreviewModalOpen: isOpen }),
+  setAllowedExtensions: (extensions) => set({ allowedExtensions: extensions }),
 });

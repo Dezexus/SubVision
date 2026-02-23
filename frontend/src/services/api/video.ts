@@ -6,6 +6,11 @@ import { API_URL } from './config';
 import type { VideoMetadata } from '../../types';
 
 export const videoApi = {
+  getAllowedExtensions: async (): Promise<string[]> => {
+    const response = await axios.get(`${API_URL}/video/allowed-extensions`);
+    return response.data;
+  },
+
   uploadVideo: async (file: File, clientId: string, onProgress?: (pct: number) => void): Promise<VideoMetadata> => {
     const chunkSize = 10 * 1024 * 1024;
     const totalChunks = Math.ceil(file.size / chunkSize);
