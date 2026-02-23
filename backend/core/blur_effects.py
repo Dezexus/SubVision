@@ -13,10 +13,10 @@ except AttributeError:
 
 def _apply_hybrid_inpaint(frame: np.ndarray, roi: Tuple[int, int, int, int], font_size_px: int) -> None:
     """
-    Applies text-aware inpainting utilizing Navier-Stokes for gradient fills and an internal Gaussian smoothing pass to completely eliminate faceted artifacts before blending.
+    Applies text-aware inpainting using a low-threshold gradient to capture drop-shadows, processed via Navier-Stokes for a structurally smooth background reconstruction.
     """
     bx, by, bw, bh = roi
-    pad = 15
+    pad = max(15, int(font_size_px * 0.5))
     h, w = frame.shape[:2]
 
     y1 = max(0, by - pad)
@@ -25,16 +25,14 @@ def _apply_hybrid_inpaint(frame: np.ndarray, roi: Tuple[int, int, int, int], fon
     x2 = min(w, bx + bw + pad)
 
     roi_expanded = frame[y1:y2, x1:x2].copy()
-    original_expanded = roi_expanded.copy()
     roi_inner = frame[by:by+bh, bx:bx+bw]
 
     gray = cv2.cvtColor(roi_inner, cv2.COLOR_BGR2GRAY)
-    gray = cv2.GaussianBlur(gray, (5, 5), 0)
 
     grad_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
     grad = cv2.morphologyEx(gray, cv2.MORPH_GRADIENT, grad_kernel)
 
-    _, text_mask = cv2.threshold(grad, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+    _, text_mask = cv2.threshold(grad, 25, 255, cv2.THRESH_BINARY)
 
     fill_ksize = max(5, int(font_size_px * 0.5))
     fill_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (fill_ksize, fill_ksize))
@@ -53,15 +51,15 @@ def _apply_hybrid_inpaint(frame: np.ndarray, roi: Tuple[int, int, int, int], fon
 
     local_mask[ly1:ly2, lx1:lx2] = text_mask
 
-    inpaint_radius = max(5, int(font_size_px * 0.25))
+    inpaint_radius = max(5, int(font_size_px * 0.3))
     inpainted = cv2.inpaint(roi_expanded, local_mask, inpaint_radius, cv2.INPAINT_NS)
 
-    smooth_k = max(7, int(font_size_px * 0.7))
+    smooth_k = max(11, int(font_size_px * 0.8))
     if smooth_k % 2 == 0:
         smooth_k += 1
     inpainted_smooth = cv2.GaussianBlur(inpainted, (smooth_k, smooth_k), 0)
 
-    blend_k = max(5, int(font_size_px * 0.5))
+    blend_k = max(9, int(font_size_px * 0.6))
     if blend_k % 2 == 0:
         blend_k += 1
 
@@ -69,7 +67,7 @@ def _apply_hybrid_inpaint(frame: np.ndarray, roi: Tuple[int, int, int, int], fon
     soft_mask_3ch = cv2.merge([soft_mask, soft_mask, soft_mask])
 
     inpainted_float = inpainted_smooth.astype(np.float32)
-    original_float = original_expanded.astype(np.float32)
+    original_float = roi_expanded.astype(np.float32)
 
     blended = inpainted_float * soft_mask_3ch + original_float * (1.0 - soft_mask_3ch)
     frame[y1:y2, x1:x2] = blended.astype(np.uint8)
