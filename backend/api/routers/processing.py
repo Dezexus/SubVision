@@ -52,10 +52,8 @@ async def start_process(config: ProcessConfig, request: Request):
             langs=config.languages,
             step=config.step,
             conf_threshold=config.conf_threshold,
-            clahe_val=config.clahe_limit,
             scale_val=config.scale_factor,
             smart_skip=config.smart_skip,
-            visual_cutoff=config.visual_cutoff,
             callbacks=callbacks,
             thread_pool=thread_pool
         )

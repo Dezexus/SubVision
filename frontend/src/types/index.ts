@@ -18,10 +18,8 @@ export interface ProcessConfig {
   languages: string;
   step: number;
   conf_threshold: number;
-  clahe_limit: number;
   scale_factor: number;
   smart_skip: boolean;
-  visual_cutoff: boolean;
 }
 
 export interface BlurSettings {

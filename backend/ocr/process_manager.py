@@ -40,10 +40,8 @@ class ProcessManager:
         langs: str,
         step: int,
         conf_threshold: float,
-        clahe_val: float,
         scale_val: float,
         smart_skip: bool,
-        visual_cutoff: bool,
         callbacks: dict[str, Callable[..., Any]],
         thread_pool: Optional[concurrent.futures.ThreadPoolExecutor] = None,
     ) -> str:
@@ -80,10 +78,8 @@ class ProcessManager:
                 "conf": 0.5,
                 "min_conf": conf_threshold / 100.0,
                 "roi": roi_state,
-                "clip_limit": clahe_val,
                 "scale_factor": scale_val,
                 "smart_skip": smart_skip,
-                "visual_cutoff": visual_cutoff,
                 "thread_pool": thread_pool,
             }
 

@@ -131,7 +131,6 @@ class OCRWorker(threading.Thread):
             config = get_preset_config(preset_name)
             config.update({
                 "step": self.params.get("step", config["step"]),
-                "clahe": self.params.get("clip_limit", config["clahe"]),
                 "smart_skip": self.params.get("smart_skip", config["smart_skip"]),
                 "scale_factor": self.params.get("scale_factor", config["scale_factor"]),
                 "min_conf": self.params.get("min_conf", 0.80),

@@ -20,10 +20,8 @@ export const createConfigSlice: StateCreator<AppState, [], [], ConfigSlice> = (s
   config: {
     step: 2,
     conf_threshold: 80,
-    clahe_limit: 2.0,
     scale_factor: 2.0,
     smart_skip: true,
-    visual_cutoff: true,
     languages: 'en',
   },
   setRoi: (roi) => set({ roi }),

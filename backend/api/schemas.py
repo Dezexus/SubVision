@@ -4,6 +4,7 @@ Pydantic models for data validation and API request schemas.
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 
+
 class VideoMetadata(BaseModel):
     """
     Schema defining the structural metadata of an uploaded video.
@@ -15,6 +16,7 @@ class VideoMetadata(BaseModel):
     fps: float
     duration: float
 
+
 class PreviewConfig(BaseModel):
     """
     Configuration schema for requesting a processed frame preview.
@@ -22,9 +24,9 @@ class PreviewConfig(BaseModel):
     filename: str
     frame_index: int
     roi: List[int]
-    clahe_limit: float
     scale_factor: float
     denoise: float
+
 
 class ProcessConfig(BaseModel):
     """
@@ -37,10 +39,9 @@ class ProcessConfig(BaseModel):
     languages: str = "en"
     step: int = 2
     conf_threshold: float = 80.0
-    clahe_limit: float = 2.0
     scale_factor: float = 2.0
     smart_skip: bool = True
-    visual_cutoff: bool = True
+
 
 class BlurSettings(BaseModel):
     """
@@ -56,6 +57,7 @@ class BlurSettings(BaseModel):
     feather: int = 30
     width_multiplier: float = 1.0
 
+
 class RenderConfig(BaseModel):
     """
     Configuration schema to initiate the final video rendering pipeline.
@@ -65,6 +67,7 @@ class RenderConfig(BaseModel):
     subtitles: List[dict]
     blur_settings: BlurSettings
 
+
 class BlurPreviewConfig(BaseModel):
     """
     Schema for generating a static frame preview of the selected blur settings.
@@ -73,6 +76,7 @@ class BlurPreviewConfig(BaseModel):
     frame_index: int
     blur_settings: BlurSettings
     subtitle_text: str
+
 
 class WebSocketMessage(BaseModel):
     """

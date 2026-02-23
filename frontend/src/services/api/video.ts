@@ -74,7 +74,6 @@ export const videoApi = {
     filename: string;
     frame_index: number;
     roi: number[];
-    clahe_limit: number;
     scale_factor: number;
     denoise: number;
   }, signal?: AbortSignal) => {

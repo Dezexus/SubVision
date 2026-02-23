@@ -12,21 +12,21 @@ const PRESETS = [
     icon: <Shield size={18} />,
     label: 'Balanced',
     desc: 'Movies & TV Shows',
-    config: { step: 2, conf_threshold: 80, clahe_limit: 2.0, scale_factor: 2.0, smart_skip: true }
+    config: { step: 2, conf_threshold: 80, scale_factor: 2.0, smart_skip: true }
   },
   {
     id: '🏎️ Speed',
     icon: <Zap size={18} />,
     label: 'Speed',
     desc: 'Draft / Clean video',
-    config: { step: 4, conf_threshold: 70, clahe_limit: 1.0, scale_factor: 1.5, smart_skip: true }
+    config: { step: 4, conf_threshold: 70, scale_factor: 1.5, smart_skip: true }
   },
   {
     id: '🎯 Quality',
     icon: <Eye size={18} />,
     label: 'Quality',
     desc: 'Frame-perfect timing',
-    config: { step: 1, conf_threshold: 85, clahe_limit: 2.5, scale_factor: 2.5, smart_skip: false }
+    config: { step: 1, conf_threshold: 85, scale_factor: 2.5, smart_skip: false }
   }
 ];
 
