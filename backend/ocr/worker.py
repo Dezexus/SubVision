@@ -28,6 +28,7 @@ from core.constants import MAX_QUEUE_SIZE, OCR_BATCH_SIZE, WATCHDOG_TIMEOUT_SEC,
 logger = logging.getLogger(__name__)
 SENTINEL = object()
 
+
 class OCRWorker(threading.Thread):
     """
     Worker thread executing frame extraction, processing, and batch OCR inference with Watchdog.
@@ -127,7 +128,7 @@ class OCRWorker(threading.Thread):
         try:
             self._log("--- START OCR (Batched GPU Pipeline) ---")
 
-            preset_name = str(self.params.get("preset_name", "⚖️ Balance"))
+            preset_name = str(self.params.get("preset", "⚖️ Balance"))
             config = get_preset_config(preset_name)
             config.update({
                 "step": self.params.get("step", config["step"]),

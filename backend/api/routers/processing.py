@@ -49,6 +49,7 @@ async def start_process(config: ProcessConfig, request: Request):
             session_id=config.client_id,
             video_file=file_path,
             editor_data={"roi_override": config.roi},
+            preset=config.preset,
             langs=config.languages,
             step=config.step,
             conf_threshold=config.conf_threshold,

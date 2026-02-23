@@ -13,6 +13,7 @@ from ocr.worker import OCRWorker
 
 logger = logging.getLogger(__name__)
 
+
 class ProcessManager:
     """
     Manages lifecycle and fine-grained thread synchronization for OCR processing tasks.
@@ -37,6 +38,7 @@ class ProcessManager:
         session_id: str,
         video_file: str,
         editor_data: dict[str, Any] | None,
+        preset: str,
         langs: str,
         step: int,
         conf_threshold: float,
@@ -73,6 +75,7 @@ class ProcessManager:
             params: dict[str, Any] = {
                 "video_path": video_file,
                 "output_path": output_srt,
+                "preset": preset,
                 "langs": langs,
                 "step": int(step),
                 "conf": 0.5,
