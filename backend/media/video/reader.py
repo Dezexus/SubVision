@@ -11,15 +11,14 @@ from core.constants import DEFAULT_FPS
 
 logger = logging.getLogger(__name__)
 
+
 class VideoProvider:
     """
     Handles stable video file reading and frame extraction with software fallback.
     """
 
     def __init__(self, video_path: str, step: int = 1) -> None:
-        self.path = video_path
         self.step = step
-
         self.cap = create_video_capture(video_path)
 
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
