@@ -77,6 +77,7 @@ def _apply_cuda_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original
     Applies hardware-accelerated 3-pass box blur to the region and blends it with the original frame.
     """
     bx, by, bw, bh = roi
+    h, w = frame.shape[:2]
     gpu_frame = cv2.cuda_GpuMat()
     gpu_frame.upload(frame)
 
@@ -100,10 +101,16 @@ def _apply_cuda_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original
             mask = np.ones((bh, bw), dtype=np.float32)
         else:
             mask = np.zeros((bh, bw), dtype=np.float32)
+
+            pt1_x = eff_feather if bx > 0 else 0
+            pt1_y = eff_feather if by > 0 else 0
+            pt2_x = bw - eff_feather if (bx + bw) < w else bw
+            pt2_y = bh - eff_feather if (by + bh) < h else bh
+
             cv2.rectangle(
                 mask,
-                (eff_feather, eff_feather),
-                (bw - eff_feather, bh - eff_feather),
+                (pt1_x, pt1_y),
+                (pt2_x, pt2_y),
                 1.0,
                 -1
             )
@@ -148,6 +155,7 @@ def _apply_cpu_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original_
     Applies software-based 3-pass box blur to the region and blends it with the original frame.
     """
     bx, by, bw, bh = roi
+    h, w = frame.shape[:2]
     roi_img = frame[by:by+bh, bx:bx+bw]
 
     if sigma > 0:
@@ -167,10 +175,16 @@ def _apply_cpu_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original_
             mask = np.ones((bh, bw), dtype=np.float32)
         else:
             mask = np.zeros((bh, bw), dtype=np.float32)
+
+            pt1_x = eff_feather if bx > 0 else 0
+            pt1_y = eff_feather if by > 0 else 0
+            pt2_x = bw - eff_feather if (bx + bw) < w else bw
+            pt2_y = bh - eff_feather if (by + bh) < h else bh
+
             cv2.rectangle(
                 mask,
-                (eff_feather, eff_feather),
-                (bw - eff_feather, bh - eff_feather),
+                (pt1_x, pt1_y),
+                (pt2_x, pt2_y),
                 1.0,
                 -1
             )

@@ -5,7 +5,6 @@ import math
 import re
 from typing import Any, Tuple, Dict
 
-
 def estimate_text_width(text: str, font_size: int, width_multiplier: float) -> int:
     """
     Calculates pixel width of text using an empirical heuristic matching the frontend UI.
@@ -31,7 +30,6 @@ def estimate_text_width(text: str, font_size: int, width_multiplier: float) -> i
 
     return int(math.ceil(width * font_size * width_multiplier))
 
-
 def calculate_blur_roi(text: str, width: int, height: int, settings: Dict[str, Any]) -> Tuple[int, int, int, int]:
     """
     Calculates the Region of Interest bounding box for the given text.
@@ -53,13 +51,14 @@ def calculate_blur_roi(text: str, width: int, height: int, settings: Dict[str, A
     x = (width - text_w) // 2
     y = y_pos - text_h
 
-    final_x = max(0, x - padding_x)
-    final_y = max(0, y - padding_y_px)
+    left = x - padding_x
+    top = y - padding_y_px
+    right = left + text_w + (padding_x * 2)
+    bottom = top + text_h + (padding_y_px * 2)
 
-    raw_w = text_w + (padding_x * 2)
-    raw_h = text_h + (padding_y_px * 2)
-
-    final_w = min(width - final_x, raw_w)
-    final_h = min(height - final_y, raw_h)
+    final_x = max(0, left)
+    final_y = max(0, top)
+    final_w = max(0, min(width, right) - final_x)
+    final_h = max(0, min(height, bottom) - final_y)
 
     return final_x, final_y, final_w, final_h
