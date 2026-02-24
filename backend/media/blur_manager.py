@@ -1,5 +1,5 @@
 """
-Manager responsible for multi-threaded video rendering and async FFmpeg orchestration.
+Manager responsible for coordinating multi-threaded video rendering and effect application.
 """
 import cv2
 import numpy as np
@@ -14,18 +14,14 @@ from core.geometry import calculate_blur_roi
 from core.blur_effects import apply_blur_to_frame
 from core.video_io import extract_frame_cv2, create_video_capture
 from core.constants import MAX_QUEUE_SIZE, DEFAULT_FPS
+from media.mask_generator import MaskGenerator
+from media.transcoder import FFmpegTranscoder
 
 logger = logging.getLogger(__name__)
 
-try:
-    count = cv2.cuda.getCudaEnabledDeviceCount()
-    HAS_CUDA = count > 0
-except AttributeError:
-    HAS_CUDA = False
-
 class BlurManager:
     """
-    Manages the accelerated rendering pipeline handling queues and async subprocess execution.
+    Orchestrates the asynchronous video reading, processing, and writing queues.
     """
 
     def __init__(self) -> None:
@@ -53,31 +49,6 @@ class BlurManager:
         roi = calculate_blur_roi(text, width, height, settings)
         return apply_blur_to_frame(frame, roi, settings)
 
-    async def _run_subprocess_cancellable(self, cmd: List[str]) -> None:
-        """
-        Executes a subprocess asynchronously and safely terminates it if the stop event is triggered.
-        """
-        process = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
-        )
-
-        while process.returncode is None:
-            if self._stop_event.is_set():
-                try:
-                    process.terminate()
-                    await asyncio.wait_for(process.wait(), timeout=2.0)
-                except asyncio.TimeoutError:
-                    process.kill()
-                raise InterruptedError("Process was cancelled by user.")
-
-            try:
-                await asyncio.wait_for(process.wait(), timeout=0.5)
-            except asyncio.TimeoutError:
-                continue
-
-        if process.returncode != 0:
-            raise RuntimeError(f"Command failed with code {process.returncode}")
-
     async def apply_blur_task(
             self,
             video_path: str,
@@ -87,7 +58,7 @@ class BlurManager:
             progress_callback=None
     ) -> str:
         """
-        Executes the full video obscuring and accelerated hardware rendering pipeline asynchronously.
+        Executes the full video obscuring and rendering pipeline asynchronously.
         """
         self._is_running = True
         self._stop_event.clear()
@@ -108,7 +79,11 @@ class BlurManager:
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         writer = cv2.VideoWriter(temp_video_path, fourcc, fps, (width, height))
 
-        frame_blur_map: Dict[int, Tuple[int, int, int, int]] = {}
+        subtitle_masks = MaskGenerator.generate_best_masks(
+            video_path, subtitles, blur_settings, width, height, fps, total_frames
+        )
+
+        frame_blur_map: Dict[int, Tuple[Tuple[int, int, int, int], int]] = {}
         for sub in subtitles:
             text = sub.get('text', '').strip()
             if not text:
@@ -119,7 +94,7 @@ class BlurManager:
             start_f = max(0, start_f - 1)
             end_f = min(total_frames + 5, end_f + 1)
             for f_idx in range(start_f, end_f):
-                frame_blur_map[f_idx] = roi
+                frame_blur_map[f_idx] = (roi, sub.get('id', -1))
 
         read_queue = queue.Queue(maxsize=MAX_QUEUE_SIZE)
         write_queue = queue.Queue(maxsize=MAX_QUEUE_SIZE)
@@ -154,7 +129,9 @@ class BlurManager:
 
                     idx, frame = item
                     if idx in frame_blur_map:
-                        frame = apply_blur_to_frame(frame, frame_blur_map[idx], blur_settings)
+                        roi, sub_id = frame_blur_map[idx]
+                        precalc_mask = subtitle_masks.get(sub_id)
+                        frame = apply_blur_to_frame(frame, roi, blur_settings, precalculated_mask=precalc_mask)
 
                     write_queue.put(frame)
 
@@ -213,47 +190,9 @@ class BlurManager:
 
         if not self._stop_event.is_set():
             try:
-                logger.info("Transcoding to H.264 using NVENC and attempting audio copy...")
-
-                base_cmd = [
-                    "ffmpeg", "-y",
-                    "-i", temp_video_path,
-                    "-i", video_path,
-                    "-map", "0:v:0",
-                    "-map", "1:a:0?",
-                    "-shortest"
-                ]
-
-                nvenc_params = [
-                    "-c:v", "h264_nvenc",
-                    "-preset", "p4",
-                    "-cq", "23",
-                    "-pix_fmt", "yuv420p"
-                ]
-
-                x264_params = [
-                    "-c:v", "libx264",
-                    "-preset", "veryfast",
-                    "-crf", "23",
-                    "-pix_fmt", "yuv420p"
-                ]
-
-                try:
-                    cmd_nvenc_copy = base_cmd + nvenc_params + ["-c:a", "copy", output_path]
-                    await self._run_subprocess_cancellable(cmd_nvenc_copy)
-                except RuntimeError:
-                    try:
-                        logger.warning("NVENC audio copy failed, falling back to AAC with NVENC...")
-                        cmd_nvenc_aac = base_cmd + nvenc_params + ["-c:a", "aac", output_path]
-                        await self._run_subprocess_cancellable(cmd_nvenc_aac)
-                    except RuntimeError:
-                        logger.warning("NVENC encoding failed, falling back to software libx264...")
-                        cmd_x264_aac = base_cmd + x264_params + ["-c:a", "aac", output_path]
-                        await self._run_subprocess_cancellable(cmd_x264_aac)
-
-                if os.path.exists(temp_video_path):
-                    os.remove(temp_video_path)
-                return output_path
+                return await FFmpegTranscoder.transcode_with_audio(
+                    temp_video_path, video_path, output_path, self._stop_event
+                )
             except Exception as e:
                 logger.error(f"FFmpeg failed or was interrupted: {e}")
                 if os.path.exists(temp_video_path):

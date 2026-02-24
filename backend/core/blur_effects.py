@@ -1,7 +1,7 @@
 """
 Module providing text obscuring effects combining targeted mask inpainting with regional box blurring and unified alpha blending.
 """
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, Optional
 import cv2
 import numpy as np
 
@@ -11,9 +11,9 @@ try:
 except AttributeError:
     HAS_CUDA = False
 
-def _apply_hybrid_inpaint(frame: np.ndarray, roi: Tuple[int, int, int, int], font_size_px: int) -> None:
+def generate_text_mask(frame: np.ndarray, roi: Tuple[int, int, int, int], font_size_px: int) -> np.ndarray:
     """
-    Applies text-aware inpainting using a low-threshold gradient to capture drop-shadows, processed via Navier-Stokes for a structurally smooth background reconstruction.
+    Generates a tight binary mask around text contours within the specified region of interest.
     """
     bx, by, bw, bh = roi
     pad = max(15, int(font_size_px * 0.5))
@@ -50,6 +50,28 @@ def _apply_hybrid_inpaint(frame: np.ndarray, roi: Tuple[int, int, int, int], fon
     lx2 = lx1 + bw
 
     local_mask[ly1:ly2, lx1:lx2] = text_mask
+
+    return local_mask
+
+def _apply_hybrid_inpaint(frame: np.ndarray, roi: Tuple[int, int, int, int], font_size_px: int, precalculated_mask: Optional[np.ndarray] = None) -> None:
+    """
+    Applies text-aware inpainting using a low-threshold gradient to capture drop-shadows, processed via Navier-Stokes for a structurally smooth background reconstruction.
+    """
+    bx, by, bw, bh = roi
+    pad = max(15, int(font_size_px * 0.5))
+    h, w = frame.shape[:2]
+
+    y1 = max(0, by - pad)
+    y2 = min(h, by + bh + pad)
+    x1 = max(0, bx - pad)
+    x2 = min(w, bx + bw + pad)
+
+    roi_expanded = frame[y1:y2, x1:x2].copy()
+
+    if precalculated_mask is not None:
+        local_mask = precalculated_mask
+    else:
+        local_mask = generate_text_mask(frame, roi, font_size_px)
 
     inpaint_radius = max(5, int(font_size_px * 0.3))
     inpainted = cv2.inpaint(roi_expanded, local_mask, inpaint_radius, cv2.INPAINT_NS)
@@ -206,7 +228,7 @@ def _apply_cpu_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original_
 
     return frame
 
-def apply_blur_to_frame(frame: np.ndarray, roi: Tuple[int, int, int, int], settings: Dict[str, Any], alpha: float = 1.0) -> np.ndarray:
+def apply_blur_to_frame(frame: np.ndarray, roi: Tuple[int, int, int, int], settings: Dict[str, Any], alpha: float = 1.0, precalculated_mask: Optional[np.ndarray] = None) -> np.ndarray:
     """
     Coordinates the execution sequence of inpainting, blurring, and final compositing based on user settings.
     """
@@ -219,7 +241,7 @@ def apply_blur_to_frame(frame: np.ndarray, roi: Tuple[int, int, int, int], setti
     mode = settings.get('mode', 'hybrid')
     if mode == 'hybrid':
         font_size_px = int(settings.get('font_size', 21))
-        _apply_hybrid_inpaint(frame, roi, font_size_px)
+        _apply_hybrid_inpaint(frame, roi, font_size_px, precalculated_mask)
 
     sigma = int(settings.get('sigma', 5))
     feather = int(settings.get('feather', 30))
