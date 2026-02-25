@@ -2,6 +2,7 @@
 Router module handling OCR processing jobs, subtitle imports, and blur rendering synchronized with S3.
 """
 import os
+import time
 import asyncio
 import logging
 from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Request
@@ -180,12 +181,19 @@ async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTa
         render_registry[config.client_id] = blur_mgr
 
     loop = asyncio.get_event_loop()
+    start_time = time.time()
 
     def progress_cb(current: int, total: int) -> None:
         if total <= 0:
             total = 1
-        pct = min(100, int((current / total) * 100))
-        eta_str = f"{pct}%"
+
+        if current > 0:
+            elapsed = time.time() - start_time
+            avg_time = elapsed / current
+            eta_sec = int((total - current) * avg_time)
+            eta_str = f"{eta_sec // 60:02d}:{eta_sec % 60:02d}"
+        else:
+            eta_str = "--:--"
 
         asyncio.run_coroutine_threadsafe(
             connection_manager.send_json(config.client_id, {
