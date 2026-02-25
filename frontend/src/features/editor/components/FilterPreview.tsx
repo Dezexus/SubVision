@@ -1,28 +1,37 @@
 /**
- * Real-time filter preview component with memory leak prevention for blob URLs.
+ * Real-time filter preview component with LRU caching for blob URLs to avoid aggressive fetching.
  */
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Cpu, Loader2, ScanLine } from 'lucide-react';
 import { useAppStore } from '../../../store/useAppStore';
 import { api } from '../../../services/api';
+
+const MAX_FILTER_CACHE = 30;
+const filterCache = new Map<string, string>();
 
 export const FilterPreview = () => {
   const { metadata, roi, config, currentFrameIndex } = useAppStore();
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const currentUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!metadata || roi[2] === 0) {
-      if (currentUrlRef.current) {
-        URL.revokeObjectURL(currentUrlRef.current);
-        currentUrlRef.current = null;
-        setPreviewUrl(null);
-      }
+      setPreviewUrl(null);
       return;
     }
 
     let isActive = true;
+
+    const cacheKey = `${metadata.filename}_${currentFrameIndex}_${roi.join(',')}_${config.scale_factor || 1.0}`;
+
+    if (filterCache.has(cacheKey)) {
+      const url = filterCache.get(cacheKey)!;
+      filterCache.delete(cacheKey);
+      filterCache.set(cacheKey, url);
+      setPreviewUrl(url);
+      setLoading(false);
+      return;
+    }
 
     const timer = setTimeout(async () => {
       setLoading(true);
@@ -35,10 +44,17 @@ export const FilterPreview = () => {
         });
 
         if (isActive) {
-          if (currentUrlRef.current) {
-            URL.revokeObjectURL(currentUrlRef.current);
+          if (filterCache.size >= MAX_FILTER_CACHE) {
+            const firstKey = filterCache.keys().next().value;
+            if (firstKey) {
+              const oldUrl = filterCache.get(firstKey);
+              if (oldUrl) {
+                URL.revokeObjectURL(oldUrl);
+              }
+              filterCache.delete(firstKey);
+            }
           }
-          currentUrlRef.current = url;
+          filterCache.set(cacheKey, url);
           setPreviewUrl(url);
         } else {
           URL.revokeObjectURL(url);
@@ -46,7 +62,9 @@ export const FilterPreview = () => {
       } catch (e) {
         console.error(e);
       } finally {
-        if (isActive) setLoading(false);
+        if (isActive) {
+          setLoading(false);
+        }
       }
     }, 500);
 
@@ -55,14 +73,6 @@ export const FilterPreview = () => {
       clearTimeout(timer);
     };
   }, [roi, config, currentFrameIndex, metadata]);
-
-  useEffect(() => {
-    return () => {
-      if (currentUrlRef.current) {
-        URL.revokeObjectURL(currentUrlRef.current);
-      }
-    };
-  }, []);
 
   if (!roi[2] || !metadata) return null;
 
