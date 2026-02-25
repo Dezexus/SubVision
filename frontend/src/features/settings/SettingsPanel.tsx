@@ -22,13 +22,11 @@ export const SettingsPanel = () => {
     roi,
     clientId,
     addLog,
-    setFile,
     isBlurMode,
     defaultConfig,
     setDefaultConfig,
     setPreset,
-    setMetadata,
-    setSubtitles
+    resetProject
   } = useAppStore();
 
   useEffect(() => {
@@ -87,11 +85,7 @@ export const SettingsPanel = () => {
             {isBlurMode ? 'Blur Settings' : 'Project Settings'}
         </h2>
         <button
-          onClick={() => {
-            setFile(null);
-            setMetadata(null);
-            setSubtitles([]);
-          }}
+          onClick={resetProject}
           className="p-2 hover:bg-bg-surface rounded text-txt-dim hover:text-txt-main transition"
           title="New Project"
         >

@@ -1,10 +1,11 @@
 /**
- * Custom hook to fetch and manage video frame blob URLs with an LRU caching system.
+ * Custom hook to fetch and manage video frame blob URLs with an LRU caching system and 404 session expiration handling.
  */
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { api } from '../../../services/api';
 import type { VideoMetadata } from '../../../types';
+import { useAppStore } from '../../../store/useAppStore';
 
 const MAX_FRAME_CACHE = 50;
 const frameCache = new Map<string, string>();
@@ -62,11 +63,16 @@ export const useVideoFrame = (metadata: VideoMetadata | null, currentFrameIndex:
         } else {
           URL.revokeObjectURL(url);
         }
-      } catch (error) {
+      } catch (error: any) {
         if (!axios.isCancel(error)) {
           console.error(error);
+          if (error.response && error.response.status === 404) {
+            const state = useAppStore.getState();
+            state.resetProject();
+            state.addToast("Session expired. The video file was cleaned up by the server.", "error");
+          }
           if (isActive) {
-             setIsLoading(false);
+            setIsLoading(false);
           }
         }
       }

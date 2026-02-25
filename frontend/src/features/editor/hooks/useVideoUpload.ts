@@ -6,7 +6,7 @@ import { useAppStore } from '../../../store/useAppStore';
 import { api } from '../../../services/api';
 
 export const useVideoUpload = () => {
-  const { setFile, setMetadata, addLog, clientId, logs, addToast, allowedExtensions } = useAppStore();
+  const { setFile, setMetadata, addLog, clientId, logs, addToast, allowedExtensions, resetProject } = useAppStore();
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -28,6 +28,7 @@ export const useVideoUpload = () => {
       return;
     }
 
+    resetProject();
     setIsUploading(true);
     setUploadProgress(0);
     addLog(`Uploading: ${selectedFile.name}...`);
@@ -49,7 +50,7 @@ export const useVideoUpload = () => {
     } finally {
       setIsUploading(false);
     }
-  }, [setFile, setMetadata, addLog, clientId, addToast, allowedExtensions]);
+  }, [setFile, setMetadata, addLog, clientId, addToast, allowedExtensions, resetProject]);
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
