@@ -17,7 +17,7 @@ Automated hardsub detection and blurring tool powered by **PaddleOCR** (GPU) and
 *Prerequisites: Docker Desktop + NVIDIA Drivers.*
 
 ```bash
-git clone https://github.com/your-repo/SubVision.git
+git clone https://github.com/Dezexus/SubVision.git
 cd SubVision
 docker-compose up --build
 ```
