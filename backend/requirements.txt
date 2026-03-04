@@ -5,9 +5,6 @@ websockets
 opencv-contrib-python
 numpy
 Pillow
-paddleocr
-requests
-pynvvideocodec
 aioboto3
 pydantic-settings
 redis

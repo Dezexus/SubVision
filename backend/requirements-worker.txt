@@ -1,0 +1,3 @@
+paddleocr
+requests
+pynvvideocodec
