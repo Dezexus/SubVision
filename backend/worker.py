@@ -50,7 +50,7 @@ async def on_job_end_handler(ctx: Dict[str, Any], job_id: str, result: Any, exc:
             await publish_ws(ctx, client_id, {
                 "type": "finish",
                 "success": False,
-                "error": f"Internal Worker Error: {str(exc)}"
+                "error": f"Task Failed: {str(exc)}"
             })
         except Exception as e:
             logging.error(f"Failed to publish error state for {job_id}: {e}")
@@ -71,10 +71,10 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
         output_srt_path = os.path.join(tmpdir, f"{os.path.splitext(safe_filename)[0]}.srt")
 
         await publish_ws(ctx, client_id, {"type": "log", "message": "Downloading video from storage..."})
+
         dl_ok = await storage_manager.download_file(safe_filename, local_video_path)
         if not dl_ok:
-            await publish_ws(ctx, client_id, {"type": "finish", "success": False, "error": "Download failed"})
-            return
+            raise FileNotFoundError(f"Source video file '{safe_filename}' not found in storage.")
 
         def log_cb(msg: str) -> None:
             asyncio.run_coroutine_threadsafe(publish_ws(ctx, client_id, {"type": "log", "message": msg}), loop)
@@ -88,18 +88,14 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
         def cancel_check() -> bool:
             return False
 
-        try:
-            success = await asyncio.to_thread(
-                run_ocr_pipeline, local_video_path, output_srt_path, config, log_cb, prog_cb, sub_cb, cancel_check
-            )
+        success = await asyncio.to_thread(
+            run_ocr_pipeline, local_video_path, output_srt_path, config, log_cb, prog_cb, sub_cb, cancel_check
+        )
 
-            if success and os.path.exists(output_srt_path):
-                await publish_ws(ctx, client_id, {"type": "finish", "success": True})
-            else:
-                await publish_ws(ctx, client_id, {"type": "finish", "success": False})
-        except Exception as e:
-            logging.error(f"OCR task failed: {e}")
-            await publish_ws(ctx, client_id, {"type": "finish", "success": False, "error": str(e)})
+        if success and os.path.exists(output_srt_path):
+            await publish_ws(ctx, client_id, {"type": "finish", "success": True})
+        else:
+            raise RuntimeError("OCR pipeline failed to produce an SRT output file.")
 
 
 async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
@@ -118,9 +114,10 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
         final_output_path = os.path.join(tmpdir, output_filename)
 
         await publish_ws(ctx, client_id, {"type": "log", "message": "Downloading video from storage..."})
-        if not await storage_manager.download_file(safe_filename, local_video_path):
-            await publish_ws(ctx, client_id, {"type": "finish", "success": False, "error": "Download failed"})
-            return
+
+        dl_ok = await storage_manager.download_file(safe_filename, local_video_path)
+        if not dl_ok:
+            raise FileNotFoundError(f"Source video file '{safe_filename}' not found in storage.")
 
         start_time = time.time()
 
@@ -136,27 +133,26 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
         def cancel_check() -> bool:
             return False
 
-        try:
-            temp_video_path = await asyncio.to_thread(
-                BlurManager.apply_blur_task_sync,
-                local_video_path, config['subtitles'], config['blur_settings'],
-                final_output_path, prog_cb, cancel_check
-            )
+        temp_video_path = await asyncio.to_thread(
+            BlurManager.apply_blur_task_sync,
+            local_video_path, config['subtitles'], config['blur_settings'],
+            final_output_path, prog_cb, cancel_check
+        )
 
-            await publish_ws(ctx, client_id, {"type": "log", "message": "Transcoding audio and video..."})
-            await FFmpegTranscoder.transcode_with_audio(temp_video_path, local_video_path, final_output_path)
+        await publish_ws(ctx, client_id, {"type": "log", "message": "Transcoding audio and video..."})
+        await FFmpegTranscoder.transcode_with_audio(temp_video_path, local_video_path, final_output_path)
 
-            await publish_ws(ctx, client_id, {"type": "log", "message": "Uploading result..."})
-            if await storage_manager.upload_file(final_output_path, output_filename):
-                await publish_ws(ctx, client_id, {
-                    "type": "finish", "success": True, "download_url": f"/api/video/download/{output_filename}"
-                })
-            else:
-                raise Exception("Upload to storage failed")
+        await publish_ws(ctx, client_id, {"type": "log", "message": "Uploading result..."})
 
-        except Exception as e:
-            logging.error(f"Render task failed: {e}")
-            await publish_ws(ctx, client_id, {"type": "finish", "success": False, "error": str(e)})
+        up_ok = await storage_manager.upload_file(final_output_path, output_filename)
+        if not up_ok:
+            raise RuntimeError("Failed to upload the final rendered video to storage.")
+
+        await publish_ws(ctx, client_id, {
+            "type": "finish",
+            "success": True,
+            "download_url": f"/api/video/download/{output_filename}"
+        })
 
 
 class WorkerSettings:

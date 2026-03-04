@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     s3_secret_key: str = "minioadmin"
     s3_region: str = "us-east-1"
 
-    cache_dir: str = "cache"
+    cache_dir: str = "uploads"
     redis_url: str = "redis://redis:6379/0"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
