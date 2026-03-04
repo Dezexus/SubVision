@@ -9,7 +9,7 @@ import { HybridTimeline } from './components/HybridTimeline';
 import { useAppStore } from '../../store/useAppStore';
 
 export const EditorPanel = () => {
-  const { file, roi, metadata, setCurrentFrame } = useAppStore();
+  const { file, metadata, setCurrentFrame } = useAppStore();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -45,11 +45,9 @@ export const EditorPanel = () => {
          <VideoCanvas />
       </div>
 
-      {roi[2] > 0 && (
-        <div className="flex-none px-4">
-           <FilterPreview />
-        </div>
-      )}
+      <div className="flex-none px-4">
+         <FilterPreview />
+      </div>
 
       <div className="flex-none px-4 pb-4">
          <HybridTimeline />

@@ -1,5 +1,5 @@
 /**
- * Real-time filter preview component with LRU caching for blob URLs to avoid aggressive fetching.
+ * Real-time filter preview component with LRU caching and static placeholder to prevent layout shifts.
  */
 import React, { useEffect, useState } from 'react';
 import { Cpu, Loader2, ScanLine } from 'lucide-react';
@@ -74,10 +74,21 @@ export const FilterPreview = () => {
     };
   }, [roi, config, currentFrameIndex, metadata]);
 
-  if (!roi[2] || !metadata) return null;
+  if (!metadata) return null;
+
+  if (!roi[2]) {
+    return (
+      <div className="bg-bg-panel/40 border border-dashed border-border-strong rounded-xl p-3 w-full flex flex-col items-center justify-center h-[126px] text-txt-subtle transition-all duration-200">
+        <ScanLine size={20} className="mb-2 opacity-50" />
+        <span className="text-xs font-medium tracking-wide">
+          Draw a selection box on the video to preview the algorithm
+        </span>
+      </div>
+    );
+  }
 
   return (
-    <div className="bg-bg-main border border-border-main rounded-xl p-3 shadow-xl w-full flex gap-4 items-center">
+    <div className="bg-bg-main border border-border-main rounded-xl p-3 shadow-xl w-full flex gap-4 items-center h-[126px]">
       <div className="flex flex-col gap-2 min-w-[120px]">
         <div className="flex items-center gap-2 text-txt-muted mb-1">
           <Cpu size={16} />
