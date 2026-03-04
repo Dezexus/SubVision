@@ -3,6 +3,7 @@ Centralized module for defining algorithmic, heuristic, and system constants.
 """
 import numpy as np
 
+OCR_BATCH_SIZE: int = 4
 DEFAULT_FPS: float = 25.0
 
 MOTION_BLUR_KSIZE: tuple[int, int] = (5, 5)
