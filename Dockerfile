@@ -64,4 +64,4 @@ RUN --mount=type=cache,target=/root/.cache/pip \
  && pip install -r requirements-worker.txt
 COPY backend ./backend
 WORKDIR /app/backend
-CMD ["arq", "worker.WorkerSettings"]
+CMD ["python", "-m", "arq", "worker.WorkerSettings"]

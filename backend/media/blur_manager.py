@@ -4,6 +4,7 @@ Manager responsible for applying video blurring and obscuring effects.
 import cv2
 import os
 import logging
+import numpy as np
 from typing import Optional, Tuple, List, Dict, Any, Callable
 
 from core.geometry import calculate_blur_roi
