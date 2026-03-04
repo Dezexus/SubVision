@@ -1,6 +1,5 @@
 /**
- * Control panel for configuring blur effect geometry and appearance parameters.
- * Uses a card-based layout for logical grouping of settings without redundant headers.
+ * Control panel for configuring blur effect geometry and appearance parameters safely.
  */
 import React, { useEffect } from 'react';
 import {
@@ -60,9 +59,10 @@ export const BlurControlPanel = () => {
 
   useEffect(() => {
     if (metadata && blurSettings.y === 900 && roi[1] > 0) {
-        setBlurSettings({ y: roi[1] + roi[3] });
+        const newY = roi[1] + roi[3];
+        setBlurSettings({ y: Math.max(0, Math.min(videoHeight, newY)) });
     }
-  }, [roi, metadata, blurSettings.y, setBlurSettings]);
+  }, [roi, metadata, blurSettings.y, setBlurSettings, videoHeight]);
 
   const handleRender = async () => {
     if (!metadata) return;
@@ -147,7 +147,10 @@ export const BlurControlPanel = () => {
                   label="Vertical Position (Y)"
                   max={videoHeight}
                   value={videoHeight - blurSettings.y}
-                  onChange={(e) => setBlurSettings({ y: videoHeight - Number(e.target.value) })}
+                  onChange={(e) => {
+                      const newY = videoHeight - Number(e.target.value);
+                      setBlurSettings({ y: Math.max(0, Math.min(videoHeight, newY)) });
+                  }}
                 />
                 <Slider
                   label="Text Height"

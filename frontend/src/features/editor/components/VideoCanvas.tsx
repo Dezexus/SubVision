@@ -1,5 +1,5 @@
 /**
- * Main video editing canvas with support for cropping and blur geometry adjustments.
+ * Main video editing canvas safely constraining geometry coordinates.
  */
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop';
@@ -134,14 +134,15 @@ export const VideoCanvas = () => {
   };
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
-      if (isDragging === 'none' || !geometry) return;
+      if (isDragging === 'none' || !geometry || !metadata) return;
 
       const scale = getScale();
       const deltaY = (e.clientY - dragStartRef.current.y) * scale.y;
       const deltaX = (e.clientX - dragStartRef.current.x) * scale.x;
 
       if (isDragging === 'move-y') {
-          setBlurSettings({ y: Math.round(dragStartRef.current.initialY + deltaY) });
+          const newY = Math.round(dragStartRef.current.initialY + deltaY);
+          setBlurSettings({ y: Math.max(0, Math.min(metadata.height, newY)) });
       }
       else if (isDragging === 'resize-x') {
           const newPadX = Math.max(0, Math.round(dragStartRef.current.initialPadX + (deltaX * 0.5)));
@@ -153,7 +154,7 @@ export const VideoCanvas = () => {
           const newPadY = Math.max(0, newHeightPx / geometry.textHeight);
           setBlurSettings({ padding_y: parseFloat(newPadY.toFixed(2)) });
       }
-  }, [isDragging, geometry, setBlurSettings]);
+  }, [isDragging, geometry, setBlurSettings, metadata]);
 
   const handleMouseUp = useCallback(() => {
       setIsDragging('none');
