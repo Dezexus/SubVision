@@ -3,6 +3,7 @@ Main application module for the stateless SubVision API integrating ARQ and Redi
 """
 import asyncio
 import json
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,11 +18,13 @@ from api.websockets.manager import connection_manager
 from api.schemas import WebSocketMessage
 from core.config import settings
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Manages application startup and shutdown lifecycle events, initializing the task queue pool.
+    Manages application startup and shutdown lifecycle events.
     """
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     app.state.arq_pool = await create_pool(redis_settings)
@@ -50,41 +53,61 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
     """
-    Handles WebSocket connections mapping Redis Pub/Sub messages to the active client.
+    Handles highly resilient WebSocket connections mapping Redis Pub/Sub messages.
     """
     await connection_manager.connect(websocket, client_id)
 
-    redis_client = aioredis.from_url(settings.redis_url)
-    pubsub = redis_client.pubsub()
-    await pubsub.subscribe(f"ws_{client_id}")
-
-    async def redis_reader():
-        try:
-            async for message in pubsub.listen():
-                if message["type"] == "message":
-                    raw_data = message["data"]
-                    data_str = raw_data.decode("utf-8") if isinstance(raw_data, bytes) else raw_data
-                    data = json.loads(data_str)
-                    await connection_manager.send_json(client_id, data)
-        except asyncio.CancelledError:
-            pass
-        except Exception:
-            pass
-
-    reader_task = asyncio.create_task(redis_reader())
+    redis_client = None
+    pubsub = None
+    reader_task = None
 
     try:
+        redis_client = aioredis.from_url(settings.redis_url)
+        pubsub = redis_client.pubsub()
+        await pubsub.subscribe(f"ws_{client_id}")
+
+        async def redis_reader():
+            try:
+                async for message in pubsub.listen():
+                    if message["type"] == "message":
+                        raw_data = message["data"]
+                        data_str = raw_data.decode("utf-8") if isinstance(raw_data, bytes) else raw_data
+                        data = json.loads(data_str)
+                        await connection_manager.send_json(client_id, data)
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.error(f"Redis reader error for {client_id}: {e}")
+
+        reader_task = asyncio.create_task(redis_reader())
+
         while True:
-            data = await asyncio.wait_for(websocket.receive_text(), timeout=60.0)
+            data = await asyncio.wait_for(websocket.receive_text(), timeout=120.0)
             try:
                 message = WebSocketMessage.model_validate_json(data)
                 if message.type == "ping":
                     await connection_manager.send_json(client_id, {"type": "pong"})
             except ValidationError:
                 pass
+
     except (WebSocketDisconnect, asyncio.TimeoutError):
-        connection_manager.disconnect(client_id)
+        pass
+    except Exception as e:
+        logger.error(f"Unexpected WebSocket error for {client_id}: {e}")
     finally:
-        reader_task.cancel()
-        await pubsub.unsubscribe(f"ws_{client_id}")
-        await redis_client.close()
+        connection_manager.disconnect(client_id)
+        if reader_task:
+            reader_task.cancel()
+        if pubsub:
+            try:
+                await pubsub.unsubscribe(f"ws_{client_id}")
+            except Exception:
+                pass
+        if redis_client:
+            try:
+                if hasattr(redis_client, "aclose"):
+                    await redis_client.aclose()
+                else:
+                    await redis_client.close()
+            except Exception:
+                pass
