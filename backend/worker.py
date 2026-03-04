@@ -68,7 +68,6 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
 
     with tempfile.TemporaryDirectory() as tmpdir:
         local_video_path = os.path.join(tmpdir, safe_filename)
-        output_srt_path = os.path.join(tmpdir, f"{os.path.splitext(safe_filename)[0]}.srt")
 
         await publish_ws(ctx, client_id, {"type": "log", "message": "Downloading video from storage..."})
 
@@ -89,13 +88,13 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
             return False
 
         success = await asyncio.to_thread(
-            run_ocr_pipeline, local_video_path, output_srt_path, config, log_cb, prog_cb, sub_cb, cancel_check
+            run_ocr_pipeline, local_video_path, config, log_cb, prog_cb, sub_cb, cancel_check
         )
 
-        if success and os.path.exists(output_srt_path):
+        if success:
             await publish_ws(ctx, client_id, {"type": "finish", "success": True})
         else:
-            raise RuntimeError("OCR pipeline failed to produce an SRT output file.")
+            raise RuntimeError("OCR pipeline execution failed or was interrupted.")
 
 
 async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:

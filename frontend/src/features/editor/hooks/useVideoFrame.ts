@@ -54,6 +54,7 @@ export const useVideoFrame = (metadata: VideoMetadata | null, currentFrameIndex:
             extractionVideo = document.createElement('video');
             extractionVideo.muted = true;
             extractionVideo.playsInline = true;
+            extractionVideo.crossOrigin = "anonymous";
             extractionVideo.src = URL.createObjectURL(file);
             await new Promise((resolve) => {
                 if (extractionVideo) {

@@ -10,7 +10,6 @@ from media.image_filters.pipeline import ImagePipeline
 from ocr.engine import PaddleWrapper, get_paddle_engine
 from core.presets import get_preset_config
 from ocr.aggregator import SubtitleAggregator
-from core.utils import format_timestamp
 from media.video.reader import VideoProvider
 from core.constants import OCR_BATCH_SIZE
 
@@ -19,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 def run_ocr_pipeline(
     video_path: str,
-    output_srt_path: str,
     params: Dict[str, Any],
     log_cb: Callable[[str], None],
     progress_cb: Callable[[int, int, str], None],
@@ -27,7 +25,7 @@ def run_ocr_pipeline(
     cancel_check: Callable[[], bool]
 ) -> bool:
     """
-    Executes the OCR extraction pipeline using batched GPU inference.
+    Executes the OCR extraction pipeline utilizing batched GPU inference and broadcasting results in real-time.
     """
     cv2.setNumThreads(0)
     log_cb("--- START OCR (Batched GPU Pipeline) ---")
@@ -102,16 +100,8 @@ def run_ocr_pipeline(
                 valid_frames.clear()
 
         progress_cb(total_frames, total_frames, "00:00")
-        srt_data = aggregator.finalize()
+        aggregator.finalize()
         log_cb(f"Smart Skip: {pipeline.skipped_count} frames")
-
-        with open(output_srt_path, "w", encoding="utf-8") as f:
-            for item in srt_data:
-                f.write(
-                    f"{item['id']}\n"
-                    f"{format_timestamp(item['start'])} --> {format_timestamp(item['end'])}\n"
-                    f"{item['text']}\n\n"
-                )
         return True
 
     finally:
