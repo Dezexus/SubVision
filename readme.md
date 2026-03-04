@@ -90,4 +90,3 @@ You can configure the application by creating a `.env` file in the `backend` dir
 4. Review, edit, or merge the detected subtitles in the right panel.
 5. Switch to **Blur Mode**, adjust bounding box padding, Sigma, and Feather.
 6. Click **Start Render** and download the final obscured video.
-```
