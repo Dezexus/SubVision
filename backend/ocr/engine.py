@@ -6,19 +6,10 @@ import threading
 from typing import Any
 import numpy as np
 
-try:
-    import paddle
-    from paddleocr import PaddleOCR
-    logging.getLogger("ppocr").setLevel(logging.ERROR)
-    HAS_PADDLE = True
-except ImportError:
-    HAS_PADDLE = False
-    PaddleOCR = object
-
 
 class PaddleWrapper:
     """
-    Provides isolated, thread-safe access to the PaddleOCR inference engine.
+    Provides isolated, thread-safe access to the PaddleOCR inference engine with lazy loading.
     """
 
     DET_PARAMS = {
@@ -31,12 +22,15 @@ class PaddleWrapper:
     }
 
     def __init__(self, lang: str = "en", use_gpu: bool = True) -> None:
-        if not HAS_PADDLE:
-            raise ImportError("PaddleOCR is not installed.")
-
         self.use_gpu = use_gpu
         self._inference_lock = threading.Lock()
         self._init_device()
+
+        try:
+            from paddleocr import PaddleOCR
+            logging.getLogger("ppocr").setLevel(logging.ERROR)
+        except ImportError:
+            raise ImportError("PaddleOCR is not installed.")
 
         self.ocr = PaddleOCR(
             lang=lang,
@@ -47,6 +41,11 @@ class PaddleWrapper:
         )
 
     def _init_device(self) -> None:
+        try:
+            import paddle
+        except ImportError:
+            return
+
         if not self.use_gpu:
             paddle.set_device("cpu")
             return
