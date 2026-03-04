@@ -4,6 +4,8 @@ Module providing an abstraction layer for S3-compatible object storage with robu
 import os
 import logging
 import uuid
+import shutil
+import asyncio
 from typing import Optional, Any, List, Dict
 import aioboto3
 from botocore.exceptions import ClientError
@@ -64,16 +66,19 @@ class StorageManager:
         Saves a single chunk to the local temporary directory.
         """
         chunk_path = os.path.join(settings.cache_dir, ".temp", upload_id, f"{part_number}.chunk")
-        with open(chunk_path, "wb") as f:
-            f.write(data)
+        def _write():
+            with open(chunk_path, "wb") as f:
+                f.write(data)
+        await asyncio.to_thread(_write)
 
     async def complete_local_upload(self, upload_id: str, filename: str, total_chunks: int) -> bool:
         """
-        Assembles locally stored chunks into the final video file.
+        Assembles locally stored chunks into the final video file asynchronously.
         """
         temp_dir = os.path.join(settings.cache_dir, ".temp", upload_id)
         final_path = os.path.join(settings.cache_dir, filename)
-        try:
+
+        def _assemble():
             with open(final_path, "wb") as final_file:
                 for i in range(1, total_chunks + 1):
                     chunk_path = os.path.join(temp_dir, f"{i}.chunk")
@@ -82,6 +87,9 @@ class StorageManager:
                             final_file.write(chunk_file.read())
                         os.remove(chunk_path)
             os.rmdir(temp_dir)
+
+        try:
+            await asyncio.to_thread(_assemble)
             return True
         except Exception as e:
             logger.error(f"Local assembly failed: {e}")
@@ -142,7 +150,13 @@ class StorageManager:
 
     async def upload_file(self, local_path: str, s3_key: str) -> bool:
         if not self.session:
-            return True
+            try:
+                target_path = os.path.join(settings.cache_dir, s3_key)
+                await asyncio.to_thread(shutil.copy2, local_path, target_path)
+                return True
+            except Exception as e:
+                logger.error(f"Local upload fallback failed: {e}")
+                return False
         try:
             async with self.session.client(**self._get_client_kwargs()) as client:
                 await self._ensure_bucket(client)
@@ -154,7 +168,15 @@ class StorageManager:
 
     async def download_file(self, s3_key: str, local_path: str) -> bool:
         if not self.session:
-            return os.path.exists(local_path)
+            source_path = os.path.join(settings.cache_dir, s3_key)
+            if not os.path.exists(source_path):
+                return False
+            try:
+                await asyncio.to_thread(shutil.copy2, source_path, local_path)
+                return True
+            except Exception as e:
+                logger.error(f"Local download fallback failed: {e}")
+                return False
         try:
             async with self.session.client(**self._get_client_kwargs()) as client:
                 await self._ensure_bucket(client)
