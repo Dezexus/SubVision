@@ -38,6 +38,11 @@ export const videoApi = {
             const etag = chunkRes.headers['etag'] || chunkRes.headers['Etag'] || '';
             parts.push({ PartNumber: i + 1, ETag: etag.replace(/"/g, '') });
         } else {
+            const formData = new FormData();
+            formData.append('file', chunk);
+            formData.append('upload_id', upload_id);
+            formData.append('part_number', (i + 1).toString());
+            await axios.post(`${API_URL}/video/upload/chunk`, formData);
             parts.push({ PartNumber: i + 1, ETag: `local_${i}` });
         }
 

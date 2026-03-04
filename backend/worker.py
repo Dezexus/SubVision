@@ -39,6 +39,23 @@ async def publish_ws(ctx: Dict[str, Any], client_id: str, payload: Dict[str, Any
     await redis.publish(f"ws_{client_id}", json.dumps(payload))
 
 
+async def on_job_end_handler(ctx: Dict[str, Any], job_id: str, result: Any, exc: Exception) -> None:
+    """
+    Global exception catcher for tasks, ensuring the client receives a failure notification.
+    """
+    if exc is not None:
+        logging.error(f"Job {job_id} failed critically: {exc}")
+        try:
+            client_id = job_id.split("_", 1)[-1]
+            await publish_ws(ctx, client_id, {
+                "type": "finish",
+                "success": False,
+                "error": f"Internal Worker Error: {str(exc)}"
+            })
+        except Exception as e:
+            logging.error(f"Failed to publish error state for {job_id}: {e}")
+
+
 async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
     """
     Executes the OCR extraction lifecycle utilizing a clean temporary directory.
@@ -144,11 +161,12 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
 
 class WorkerSettings:
     """
-    ARQ worker configuration binding task functions and connection parameters.
+    ARQ worker configuration binding task functions and global exception handlers.
     """
     functions = [process_ocr_task, render_blur_task]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     on_startup = startup
     on_shutdown = shutdown
+    after_job_ends = on_job_end_handler
     max_jobs = 1
     job_timeout = 86400

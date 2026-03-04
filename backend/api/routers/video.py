@@ -1,12 +1,12 @@
 """
-Router module for handling stateless S3 direct video uploads and dynamic frame extraction.
+Router module for handling stateless S3 direct video uploads and dynamic frame extraction with local fallback.
 """
 import os
 import logging
 import cv2
 import asyncio
 from typing import List, Dict, Any
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Form, UploadFile, File
 from fastapi.responses import StreamingResponse, RedirectResponse, FileResponse
 from io import BytesIO
 from pydantic import BaseModel
@@ -25,7 +25,7 @@ ALLOWED_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm"}
 
 class UploadInitRequest(BaseModel):
     """
-    Schema for initializing a direct S3 multipart upload.
+    Schema for initializing a multipart upload.
     """
     filename: str
     content_type: str
@@ -34,7 +34,7 @@ class UploadInitRequest(BaseModel):
 
 class UploadPart(BaseModel):
     """
-    Schema for a successfully uploaded S3 chunk.
+    Schema for a successfully uploaded chunk.
     """
     PartNumber: int
     ETag: str
@@ -42,7 +42,7 @@ class UploadPart(BaseModel):
 
 class UploadCompleteRequest(BaseModel):
     """
-    Schema for finalizing an S3 multipart upload session.
+    Schema for finalizing an upload session.
     """
     filename: str
     upload_id: str
@@ -60,7 +60,7 @@ async def get_allowed_extensions() -> List[str]:
 @router.post("/upload/init")
 async def init_upload(req: UploadInitRequest) -> Dict[str, Any]:
     """
-    Creates an S3 multipart upload session and issues presigned URLs for direct client uploads.
+    Creates a multipart upload session and issues presigned URLs for client uploads if S3 is active.
     """
     ext = os.path.splitext(req.filename)[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
@@ -77,18 +77,37 @@ async def init_upload(req: UploadInitRequest) -> Dict[str, Any]:
     if storage_manager.session:
         for i in range(1, req.total_chunks + 1):
             url = await storage_manager.get_presigned_upload_part(req.filename, upload_id, i)
-            presigned_urls.append(url)
+            if url:
+                presigned_urls.append(url)
 
     return {"upload_id": upload_id, "urls": presigned_urls}
+
+
+@router.post("/upload/chunk")
+async def upload_local_chunk(
+    upload_id: str = Form(...),
+    part_number: int = Form(...),
+    file: UploadFile = File(...)
+) -> Dict[str, Any]:
+    """
+    Fallback endpoint to receive chunk bytes locally if S3 is disabled.
+    """
+    data = await file.read()
+    await storage_manager.save_local_chunk(upload_id, part_number, data)
+    return {"status": "ok"}
 
 
 @router.post("/upload/complete")
 async def complete_upload(req: UploadCompleteRequest) -> VideoMetadata:
     """
-    Finalizes the S3 upload and retrieves video metadata dynamically using HTTP Range requests.
+    Finalizes the upload and retrieves video metadata dynamically using HTTP Range requests.
     """
     parts_dict = [{"PartNumber": p.PartNumber, "ETag": p.ETag} for p in req.parts]
-    success = await storage_manager.complete_multipart_upload(req.filename, req.upload_id, parts_dict)
+
+    if storage_manager.session:
+        success = await storage_manager.complete_multipart_upload(req.filename, req.upload_id, parts_dict)
+    else:
+        success = await storage_manager.complete_local_upload(req.upload_id, req.filename, len(req.parts))
 
     if not success:
         raise HTTPException(status_code=500, detail="Failed to complete storage upload.")

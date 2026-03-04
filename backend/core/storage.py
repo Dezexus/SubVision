@@ -1,8 +1,9 @@
 """
-Module providing an abstraction layer for interacting with S3-compatible object storage asynchronously.
+Module providing an abstraction layer for S3-compatible object storage with robust local fallback.
 """
 import os
 import logging
+import uuid
 from typing import Optional, Any, List, Dict
 import aioboto3
 from botocore.exceptions import ClientError
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 class StorageManager:
     """
-    Manages file uploads, direct S3 multipart operations, downloads, and presigned URLs.
+    Manages file uploads, direct S3 multipart operations, and local filesystem fallbacks.
     """
 
     def __init__(self) -> None:
@@ -51,12 +52,46 @@ class StorageManager:
             except Exception as e:
                 logger.error(f"Failed to create bucket: {e}")
 
+    def init_local_upload(self, upload_id: str) -> None:
+        """
+        Initializes a temporary local directory for chunked uploads.
+        """
+        temp_dir = os.path.join(settings.cache_dir, ".temp", upload_id)
+        os.makedirs(temp_dir, exist_ok=True)
+
+    async def save_local_chunk(self, upload_id: str, part_number: int, data: bytes) -> None:
+        """
+        Saves a single chunk to the local temporary directory.
+        """
+        chunk_path = os.path.join(settings.cache_dir, ".temp", upload_id, f"{part_number}.chunk")
+        with open(chunk_path, "wb") as f:
+            f.write(data)
+
+    async def complete_local_upload(self, upload_id: str, filename: str, total_chunks: int) -> bool:
+        """
+        Assembles locally stored chunks into the final video file.
+        """
+        temp_dir = os.path.join(settings.cache_dir, ".temp", upload_id)
+        final_path = os.path.join(settings.cache_dir, filename)
+        try:
+            with open(final_path, "wb") as final_file:
+                for i in range(1, total_chunks + 1):
+                    chunk_path = os.path.join(temp_dir, f"{i}.chunk")
+                    if os.path.exists(chunk_path):
+                        with open(chunk_path, "rb") as chunk_file:
+                            final_file.write(chunk_file.read())
+                        os.remove(chunk_path)
+            os.rmdir(temp_dir)
+            return True
+        except Exception as e:
+            logger.error(f"Local assembly failed: {e}")
+            return False
+
     async def create_multipart_upload(self, s3_key: str, content_type: str) -> Optional[str]:
-        """
-        Initializes a direct S3 multipart upload session.
-        """
         if not self.session:
-            return None
+            upload_id = str(uuid.uuid4())
+            self.init_local_upload(upload_id)
+            return upload_id
         try:
             async with self.session.client(**self._get_client_kwargs()) as client:
                 await self._ensure_bucket(client)
@@ -71,9 +106,6 @@ class StorageManager:
             return None
 
     async def get_presigned_upload_part(self, s3_key: str, upload_id: str, part_number: int) -> Optional[str]:
-        """
-        Generates a presigned URL for a client to upload a specific chunk directly to S3.
-        """
         if not self.session:
             return None
         try:
@@ -93,9 +125,6 @@ class StorageManager:
             return None
 
     async def complete_multipart_upload(self, s3_key: str, upload_id: str, parts: List[Dict[str, Any]]) -> bool:
-        """
-        Finalizes the multipart upload in S3 using the ETags provided by the client.
-        """
         if not self.session:
             return False
         try:
