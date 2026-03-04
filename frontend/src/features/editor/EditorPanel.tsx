@@ -1,5 +1,5 @@
 /**
- * Main editor layout orchestration with rigid flexbox boundaries to prevent layout shifts.
+ * Main editor layout orchestration with a rigid static height skeleton.
  */
 import React, { useEffect } from 'react';
 import { VideoCanvas } from './components/VideoCanvas';
@@ -45,7 +45,7 @@ export const EditorPanel = () => {
          <VideoCanvas />
       </div>
 
-      <div className="shrink-0 h-[126px] w-full relative">
+      <div className="shrink-0 h-[126px] px-4 w-full">
          <FilterPreview />
       </div>
 
