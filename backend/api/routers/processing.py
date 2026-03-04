@@ -1,22 +1,17 @@
 """
-Router module handling OCR processing jobs, subtitle imports, and blur rendering.
+Router module handling API requests by delegating tasks to the ARQ message broker.
 """
-import os
-import time
-import asyncio
 import logging
-from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Request
+from fastapi import APIRouter, HTTPException, UploadFile, File, Request
 from fastapi.responses import StreamingResponse
 from io import BytesIO
 import cv2
+from arq.jobs import Job
 
 from api.schemas import ProcessConfig, RenderConfig, BlurPreviewConfig, BlurSettings
-from api.websockets.manager import connection_manager
-from api.dependencies import ensure_video_cached, get_video_url
+from api.dependencies import get_video_url
 from media.blur_manager import BlurManager
 from core.srt_parser import parse_srt
-from core.storage import storage_manager
-from core.config import settings
 from core.presets import get_all_presets, get_supported_languages
 
 logger = logging.getLogger(__name__)
@@ -59,67 +54,31 @@ async def get_process_defaults():
 @router.post("/start")
 async def start_process(config: ProcessConfig, request: Request):
     """
-    Initiates a background OCR process (Requires Stage 4 refactoring for TemporaryDirectory).
+    Enqueues an OCR processing task to the ARQ message broker.
     """
-    process_mgr = request.app.state.process_mgr
-    thread_pool = getattr(request.app.state, "thread_pool", None)
-    file_path = await ensure_video_cached(config.filename)
-
-    loop = asyncio.get_event_loop()
-
-    def _emit(event_type: str, payload: dict) -> None:
-        asyncio.run_coroutine_threadsafe(
-            connection_manager.send_json(config.client_id, {"type": event_type, **payload}), loop
-        )
-
-    callbacks = {
-        "log": lambda msg: _emit("log", {"message": msg}),
-        "subtitle": lambda item: _emit("subtitle_new", {"item": item}),
-        "ai_update": lambda item: _emit("subtitle_update", {"item": item}),
-        "progress": lambda c, t, e: _emit("progress", {"current": c, "total": t, "eta": e}),
-        "finish": lambda success: _emit("finish", {"success": success})
-    }
     try:
-        process_mgr.start_process(
-            session_id=config.client_id,
-            video_file=file_path,
-            editor_data={"roi_override": config.roi},
-            preset=config.preset,
-            langs=config.languages,
-            step=config.step,
-            conf_threshold=config.conf_threshold,
-            scale_val=config.scale_factor,
-            smart_skip=config.smart_skip,
-            callbacks=callbacks,
-            thread_pool=thread_pool
-        )
-        return {"status": "started", "job_id": config.client_id}
+        pool = request.app.state.arq_pool
+        job_id = f"ocr_{config.client_id}"
+        await pool.enqueue_job("process_ocr_task", config.model_dump(), _job_id=job_id)
+        return {"status": "queued", "job_id": job_id}
     except Exception as e:
-        logger.error(f"Error starting process: {e}", exc_info=True)
+        logger.error(f"Failed to enqueue OCR task: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/stop/{client_id}")
 async def stop_process(client_id: str, request: Request):
     """
-    Terminates active OCR or rendering tasks for a specific client session.
+    Revokes active or pending tasks for a specific client session via ARQ.
     """
-    process_mgr = getattr(request.app.state, "process_mgr", None)
-    render_registry = getattr(request.app.state, "render_registry", {})
-    render_lock = getattr(request.app.state, "render_lock", None)
+    pool = request.app.state.arq_pool
+    ocr_job = Job(f"ocr_{client_id}", pool)
+    blur_job = Job(f"blur_{client_id}", pool)
 
-    ocr_stopped = False
-    if process_mgr:
-        ocr_stopped = process_mgr.stop_process(client_id)
+    ocr_stopped = await ocr_job.abort()
+    blur_stopped = await blur_job.abort()
 
-    render_stopped = False
-    if render_lock:
-        async with render_lock:
-            if client_id in render_registry:
-                render_registry[client_id].stop()
-                render_stopped = True
-
-    return {"status": "stopped", "ocr_stopped": ocr_stopped, "render_stopped": render_stopped}
+    return {"status": "stopped", "ocr_stopped": ocr_stopped, "render_stopped": blur_stopped}
 
 
 @router.post("/import_srt")
@@ -149,10 +108,9 @@ async def preview_blur_frame(config: BlurPreviewConfig):
     Generates a preview frame fetching the source video stream statelessly via S3 URL.
     """
     video_url = await get_video_url(config.filename)
-    blur_mgr = BlurManager()
 
     try:
-        preview_image = blur_mgr.generate_preview(
+        preview_image = BlurManager.generate_preview(
             video_path=video_url,
             frame_index=config.frame_index,
             settings=config.blur_settings.model_dump(),
@@ -161,8 +119,7 @@ async def preview_blur_frame(config: BlurPreviewConfig):
         if preview_image is None:
             raise HTTPException(status_code=500, detail="Failed to generate preview")
 
-        img_bgr = preview_image
-        _, encoded_img = cv2.imencode('.jpg', img_bgr)
+        _, encoded_img = cv2.imencode('.jpg', preview_image)
         return StreamingResponse(BytesIO(encoded_img.tobytes()), media_type="image/jpeg")
 
     except Exception as e:
@@ -171,93 +128,15 @@ async def preview_blur_frame(config: BlurPreviewConfig):
 
 
 @router.post("/render_blur")
-async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTasks, request: Request):
+async def render_blur_video(config: RenderConfig, request: Request):
     """
-    Starts a background render task (Requires Stage 4 refactoring for TemporaryDirectory).
+    Enqueues a video rendering and blurring task to the ARQ message broker.
     """
-    render_registry = request.app.state.render_registry
-    render_lock = request.app.state.render_lock
-
-    safe_filename = os.path.basename(config.filename)
-    output_filename = f"blurred_{safe_filename}"
-    output_path = os.path.join(settings.cache_dir, output_filename)
-
-    if os.path.exists(output_path):
-        try:
-            os.remove(output_path)
-        except OSError:
-            pass
-
-    blur_mgr = BlurManager()
-    async with render_lock:
-        render_registry[config.client_id] = blur_mgr
-
-    loop = asyncio.get_event_loop()
-    start_time = time.time()
-
-    def progress_cb(current: int, total: int) -> None:
-        if total <= 0:
-            total = 1
-
-        if current > 0:
-            elapsed = time.time() - start_time
-            avg_time = elapsed / current
-            eta_sec = int((total - current) * avg_time)
-            eta_str = f"{eta_sec // 60:02d}:{eta_sec % 60:02d}"
-        else:
-            eta_str = "--:--"
-
-        asyncio.run_coroutine_threadsafe(
-            connection_manager.send_json(config.client_id, {
-                "type": "progress",
-                "current": current,
-                "total": total,
-                "eta": eta_str
-            }),
-            loop
-        )
-
-    async def run_render_task() -> None:
-        success = False
-        error_msg = None
-        try:
-            file_path = await ensure_video_cached(config.filename)
-
-            await blur_mgr.apply_blur_task(
-                file_path,
-                config.subtitles,
-                config.blur_settings.model_dump(),
-                output_path,
-                progress_cb
-            )
-
-            upload_ok = await storage_manager.upload_file(output_path, output_filename)
-            if not upload_ok:
-                raise Exception("Failed to upload rendered video to S3.")
-
-            success = True
-        except InterruptedError:
-            error_msg = "Stopped by user"
-            success = False
-        except Exception as e:
-            error_msg = str(e)
-            logger.error(f"Render task failed: {e}", exc_info=True)
-            success = False
-        finally:
-            async with render_lock:
-                if config.client_id in render_registry:
-                    del render_registry[config.client_id]
-
-            payload = {"type": "finish", "success": success}
-            if success:
-                payload["download_url"] = f"/api/video/download/{output_filename}"
-            if error_msg:
-                payload["error"] = error_msg
-
-            asyncio.run_coroutine_threadsafe(
-                connection_manager.send_json(config.client_id, payload),
-                loop
-            )
-
-    background_tasks.add_task(run_render_task)
-    return {"status": "rendering_started", "output": output_filename}
+    try:
+        pool = request.app.state.arq_pool
+        job_id = f"blur_{config.client_id}"
+        await pool.enqueue_job("render_blur_task", config.model_dump(), _job_id=job_id)
+        return {"status": "queued", "job_id": job_id}
+    except Exception as e:
+        logger.error(f"Failed to enqueue render task: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
