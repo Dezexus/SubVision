@@ -19,6 +19,11 @@ export const useBlurPreview = (
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    blurCache.forEach(url => URL.revokeObjectURL(url));
+    blurCache.clear();
+  }, [metadata?.filename]);
+
+  useEffect(() => {
     if (!metadata) return;
 
     let isActive = true;
