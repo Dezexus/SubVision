@@ -1,8 +1,7 @@
 """
-Main application module for the SubVision API with modular monolithic architecture.
+Main application module for the stateless SubVision API.
 """
 import asyncio
-import concurrent.futures
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,37 +11,16 @@ from pydantic import ValidationError
 from api.routers import video, processing
 from api.websockets.manager import connection_manager
 from api.schemas import WebSocketMessage
-from core.cleanup import cleanup_old_files
-from ocr.process_manager import ProcessManager
 from core.config import settings
 
-async def periodic_cleanup(interval_seconds: int = 3600, max_age_hours: int = 12) -> None:
-    """
-    Executes file cleanup periodically in the background asynchronously.
-    """
-    while True:
-        try:
-            await asyncio.to_thread(cleanup_old_files, max_age_hours=max_age_hours)
-        except Exception as e:
-            print(f"Periodic cleanup error: {e}")
-        await asyncio.sleep(interval_seconds)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Manages application startup and shutdown lifecycle events, including global state initialization.
+    Manages application startup and shutdown lifecycle events.
     """
-    app.state.process_mgr = ProcessManager()
-    app.state.render_registry = {}
-    app.state.render_lock = asyncio.Lock()
-    app.state.thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)
-
-    cleanup_task = asyncio.create_task(periodic_cleanup())
-
     yield
 
-    cleanup_task.cancel()
-    app.state.thread_pool.shutdown(wait=True)
 
 app = FastAPI(title="SubVision API", version="1.0.0", lifespan=lifespan)
 
@@ -61,13 +39,13 @@ app.include_router(processing.router, prefix="/api/process", tags=["Processing"]
 
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
+
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
     """
-    Handles WebSocket connections with strict message validation and routing.
+    Handles WebSocket connections with strict message validation.
     """
     await connection_manager.connect(websocket, client_id)
-    process_mgr = websocket.app.state.process_mgr
     try:
         while True:
             data = await asyncio.wait_for(websocket.receive_text(), timeout=60.0)
@@ -79,4 +57,3 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
                 pass
     except (WebSocketDisconnect, asyncio.TimeoutError):
         connection_manager.disconnect(client_id)
-        process_mgr.stop_process(client_id)

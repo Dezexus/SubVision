@@ -6,8 +6,9 @@ opencv-contrib-python
 numpy
 Pillow
 paddleocr
-# paddlepaddle-gpu==3.2.0
 requests
 pynvvideocodec
 aioboto3
 pydantic-settings
+redis
+arq
