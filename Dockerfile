@@ -12,6 +12,7 @@ RUN npm run build
 FROM python:3.10-slim AS api
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV PATH="/usr/local/bin:$PATH"
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nginx \
     supervisor \
@@ -23,8 +24,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY backend/requirements.txt .
-RUN --mount=type=cache,target=/root/.cache/pip pip install --upgrade pip \
-    && pip install -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install --upgrade pip \
+    && python -m pip install -r requirements.txt
 COPY backend ./backend
 COPY --from=frontend-builder /frontend/dist ./frontend_dist
 COPY nginx.conf /etc/nginx/nginx.conf
@@ -38,6 +40,7 @@ FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04 AS worker
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV PATH="/usr/local/bin:$PATH"
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.10 \
     python3-pip \
@@ -59,9 +62,10 @@ WORKDIR /app
 COPY backend/requirements.txt .
 COPY backend/requirements-worker.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --upgrade pip \
- && pip install paddlepaddle-gpu==3.2.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/ \
- && pip install -r requirements-worker.txt
+    python -m pip install --upgrade pip \
+ && python -m pip install paddlepaddle-gpu==3.2.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/ \
+ && python -m pip install -r requirements.txt \
+ && python -m pip install -r requirements-worker.txt
 COPY backend ./backend
 WORKDIR /app/backend
-CMD ["python", "-m", "arq", "worker.WorkerSettings"]
+CMD ["arq", "worker.WorkerSettings"]
