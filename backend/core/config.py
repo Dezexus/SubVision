@@ -1,5 +1,5 @@
 """
-Configuration module using pydantic-settings for type-safe environment variables.
+Configuration module defining explicit application modes and environment variables.
 """
 import os
 from typing import Optional
@@ -8,9 +8,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     """
-    Application settings derived from environment variables or .env file.
+    Application settings enforcing strict operational modes for storage and infrastructure.
     """
     allowed_origins: str = "http://localhost:7860,http://127.0.0.1:7860"
+
+    storage_mode: str = "local" # local or s3
 
     s3_endpoint: Optional[str] = None
     s3_bucket: str = "subvision"

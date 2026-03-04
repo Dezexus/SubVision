@@ -1,5 +1,5 @@
 """
-Module providing an abstraction layer for S3-compatible object storage with robust local fallback.
+Module providing an abstraction layer strictly enforcing explicit storage operational modes.
 """
 import os
 import logging
@@ -17,15 +17,15 @@ logger = logging.getLogger(__name__)
 
 class StorageManager:
     """
-    Manages file uploads, direct S3 multipart operations, and local filesystem fallbacks.
+    Manages file transfers strictly routing operations based on the configured storage_mode.
     """
 
     def __init__(self) -> None:
-        self.endpoint = settings.s3_endpoint
+        self.mode = settings.storage_mode.lower()
         self.bucket_name = settings.s3_bucket
         self._bucket_checked = False
 
-        if self.endpoint:
+        if self.mode == "s3":
             self.session = aioboto3.Session(
                 aws_access_key_id=settings.s3_access_key,
                 aws_secret_access_key=settings.s3_secret_key,
@@ -37,7 +37,7 @@ class StorageManager:
     def _get_client_kwargs(self) -> dict:
         return {
             'service_name': 's3',
-            'endpoint_url': self.endpoint
+            'endpoint_url': settings.s3_endpoint
         }
 
     async def _ensure_bucket(self, client: Any) -> None:
@@ -53,18 +53,13 @@ class StorageManager:
                 self._bucket_checked = True
             except Exception as e:
                 logger.error(f"Failed to create bucket: {e}")
+                raise
 
     def init_local_upload(self, upload_id: str) -> None:
-        """
-        Initializes a temporary local directory for chunked uploads.
-        """
         temp_dir = os.path.join(settings.cache_dir, ".temp", upload_id)
         os.makedirs(temp_dir, exist_ok=True)
 
     async def save_local_chunk(self, upload_id: str, part_number: int, data: bytes) -> None:
-        """
-        Saves a single chunk to the local temporary directory.
-        """
         chunk_path = os.path.join(settings.cache_dir, ".temp", upload_id, f"{part_number}.chunk")
         def _write():
             with open(chunk_path, "wb") as f:
@@ -72,9 +67,6 @@ class StorageManager:
         await asyncio.to_thread(_write)
 
     async def complete_local_upload(self, upload_id: str, filename: str, total_chunks: int) -> bool:
-        """
-        Assembles locally stored chunks into the final video file asynchronously.
-        """
         temp_dir = os.path.join(settings.cache_dir, ".temp", upload_id)
         final_path = os.path.join(settings.cache_dir, filename)
 
@@ -96,10 +88,11 @@ class StorageManager:
             return False
 
     async def create_multipart_upload(self, s3_key: str, content_type: str) -> Optional[str]:
-        if not self.session:
+        if self.mode == "local":
             upload_id = str(uuid.uuid4())
             self.init_local_upload(upload_id)
             return upload_id
+
         try:
             async with self.session.client(**self._get_client_kwargs()) as client:
                 await self._ensure_bucket(client)
@@ -114,8 +107,9 @@ class StorageManager:
             return None
 
     async def get_presigned_upload_part(self, s3_key: str, upload_id: str, part_number: int) -> Optional[str]:
-        if not self.session:
+        if self.mode == "local":
             return None
+
         try:
             async with self.session.client(**self._get_client_kwargs()) as client:
                 return await client.generate_presigned_url(
@@ -133,8 +127,9 @@ class StorageManager:
             return None
 
     async def complete_multipart_upload(self, s3_key: str, upload_id: str, parts: List[Dict[str, Any]]) -> bool:
-        if not self.session:
+        if self.mode == "local":
             return False
+
         try:
             async with self.session.client(**self._get_client_kwargs()) as client:
                 await client.complete_multipart_upload(
@@ -149,14 +144,15 @@ class StorageManager:
             return False
 
     async def upload_file(self, local_path: str, s3_key: str) -> bool:
-        if not self.session:
+        if self.mode == "local":
             try:
                 target_path = os.path.join(settings.cache_dir, s3_key)
                 await asyncio.to_thread(shutil.copy2, local_path, target_path)
                 return True
             except Exception as e:
-                logger.error(f"Local upload fallback failed: {e}")
+                logger.error(f"Local upload failed: {e}")
                 return False
+
         try:
             async with self.session.client(**self._get_client_kwargs()) as client:
                 await self._ensure_bucket(client)
@@ -167,7 +163,7 @@ class StorageManager:
             return False
 
     async def download_file(self, s3_key: str, local_path: str) -> bool:
-        if not self.session:
+        if self.mode == "local":
             source_path = os.path.join(settings.cache_dir, s3_key)
             if not os.path.exists(source_path):
                 return False
@@ -175,8 +171,9 @@ class StorageManager:
                 await asyncio.to_thread(shutil.copy2, source_path, local_path)
                 return True
             except Exception as e:
-                logger.error(f"Local download fallback failed: {e}")
+                logger.error(f"Local download failed: {e}")
                 return False
+
         try:
             async with self.session.client(**self._get_client_kwargs()) as client:
                 await self._ensure_bucket(client)
@@ -187,8 +184,9 @@ class StorageManager:
             return False
 
     async def get_presigned_url(self, s3_key: str, expiration: int = 3600) -> Optional[str]:
-        if not self.session:
+        if self.mode == "local":
             return None
+
         try:
             async with self.session.client(**self._get_client_kwargs()) as client:
                 url = await client.generate_presigned_url(

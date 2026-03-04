@@ -1,5 +1,5 @@
 """
-Router module for handling stateless S3 direct video uploads and dynamic frame extraction with local fallback.
+Router module for handling stateless direct video uploads dynamically supporting local or s3 modes.
 """
 import os
 import logging
@@ -60,7 +60,7 @@ async def get_allowed_extensions() -> List[str]:
 @router.post("/upload/init")
 async def init_upload(req: UploadInitRequest) -> Dict[str, Any]:
     """
-    Creates a multipart upload session and issues presigned URLs for client uploads if S3 is active.
+    Creates a multipart upload session and issues presigned URLs based on the active storage mode.
     """
     ext = os.path.splitext(req.filename)[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
@@ -74,7 +74,7 @@ async def init_upload(req: UploadInitRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Failed to initialize storage upload.")
 
     presigned_urls = []
-    if storage_manager.session:
+    if settings.storage_mode == "s3":
         for i in range(1, req.total_chunks + 1):
             url = await storage_manager.get_presigned_upload_part(req.filename, upload_id, i)
             if url:
@@ -90,7 +90,7 @@ async def upload_local_chunk(
     file: UploadFile = File(...)
 ) -> Dict[str, Any]:
     """
-    Fallback endpoint to receive chunk bytes locally if S3 is disabled.
+    Endpoint for receiving chunk bytes directly when operating in local storage mode.
     """
     data = await file.read()
     await storage_manager.save_local_chunk(upload_id, part_number, data)
@@ -100,11 +100,11 @@ async def upload_local_chunk(
 @router.post("/upload/complete")
 async def complete_upload(req: UploadCompleteRequest) -> VideoMetadata:
     """
-    Finalizes the upload and retrieves video metadata dynamically using HTTP Range requests.
+    Finalizes the upload routing assembly to the appropriate backend layer based on the storage mode.
     """
     parts_dict = [{"PartNumber": p.PartNumber, "ETag": p.ETag} for p in req.parts]
 
-    if storage_manager.session:
+    if settings.storage_mode == "s3":
         success = await storage_manager.complete_multipart_upload(req.filename, req.upload_id, parts_dict)
     else:
         success = await storage_manager.complete_local_upload(req.upload_id, req.filename, len(req.parts))
@@ -140,13 +140,14 @@ async def complete_upload(req: UploadCompleteRequest) -> VideoMetadata:
 @router.get("/download/{filename}")
 async def download_file(filename: str):
     """
-    Redirects the user to a secure Presigned URL for downloading.
+    Redirects the user to a secure Presigned URL or serves the file locally depending on storage mode.
     """
     safe_filename = os.path.basename(filename)
-    url = await storage_manager.get_presigned_url(safe_filename)
 
-    if url:
-        return RedirectResponse(url=url)
+    if settings.storage_mode == "s3":
+        url = await storage_manager.get_presigned_url(safe_filename)
+        if url:
+            return RedirectResponse(url=url)
 
     file_path = os.path.join(settings.cache_dir, safe_filename)
     if not os.path.exists(file_path):
@@ -162,7 +163,7 @@ async def download_file(filename: str):
 @router.get("/frame/{filename}/{frame_index}")
 async def get_frame(frame_index: int, video_url: str = Depends(get_video_url)):
     """
-    Extracts a frame statelessly by reading the video stream via a Presigned S3 URL.
+    Extracts a frame statelessly.
     """
     image = await asyncio.to_thread(VideoManager.get_frame_image, video_url, frame_index)
     if image is None:
@@ -177,7 +178,7 @@ async def get_frame(frame_index: int, video_url: str = Depends(get_video_url)):
 @router.post("/preview")
 async def get_preview(config: PreviewConfig):
     """
-    Generates a processed preview frame statelessly by reading the video stream via a Presigned S3 URL.
+    Generates a processed preview frame statelessly.
     """
     video_url = await get_video_url(config.filename)
 
