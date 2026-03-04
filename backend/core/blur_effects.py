@@ -5,11 +5,16 @@ from typing import Tuple, Dict, Any, Optional
 import cv2
 import numpy as np
 
-try:
-    count = cv2.cuda.getCudaEnabledDeviceCount()
-    HAS_CUDA = count > 0
-except AttributeError:
-    HAS_CUDA = False
+
+def _has_cuda() -> bool:
+    """
+    Dynamically checks for CUDA availability avoiding module-level execution.
+    """
+    try:
+        return cv2.cuda.getCudaEnabledDeviceCount() > 0
+    except AttributeError:
+        return False
+
 
 def generate_text_mask(frame: np.ndarray, roi: Tuple[int, int, int, int], font_size_px: int) -> np.ndarray:
     """
@@ -53,9 +58,10 @@ def generate_text_mask(frame: np.ndarray, roi: Tuple[int, int, int, int], font_s
 
     return local_mask
 
+
 def _apply_hybrid_inpaint(frame: np.ndarray, roi: Tuple[int, int, int, int], font_size_px: int, precalculated_mask: Optional[np.ndarray] = None) -> None:
     """
-    Applies text-aware inpainting using a low-threshold gradient to capture drop-shadows, processed via Navier-Stokes for a structurally smooth background reconstruction.
+    Applies text-aware inpainting using a low-threshold gradient processed via Navier-Stokes.
     """
     bx, by, bw, bh = roi
     pad = max(15, int(font_size_px * 0.5))
@@ -93,6 +99,7 @@ def _apply_hybrid_inpaint(frame: np.ndarray, roi: Tuple[int, int, int, int], fon
 
     blended = inpainted_float * soft_mask_3ch + original_float * (1.0 - soft_mask_3ch)
     frame[y1:y2, x1:x2] = blended.astype(np.uint8)
+
 
 def _apply_cuda_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original_roi: np.ndarray, sigma: int, feather: int, alpha: float) -> np.ndarray:
     """
@@ -172,6 +179,7 @@ def _apply_cuda_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original
 
     return gpu_frame.download()
 
+
 def _apply_cpu_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original_roi: np.ndarray, sigma: int, feather: int, alpha: float) -> np.ndarray:
     """
     Applies software-based 3-pass box blur to the region and blends it with the original frame.
@@ -228,6 +236,7 @@ def _apply_cpu_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original_
 
     return frame
 
+
 def apply_blur_to_frame(frame: np.ndarray, roi: Tuple[int, int, int, int], settings: Dict[str, Any], alpha: float = 1.0, precalculated_mask: Optional[np.ndarray] = None) -> np.ndarray:
     """
     Coordinates the execution sequence of inpainting, blurring, and final compositing based on user settings.
@@ -246,7 +255,7 @@ def apply_blur_to_frame(frame: np.ndarray, roi: Tuple[int, int, int, int], setti
     sigma = int(settings.get('sigma', 5))
     feather = int(settings.get('feather', 30))
 
-    if HAS_CUDA:
+    if _has_cuda():
         try:
             return _apply_cuda_blur(frame, roi, original_roi, sigma, feather, alpha)
         except cv2.error:

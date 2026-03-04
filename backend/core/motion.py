@@ -4,25 +4,33 @@ Module providing motion and change detection algorithms for smart skipping.
 from typing import Any
 import cv2
 import numpy as np
-from core.filters import ensure_gpu, ensure_cpu, FrameType, HAS_CUDA
+from core.filters import ensure_gpu, ensure_cpu, _has_cuda
 from core.constants import MOTION_BLUR_KSIZE, MOTION_DIFF_THRESH, MOTION_PIXEL_COUNT_THRESH
 
-try:
-    import paddle
-    import paddle.nn.functional as F
-    HAS_PADDLE = True
-except ImportError:
-    HAS_PADDLE = False
+
+def _has_paddle() -> bool:
+    """
+    Dynamically checks for PaddlePaddle availability avoiding module-level execution.
+    """
+    try:
+        import paddle
+        return True
+    except ImportError:
+        return False
+
 
 def detect_change_paddle(img1: Any, img2: Any) -> bool:
     """
-    Performs GPU-based change detection using Paddle operations.
+    Performs GPU-based change detection using Paddle operations lazily.
     """
-    if not HAS_PADDLE or img1 is None or img2 is None:
+    if not _has_paddle() or img1 is None or img2 is None:
         return True
     if img1.shape != img2.shape:
         return True
     try:
+        import paddle
+        import paddle.nn.functional as F
+
         f1 = img1.astype('float32')
         f2 = img2.astype('float32')
         g1 = paddle.mean(f1, axis=2, keepdim=True)
@@ -38,9 +46,10 @@ def detect_change_paddle(img1: Any, img2: Any) -> bool:
     except Exception:
         return True
 
-def detect_change_absolute(img1: FrameType | None, img2: FrameType | None) -> bool:
+
+def detect_change_absolute(img1: Any, img2: Any) -> bool:
     """
-    Performs CPU or OpenCV-CUDA fallback change detection.
+    Performs CPU or OpenCV-CUDA fallback change detection dynamically checking for CUDA.
     """
     if img1 is None or img2 is None:
         return True
@@ -49,7 +58,7 @@ def detect_change_absolute(img1: FrameType | None, img2: FrameType | None) -> bo
     if size1 != size2:
         return True
 
-    if HAS_CUDA:
+    if _has_cuda():
         try:
             gpu_1 = ensure_gpu(img1)
             gpu_2 = ensure_gpu(img2)

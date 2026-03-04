@@ -1,6 +1,6 @@
 """
 This module defines the ImagePipeline class, which orchestrates a sequence
-of image processing operations on a frame.
+of image processing operations on a frame dynamically.
 """
 from typing import Any, Optional
 import concurrent.futures
@@ -13,15 +13,21 @@ from core.filters import (
 )
 from core.motion import detect_change_absolute, detect_change_paddle
 
-try:
-    import paddle
-    HAS_PADDLE = True
-except ImportError:
-    HAS_PADDLE = False
+
+def _is_paddle_tensor(obj: Any) -> bool:
+    """
+    Safely checks if an object is a Paddle tensor without a global import.
+    """
+    try:
+        import paddle
+        return isinstance(obj, paddle.Tensor)
+    except ImportError:
+        return False
+
 
 class ImagePipeline:
     """
-    Manages the chain of filters applied to video frames, optimizing for GPU resident data where possible.
+    Manages the chain of filters applied to video frames, optimizing for GPU resident data using lazy imports.
     """
     def __init__(self, roi: list[int], config: dict[str, Any], thread_pool: Optional[concurrent.futures.ThreadPoolExecutor] = None) -> None:
         self.roi = roi
@@ -34,7 +40,7 @@ class ImagePipeline:
         """
         Processes a single frame through ROI extraction, motion detection, and image filtering.
         """
-        is_tensor = HAS_PADDLE and isinstance(frame, paddle.Tensor)
+        is_tensor = _is_paddle_tensor(frame)
 
         if self.roi and len(self.roi) == 4 and self.roi[2] > 0:
             x, y, w_roi, h_roi = self.roi
@@ -82,6 +88,8 @@ class ImagePipeline:
         scale_factor = float(self.config.get("scale_factor", 2.0))
 
         if is_tensor:
+            import paddle
+
             if denoise_str == 0:
                 processed = apply_scaling_paddle(frame_roi, scale_factor)
                 processed = apply_sharpening_paddle(processed)
