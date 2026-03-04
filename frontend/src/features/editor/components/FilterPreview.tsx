@@ -1,5 +1,5 @@
 /**
- * Real-time filter preview component strictly bound to absolute positioning to eliminate layout shift.
+ * Real-time filter preview component enclosed in a monolithic container to eliminate CSS reflows and memory leaks.
  */
 import React, { useEffect, useState } from 'react';
 import { Cpu, Loader2, ScanLine } from 'lucide-react';
@@ -13,6 +13,11 @@ export const FilterPreview = () => {
   const { metadata, roi, config, currentFrameIndex } = useAppStore();
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    filterCache.forEach(url => URL.revokeObjectURL(url));
+    filterCache.clear();
+  }, [metadata?.filename]);
 
   useEffect(() => {
     if (!metadata || roi[2] === 0) {
@@ -75,57 +80,57 @@ export const FilterPreview = () => {
 
   if (!metadata) return null;
 
-  if (!roi[2]) {
-    return (
-      <div className="absolute inset-0 mx-4 bg-bg-panel/40 border border-dashed border-border-strong rounded-xl p-3 flex flex-col items-center justify-center text-txt-subtle transition-all duration-200">
-        <ScanLine size={20} className="mb-2 opacity-50" />
-        <span className="text-xs font-medium tracking-wide">
-          Draw a selection box on the video to preview the algorithm
-        </span>
-      </div>
-    );
-  }
-
   return (
-    <div className="absolute inset-0 mx-4 bg-bg-main border border-border-main rounded-xl p-3 shadow-xl flex gap-4 items-center">
-      <div className="flex flex-col gap-2 w-[120px] shrink-0">
-        <div className="flex items-center gap-2 text-txt-muted mb-1">
-          <Cpu size={16} />
-          <span className="text-xs font-bold uppercase tracking-wider">
-            Algo Input
+    <div className="w-full h-full bg-bg-main border border-border-main rounded-xl p-3 shadow-xl flex items-center overflow-hidden transition-colors duration-300">
+      {!roi[2] ? (
+        <div className="flex-1 flex flex-col items-center justify-center text-txt-subtle h-full border border-dashed border-border-strong rounded-lg bg-bg-panel/40">
+          <ScanLine size={20} className="mb-2 opacity-50" />
+          <span className="text-xs font-medium tracking-wide">
+            Draw a selection box on the video to preview the algorithm
           </span>
         </div>
-        <div className="space-y-1">
-           <div className="flex justify-between text-[10px] text-txt-subtle uppercase">
-             <span>Scale</span>
-             <span className="text-txt-main font-mono">{config.scale_factor}x</span>
-           </div>
-           <div className="flex justify-between text-[10px] text-txt-subtle uppercase">
-             <span>ROI</span>
-             <span className="text-txt-main font-mono">{roi[2]}x{roi[3]}</span>
-           </div>
-        </div>
-      </div>
+      ) : (
+        <div className="flex gap-4 w-full h-full items-center">
+          <div className="flex flex-col gap-2 w-[120px] shrink-0">
+            <div className="flex items-center gap-2 text-txt-muted mb-1">
+              <Cpu size={16} />
+              <span className="text-xs font-bold uppercase tracking-wider">
+                Algo Input
+              </span>
+            </div>
+            <div className="space-y-1">
+               <div className="flex justify-between text-[10px] text-txt-subtle uppercase">
+                 <span>Scale</span>
+                 <span className="text-txt-main font-mono">{config.scale_factor}x</span>
+               </div>
+               <div className="flex justify-between text-[10px] text-txt-subtle uppercase">
+                 <span>ROI</span>
+                 <span className="text-txt-main font-mono">{roi[2]}x{roi[3]}</span>
+               </div>
+            </div>
+          </div>
 
-      <div className="flex-1 bg-black rounded border border-border-main overflow-hidden flex items-center justify-center relative h-full">
-        {loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
-            <Loader2 className="animate-spin text-brand-500" size={20} />
+          <div className="flex-1 bg-black rounded border border-border-main overflow-hidden flex items-center justify-center relative h-full">
+            {loading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
+                <Loader2 className="animate-spin text-brand-500" size={20} />
+              </div>
+            )}
+            {previewUrl ? (
+              <img
+                src={previewUrl}
+                alt="Algorithm View"
+                className="h-full w-auto object-contain"
+              />
+            ) : (
+              <div className="flex flex-col items-center gap-1 text-txt-subtle">
+                <ScanLine size={16} />
+                <span className="text-[9px]">NO SIGNAL</span>
+              </div>
+            )}
           </div>
-        )}
-        {previewUrl ? (
-          <img
-            src={previewUrl}
-            alt="Algorithm View"
-            className="h-full w-auto object-contain"
-          />
-        ) : (
-          <div className="flex flex-col items-center gap-1 text-txt-subtle">
-            <ScanLine size={16} />
-            <span className="text-[9px]">NO SIGNAL</span>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
