@@ -1,6 +1,3 @@
-/**
- * Hook to manage video frame extraction seamlessly using client-side rendering with strict cache isolation.
- */
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { api } from '../../../services/api';
@@ -92,10 +89,10 @@ export const useVideoFrame = (metadata: VideoMetadata | null, currentFrameIndex:
                     extractionVideo!.removeEventListener('error', onError);
                     resolve(true);
                   };
-                  const onError = (e: Event) => {
+                  const onError = (errorEvent: Event) => {
                     extractionVideo!.removeEventListener('seeked', onSeeked);
                     extractionVideo!.removeEventListener('error', onError);
-                    reject(e);
+                    reject(errorEvent);
                   };
                   extractionVideo.addEventListener('seeked', onSeeked);
                   extractionVideo.addEventListener('error', onError);
@@ -115,7 +112,7 @@ export const useVideoFrame = (metadata: VideoMetadata | null, currentFrameIndex:
                       }
                     }
                 }
-            } catch (e) {
+            } catch {
                 if (isActive) {
                     setIsLoading(false);
                 }
@@ -143,10 +140,11 @@ export const useVideoFrame = (metadata: VideoMetadata | null, currentFrameIndex:
           } else if (url) {
             URL.revokeObjectURL(url);
           }
-        } catch (error: any) {
-          if (!axios.isCancel(error) && isActive) {
-            console.error(error);
-            if (error.response && error.response.status === 404) {
+        } catch (err: unknown) {
+          if (!axios.isCancel(err) && isActive) {
+            console.error(err);
+            const typedErr = err as { response?: { status?: number } };
+            if (typedErr.response && typedErr.response.status === 404) {
               const state = useAppStore.getState();
               state.resetProject();
               state.addToast("Session expired. The video file was cleaned up by the server.", "error");

@@ -1,6 +1,3 @@
-/**
- * Hook to manage video file upload logic, drag-and-drop state, and error handling dynamically validating allowed extensions.
- */
 import { useState, useCallback } from 'react';
 import { useAppStore } from '../../../store/useAppStore';
 import { api } from '../../../services/api';
@@ -38,8 +35,9 @@ export const useVideoUpload = () => {
       setMetadata(metadata);
       setFile(selectedFile);
       addToast('Video uploaded successfully', 'success');
-    } catch (error: any) {
-      console.error(error);
+    } catch (err: unknown) {
+      console.error(err);
+      const error = err as { code?: string; response?: { data?: { detail?: string } } };
       const msg = error.code === "ERR_NETWORK"
         ? "Server is offline. Please start the backend."
         : (error.response?.data?.detail || 'Failed to process video.');

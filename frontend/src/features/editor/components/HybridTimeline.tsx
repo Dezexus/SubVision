@@ -1,6 +1,3 @@
-/**
- * Timeline component for playback navigation and subtitle modification.
- */
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   ChevronLeft, ChevronRight,
@@ -97,7 +94,9 @@ export const HybridTimeline = () => {
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    setHoverPos(e.clientX - rect.left);
+    const pos = e.clientX - rect.left;
+    const maxPos = containerRef.current.clientWidth - 100;
+    setHoverPos(Math.min(Math.max(pos, 100), maxPos));
   };
 
   if (!metadata) return null;
@@ -227,7 +226,7 @@ export const HybridTimeline = () => {
           {hoveredSub && (
             <div
                 className="absolute z-50 bottom-2 pointer-events-none"
-                style={{ left: Math.min(Math.max(hoverPos, 100), containerRef.current ? containerRef.current.clientWidth - 100 : 0) }}
+                style={{ left: hoverPos }}
             >
                 <div className="bg-bg-main/95 backdrop-blur border border-border-main p-2 rounded shadow-2xl text-xs -translate-x-1/2 w-48">
                     <div className="flex justify-between text-txt-subtle mb-1 font-mono text-[9px] uppercase">

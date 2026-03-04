@@ -5,11 +5,6 @@ import { PlaybackControls } from './components/PlaybackControls';
 import { API_BASE } from '../../services/api';
 import type { SubtitleItem } from '../../types';
 
-/**
- * Modal component for previewing video playback and editing subtitles.
- * Manages playback state, precise frame stepping, initialization locks,
- * and dynamic subtitle positioning. Rehydrates from API if local file is missing.
- */
 export const PreviewModal = () => {
   const {
     file,
@@ -63,7 +58,7 @@ export const PreviewModal = () => {
     }
   }, [metadata, duration]);
 
-  const animate = useCallback(() => {
+  const animate = useCallback(function loop() {
     const video = videoRef.current;
     if (!video) return;
 
@@ -73,7 +68,7 @@ export const PreviewModal = () => {
     const currentSub = subtitles.find(s => newTime >= s.start && newTime <= s.end);
     setActiveSub(currentSub);
 
-    animationFrameRef.current = requestAnimationFrame(animate);
+    animationFrameRef.current = requestAnimationFrame(loop);
   }, [subtitles]);
 
   const handleLoadedMetadata = useCallback((e: React.SyntheticEvent<HTMLVideoElement>) => {

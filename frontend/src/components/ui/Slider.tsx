@@ -1,8 +1,4 @@
-/**
- * A minimalist slider component updated for real-time visual feedback.
- * Range drags commit instantly, while manual number inputs commit on blur/enter.
- */
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { cn } from '../../utils/cn';
 
 interface SliderProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange'> {
@@ -19,22 +15,21 @@ export const Slider = ({ label, valueDisplay, suffix, className, onChange, ...pr
   const max = Number(rawMax) || 100;
 
   const [localValue, setLocalValue] = useState<number>(Number(value) || 0);
+  const [prevValue, setPrevValue] = useState(value);
 
-  // Sync local state when external value changes
-  useEffect(() => {
+  if (value !== prevValue) {
+    setPrevValue(value);
     setLocalValue(Number(value) || 0);
-  }, [value]);
+  }
 
   const percentage = Math.min(Math.max(((localValue - min) / (max - min)) * 100, 0), 100);
   const isEditable = valueDisplay === undefined;
 
-  // Real-time update for the range slider (instant visual feedback on canvas)
   const handleRangeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setLocalValue(Number(e.target.value));
     if (onChange) onChange(e);
   };
 
-  // Delayed update for the number input (prevents cursor jumping while typing)
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setLocalValue(Number(e.target.value));
   };
@@ -91,7 +86,6 @@ export const Slider = ({ label, valueDisplay, suffix, className, onChange, ...pr
       </div>
 
       <div className="relative h-4 flex items-center group/track cursor-pointer">
-        {/* The range input now uses handleRangeChange for instant dispatch */}
         <input
           type="range"
           className="w-full absolute z-20 opacity-0 cursor-pointer h-full m-0"

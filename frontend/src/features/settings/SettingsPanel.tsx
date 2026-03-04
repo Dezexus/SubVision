@@ -1,6 +1,3 @@
-/**
- * Main settings panel coordinating project processing and blur configurations.
- */
 import React, { useEffect } from 'react';
 import { Play, Square, RefreshCw } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
@@ -63,7 +60,7 @@ export const SettingsPanel = () => {
         scale_factor: config.scale_factor ?? defaultConfig.scale_factor!,
         smart_skip: config.smart_skip ?? defaultConfig.smart_skip!
       });
-    } catch (error) {
+    } catch {
       addLog('Error: Failed to start processing.');
       setProcessing(false);
     }

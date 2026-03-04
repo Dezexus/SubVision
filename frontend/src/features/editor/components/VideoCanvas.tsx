@@ -1,6 +1,3 @@
-/**
- * Main video editing canvas safely constraining geometry coordinates.
- */
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
@@ -48,6 +45,12 @@ export const VideoCanvas = () => {
   const imgRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const [prevFile, setPrevFile] = useState(file);
+  if (file !== prevFile) {
+    setPrevFile(file);
+    setCrop(undefined);
+  }
+
   const aspectRatio = useMemo(() => {
     if (!metadata || metadata.height === 0) return 16 / 9;
     return metadata.width / metadata.height;
@@ -66,10 +69,6 @@ export const VideoCanvas = () => {
     const realH = Math.round(crop.height * scaleY);
     setRoi([realX, realY, realW, realH]);
   };
-
-  useEffect(() => {
-    setCrop(undefined);
-  }, [file]);
 
   const activeSubtitle = useMemo(() => {
     if (!isBlurMode || !metadata) return null;
@@ -111,15 +110,6 @@ export const VideoCanvas = () => {
     };
   }, [blurSettings, metadata, activeSubtitle]);
 
-  const getScale = () => {
-    if (!containerRef.current || !metadata) return { x: 1, y: 1 };
-    const rect = containerRef.current.getBoundingClientRect();
-    return {
-        x: metadata.width / rect.width,
-        y: metadata.height / rect.height
-    };
-  };
-
   const handleMouseDown = (e: React.MouseEvent, type: 'move-y' | 'resize-x' | 'resize-y') => {
       e.preventDefault();
       e.stopPropagation();
@@ -134,9 +124,14 @@ export const VideoCanvas = () => {
   };
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
-      if (isDragging === 'none' || !geometry || !metadata) return;
+      if (isDragging === 'none' || !geometry || !metadata || !containerRef.current) return;
 
-      const scale = getScale();
+      const rect = containerRef.current.getBoundingClientRect();
+      const scale = {
+          x: metadata.width / rect.width,
+          y: metadata.height / rect.height
+      };
+
       const deltaY = (e.clientY - dragStartRef.current.y) * scale.y;
       const deltaX = (e.clientX - dragStartRef.current.x) * scale.x;
 

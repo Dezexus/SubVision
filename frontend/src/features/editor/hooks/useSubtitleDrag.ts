@@ -1,6 +1,3 @@
-/**
- * Hook to handle subtitle edge dragging for duration adjustments.
- */
 import { useState, useRef, useCallback } from 'react';
 import { useAppStore } from '../../../store/useAppStore';
 import type { SubtitleItem } from '../../../types';
@@ -18,7 +15,6 @@ export const useSubtitleDrag = (scrollContainerRef: React.RefObject<HTMLDivEleme
   const [draggedEdge, setDraggedEdge] = useState<{ id: number, edge: 'start' | 'end' } | null>(null);
 
   const handleEdgeMouseMove = useCallback((e: MouseEvent) => {
-    // [Logic remains unchanged]
     if (!dragRef.current || !scrollContainerRef.current) return;
     const state = useAppStore.getState();
     const currentMetadata = state.metadata;
@@ -50,13 +46,13 @@ export const useSubtitleDrag = (scrollContainerRef: React.RefObject<HTMLDivEleme
     state.updateSubtitle(updatedSub);
   }, [scrollContainerRef]);
 
-  const handleEdgeMouseUp = useCallback(() => {
+  const handleEdgeMouseUp = useCallback(function onMouseUp() {
     dragRef.current = null;
     setDraggedEdge(null);
     document.body.style.cursor = '';
     window.removeEventListener('mousemove', handleEdgeMouseMove);
-    window.removeEventListener('mouseup', handleEdgeMouseUp);
-    document.removeEventListener('mouseleave', handleEdgeMouseUp);
+    window.removeEventListener('mouseup', onMouseUp);
+    document.removeEventListener('mouseleave', onMouseUp);
     setTimeout(() => { isDraggingRef.current = false; }, 100);
   }, [handleEdgeMouseMove]);
 
@@ -64,7 +60,6 @@ export const useSubtitleDrag = (scrollContainerRef: React.RefObject<HTMLDivEleme
     e.stopPropagation();
     e.preventDefault();
 
-    // Save history right before a drag mutation begins
     useAppStore.getState().saveHistory();
 
     isDraggingRef.current = true;
