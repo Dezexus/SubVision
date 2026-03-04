@@ -28,7 +28,10 @@ def run_ocr_pipeline(
     Executes the OCR extraction pipeline utilizing batched GPU inference and broadcasting results in real-time.
     """
     cv2.setNumThreads(0)
-    log_cb("--- START OCR (Batched GPU Pipeline) ---")
+
+    start_msg = "--- START OCR (Batched GPU Pipeline) ---"
+    log_cb(start_msg)
+    logger.info(start_msg)
 
     preset_name = str(params.get("preset", "⚖️ Balance"))
     config = get_preset_config(preset_name)
@@ -39,7 +42,14 @@ def run_ocr_pipeline(
         "min_conf": params.get("min_conf", 0.80),
     })
 
-    video = VideoProvider(video_path, step=int(config["step"]))
+    try:
+        video = VideoProvider(video_path, step=int(config["step"]))
+    except Exception as e:
+        logger.error(f"Failed to initialize VideoProvider: {e}")
+        raise
+
+    logger.info(f"Video parsed successfully. Total frames: {video.total_frames}, FPS: {video.fps}")
+
     pipeline = ImagePipeline(roi=params.get("roi", [0, 0, 0, 0]), config=config)
     ocr_engine = get_paddle_engine(lang=str(params.get("langs", "en")), use_gpu=True)
 
@@ -54,10 +64,48 @@ def run_ocr_pipeline(
     valid_frames = []
     last_ocr_result = ("", 0.0)
 
+    def _process_batch() -> None:
+        nonlocal valid_frames, pending_items, last_ocr_result
+        if not pending_items:
+            return
+
+        if valid_frames:
+            batch_results = ocr_engine.predict_batch(valid_frames)
+        else:
+            batch_results = []
+
+        res_idx = 0
+        for item in pending_items:
+            idx, ts, f_img, is_skip = item
+
+            if idx > 0 and idx % 25 == 0:
+                elapsed = time.time() - start_time
+                eta_sec = int((total_frames - idx) * (elapsed / idx))
+                progress_cb(idx, total_frames, f"{eta_sec // 60:02d}:{eta_sec % 60:02d}")
+
+            if is_skip:
+                text, conf = last_ocr_result
+            elif f_img is not None:
+                raw_res = batch_results[res_idx] if res_idx < len(batch_results) else None
+                res_idx += 1
+                try:
+                    text, conf = PaddleWrapper.parse_results(raw_res, params.get("conf", 0.5))
+                except Exception:
+                    text, conf = "", 0.0
+                last_ocr_result = (text, conf)
+            else:
+                text, conf = "", 0.0
+
+            aggregator.add_result(text, conf, ts)
+
+        pending_items.clear()
+        valid_frames.clear()
+
     try:
         for frame_idx, timestamp, frame in video:
             if cancel_check():
                 log_cb("Process stopped by user.")
+                logger.info("OCR process cancelled by user request.")
                 return False
 
             final_img, skipped = pipeline.process(frame)
@@ -66,42 +114,19 @@ def run_ocr_pipeline(
             if not skipped and final_img is not None:
                 valid_frames.append(final_img)
 
-            if len(valid_frames) >= batch_size or frame_idx >= total_frames - 1:
-                if valid_frames:
-                    batch_results = ocr_engine.predict_batch(valid_frames)
-                else:
-                    batch_results = []
+            if len(valid_frames) >= batch_size:
+                _process_batch()
 
-                res_idx = 0
-                for item in pending_items:
-                    idx, ts, f_img, is_skip = item
-
-                    if idx > 0 and idx % 25 == 0:
-                        elapsed = time.time() - start_time
-                        eta_sec = int((total_frames - idx) * (elapsed / idx))
-                        progress_cb(idx, total_frames, f"{eta_sec // 60:02d}:{eta_sec % 60:02d}")
-
-                    if is_skip:
-                        text, conf = last_ocr_result
-                    elif f_img is not None:
-                        raw_res = batch_results[res_idx] if res_idx < len(batch_results) else None
-                        res_idx += 1
-                        try:
-                            text, conf = PaddleWrapper.parse_results(raw_res, params.get("conf", 0.5))
-                        except Exception:
-                            text, conf = "", 0.0
-                        last_ocr_result = (text, conf)
-                    else:
-                        text, conf = "", 0.0
-
-                    aggregator.add_result(text, conf, ts)
-
-                pending_items.clear()
-                valid_frames.clear()
+        _process_batch()
 
         progress_cb(total_frames, total_frames, "00:00")
         aggregator.finalize()
-        log_cb(f"Smart Skip: {pipeline.skipped_count} frames")
+
+        skip_msg = f"Smart Skip: {pipeline.skipped_count} frames"
+        log_cb(skip_msg)
+        logger.info(skip_msg)
+        logger.info("OCR pipeline completed successfully.")
+
         return True
 
     finally:

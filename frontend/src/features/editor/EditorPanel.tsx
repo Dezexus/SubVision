@@ -45,7 +45,7 @@ export const EditorPanel = () => {
          <VideoCanvas />
       </div>
 
-      <div className="flex-none px-4">
+      <div className="flex-none px-4 h-[126px]">
          <FilterPreview />
       </div>
 

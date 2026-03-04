@@ -21,6 +21,9 @@ class VideoProvider:
         self.step = step
         self.cap = create_video_capture(video_path)
 
+        if not self.cap.isOpened():
+            raise FileNotFoundError(f"OpenCV could not read or open the video file: {video_path}")
+
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
         self.fps = self.cap.get(cv2.CAP_PROP_FPS) or DEFAULT_FPS
 
