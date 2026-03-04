@@ -1,46 +1,118 @@
 """
-Entry point for the ARQ background worker managing ML and video rendering tasks.
+Module executing frame extraction, processing, and batch OCR inference synchronously.
 """
 import logging
-from arq.connections import RedisSettings
-from core.config import settings
+import time
+import cv2
+from typing import Any, Callable, Dict
+
+from media.image_filters.pipeline import ImagePipeline
+from ocr.engine import PaddleWrapper, get_paddle_engine
+from core.presets import get_preset_config
+from ocr.aggregator import SubtitleAggregator
+from core.utils import format_timestamp
+from media.video.reader import VideoProvider
+from core.constants import OCR_BATCH_SIZE
+
+logger = logging.getLogger(__name__)
 
 
-async def startup(ctx):
+def run_ocr_pipeline(
+    video_path: str,
+    output_srt_path: str,
+    params: Dict[str, Any],
+    log_cb: Callable[[str], None],
+    progress_cb: Callable[[int, int, str], None],
+    subtitle_cb: Callable[[Dict[str, Any]], None],
+    cancel_check: Callable[[], bool]
+) -> bool:
     """
-    Initializes worker resources on startup.
+    Executes the OCR extraction pipeline using batched GPU inference.
     """
-    logging.info("Worker starting up...")
+    cv2.setNumThreads(0)
+    log_cb("--- START OCR (Batched GPU Pipeline) ---")
 
+    preset_name = str(params.get("preset", "⚖️ Balance"))
+    config = get_preset_config(preset_name)
+    config.update({
+        "step": params.get("step", config["step"]),
+        "smart_skip": params.get("smart_skip", config["smart_skip"]),
+        "scale_factor": params.get("scale_factor", config["scale_factor"]),
+        "min_conf": params.get("min_conf", 0.80),
+    })
 
-async def shutdown(ctx):
-    """
-    Cleans up worker resources on shutdown.
-    """
-    logging.info("Worker shutting down...")
+    video = VideoProvider(video_path, step=int(config["step"]))
+    pipeline = ImagePipeline(roi=params.get("roi", [0, 0, 0, 0]), config=config)
+    ocr_engine = get_paddle_engine(lang=str(params.get("langs", "en")), use_gpu=True)
 
+    aggregator = SubtitleAggregator(min_conf=float(config["min_conf"]), fps=video.fps)
+    aggregator.on_new_subtitle = subtitle_cb
 
-async def process_ocr_task(ctx, *args, **kwargs):
-    """
-    Placeholder for the OCR extraction task to be implemented in Stage 4.
-    """
-    pass
+    start_time = time.time()
+    total_frames = video.total_frames
+    batch_size = OCR_BATCH_SIZE
 
+    pending_items = []
+    valid_frames = []
+    last_ocr_result = ("", 0.0)
 
-async def render_blur_task(ctx, *args, **kwargs):
-    """
-    Placeholder for the video blurring task to be implemented in Stage 4.
-    """
-    pass
+    try:
+        for frame_idx, timestamp, frame in video:
+            if cancel_check():
+                log_cb("Process stopped by user.")
+                return False
 
+            final_img, skipped = pipeline.process(frame)
+            pending_items.append((frame_idx, timestamp, final_img, skipped))
 
-class WorkerSettings:
-    """
-    ARQ worker configuration restricting concurrency to prevent GPU memory exhaustion.
-    """
-    functions = [process_ocr_task, render_blur_task]
-    redis_settings = RedisSettings.from_dsn(settings.redis_url)
-    on_startup = startup
-    on_shutdown = shutdown
-    max_jobs = 1
-    job_timeout = 86400
+            if not skipped and final_img is not None:
+                valid_frames.append(final_img)
+
+            if len(valid_frames) >= batch_size or frame_idx >= total_frames - 1:
+                if valid_frames:
+                    batch_results = ocr_engine.predict_batch(valid_frames)
+                else:
+                    batch_results = []
+
+                res_idx = 0
+                for item in pending_items:
+                    idx, ts, f_img, is_skip = item
+
+                    if idx > 0 and idx % 25 == 0:
+                        elapsed = time.time() - start_time
+                        eta_sec = int((total_frames - idx) * (elapsed / idx))
+                        progress_cb(idx, total_frames, f"{eta_sec // 60:02d}:{eta_sec % 60:02d}")
+
+                    if is_skip:
+                        text, conf = last_ocr_result
+                    elif f_img is not None:
+                        raw_res = batch_results[res_idx] if res_idx < len(batch_results) else None
+                        res_idx += 1
+                        try:
+                            text, conf = PaddleWrapper.parse_results(raw_res, params.get("conf", 0.5))
+                        except Exception:
+                            text, conf = "", 0.0
+                        last_ocr_result = (text, conf)
+                    else:
+                        text, conf = "", 0.0
+
+                    aggregator.add_result(text, conf, ts)
+
+                pending_items.clear()
+                valid_frames.clear()
+
+        progress_cb(total_frames, total_frames, "00:00")
+        srt_data = aggregator.finalize()
+        log_cb(f"Smart Skip: {pipeline.skipped_count} frames")
+
+        with open(output_srt_path, "w", encoding="utf-8") as f:
+            for item in srt_data:
+                f.write(
+                    f"{item['id']}\n"
+                    f"{format_timestamp(item['start'])} --> {format_timestamp(item['end'])}\n"
+                    f"{item['text']}\n\n"
+                )
+        return True
+
+    finally:
+        video.release()

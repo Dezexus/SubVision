@@ -1,0 +1,154 @@
+"""
+Entry point for the ARQ background worker managing ML and video rendering tasks.
+"""
+import logging
+import os
+import json
+import time
+import asyncio
+import tempfile
+from typing import Dict, Any
+from arq.connections import RedisSettings
+
+from core.config import settings
+from core.storage import storage_manager
+from media.blur_manager import BlurManager
+from media.transcoder import FFmpegTranscoder
+from ocr.worker import run_ocr_pipeline
+
+
+async def startup(ctx: Dict[str, Any]) -> None:
+    """
+    Initializes worker resources on startup.
+    """
+    logging.info("Worker starting up...")
+
+
+async def shutdown(ctx: Dict[str, Any]) -> None:
+    """
+    Cleans up worker resources on shutdown.
+    """
+    logging.info("Worker shutting down...")
+
+
+async def publish_ws(ctx: Dict[str, Any], client_id: str, payload: Dict[str, Any]) -> None:
+    """
+    Publishes real-time progress events to the Redis Pub/Sub channel.
+    """
+    redis = ctx['redis']
+    await redis.publish(f"ws_{client_id}", json.dumps(payload))
+
+
+async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
+    """
+    Executes the OCR extraction lifecycle utilizing a clean temporary directory.
+    """
+    client_id = config['client_id']
+    filename = config['filename']
+    safe_filename = os.path.basename(filename)
+
+    loop = asyncio.get_running_loop()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        local_video_path = os.path.join(tmpdir, safe_filename)
+        output_srt_path = os.path.join(tmpdir, f"{os.path.splitext(safe_filename)[0]}.srt")
+
+        await publish_ws(ctx, client_id, {"type": "log", "message": "Downloading video from storage..."})
+        dl_ok = await storage_manager.download_file(safe_filename, local_video_path)
+        if not dl_ok:
+            await publish_ws(ctx, client_id, {"type": "finish", "success": False, "error": "Download failed"})
+            return
+
+        def log_cb(msg: str) -> None:
+            asyncio.run_coroutine_threadsafe(publish_ws(ctx, client_id, {"type": "log", "message": msg}), loop)
+
+        def prog_cb(c: int, t: int, e: str) -> None:
+            asyncio.run_coroutine_threadsafe(publish_ws(ctx, client_id, {"type": "progress", "current": c, "total": t, "eta": e}), loop)
+
+        def sub_cb(item: Dict[str, Any]) -> None:
+            asyncio.run_coroutine_threadsafe(publish_ws(ctx, client_id, {"type": "subtitle_new", "item": item}), loop)
+
+        def cancel_check() -> bool:
+            return False
+
+        try:
+            success = await asyncio.to_thread(
+                run_ocr_pipeline, local_video_path, output_srt_path, config, log_cb, prog_cb, sub_cb, cancel_check
+            )
+
+            if success and os.path.exists(output_srt_path):
+                await publish_ws(ctx, client_id, {"type": "finish", "success": True})
+            else:
+                await publish_ws(ctx, client_id, {"type": "finish", "success": False})
+        except Exception as e:
+            logging.error(f"OCR task failed: {e}")
+            await publish_ws(ctx, client_id, {"type": "finish", "success": False, "error": str(e)})
+
+
+async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
+    """
+    Executes the video obscuring and transcoding lifecycle utilizing a clean temporary directory.
+    """
+    client_id = config['client_id']
+    filename = config['filename']
+    safe_filename = os.path.basename(filename)
+    output_filename = f"blurred_{safe_filename}"
+
+    loop = asyncio.get_running_loop()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        local_video_path = os.path.join(tmpdir, safe_filename)
+        final_output_path = os.path.join(tmpdir, output_filename)
+
+        await publish_ws(ctx, client_id, {"type": "log", "message": "Downloading video from storage..."})
+        if not await storage_manager.download_file(safe_filename, local_video_path):
+            await publish_ws(ctx, client_id, {"type": "finish", "success": False, "error": "Download failed"})
+            return
+
+        start_time = time.time()
+
+        def prog_cb(c: int, t: int) -> None:
+            elapsed = time.time() - start_time
+            eta_sec = int((t - c) * (elapsed / max(c, 1)))
+            eta_str = f"{eta_sec // 60:02d}:{eta_sec % 60:02d}"
+            asyncio.run_coroutine_threadsafe(
+                publish_ws(ctx, client_id, {"type": "progress", "current": c, "total": t, "eta": eta_str}),
+                loop
+            )
+
+        def cancel_check() -> bool:
+            return False
+
+        try:
+            temp_video_path = await asyncio.to_thread(
+                BlurManager.apply_blur_task_sync,
+                local_video_path, config['subtitles'], config['blur_settings'],
+                final_output_path, prog_cb, cancel_check
+            )
+
+            await publish_ws(ctx, client_id, {"type": "log", "message": "Transcoding audio and video..."})
+            await FFmpegTranscoder.transcode_with_audio(temp_video_path, local_video_path, final_output_path)
+
+            await publish_ws(ctx, client_id, {"type": "log", "message": "Uploading result..."})
+            if await storage_manager.upload_file(final_output_path, output_filename):
+                await publish_ws(ctx, client_id, {
+                    "type": "finish", "success": True, "download_url": f"/api/video/download/{output_filename}"
+                })
+            else:
+                raise Exception("Upload to storage failed")
+
+        except Exception as e:
+            logging.error(f"Render task failed: {e}")
+            await publish_ws(ctx, client_id, {"type": "finish", "success": False, "error": str(e)})
+
+
+class WorkerSettings:
+    """
+    ARQ worker configuration binding task functions and connection parameters.
+    """
+    functions = [process_ocr_task, render_blur_task]
+    redis_settings = RedisSettings.from_dsn(settings.redis_url)
+    on_startup = startup
+    on_shutdown = shutdown
+    max_jobs = 1
+    job_timeout = 86400
