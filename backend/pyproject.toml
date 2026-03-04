@@ -1,5 +1,5 @@
 [tool.ruff]
-line-length = 120
+line-length = 200
 target-version = "py310"
 exclude = [
     ".git",
@@ -16,10 +16,14 @@ select = [
     "E",
     "F",
     "W",
-    "I",
     "B"
 ]
-ignore = []
+ignore = [
+    "B008",
+    "B904",
+    "B007",
+    "F401"
+]
 
 [tool.ruff.format]
 quote-style = "double"
