@@ -1,5 +1,5 @@
 /**
- * Real-time filter preview component with LRU caching and static placeholder to prevent layout shifts.
+ * Real-time filter preview component strictly bound to absolute positioning to eliminate layout shift.
  */
 import React, { useEffect, useState } from 'react';
 import { Cpu, Loader2, ScanLine } from 'lucide-react';
@@ -21,7 +21,6 @@ export const FilterPreview = () => {
     }
 
     let isActive = true;
-
     const cacheKey = `${metadata.filename}_${currentFrameIndex}_${roi.join(',')}_${config.scale_factor || 1.0}`;
 
     if (filterCache.has(cacheKey)) {
@@ -78,7 +77,7 @@ export const FilterPreview = () => {
 
   if (!roi[2]) {
     return (
-      <div className="bg-bg-panel/40 border border-dashed border-border-strong rounded-xl p-3 w-full flex flex-col items-center justify-center h-[126px] text-txt-subtle transition-all duration-200">
+      <div className="absolute inset-0 mx-4 bg-bg-panel/40 border border-dashed border-border-strong rounded-xl p-3 flex flex-col items-center justify-center text-txt-subtle transition-all duration-200">
         <ScanLine size={20} className="mb-2 opacity-50" />
         <span className="text-xs font-medium tracking-wide">
           Draw a selection box on the video to preview the algorithm
@@ -88,8 +87,8 @@ export const FilterPreview = () => {
   }
 
   return (
-    <div className="bg-bg-main border border-border-main rounded-xl p-3 shadow-xl w-full flex gap-4 items-center h-[126px]">
-      <div className="flex flex-col gap-2 min-w-[120px]">
+    <div className="absolute inset-0 mx-4 bg-bg-main border border-border-main rounded-xl p-3 shadow-xl flex gap-4 items-center">
+      <div className="flex flex-col gap-2 w-[120px] shrink-0">
         <div className="flex items-center gap-2 text-txt-muted mb-1">
           <Cpu size={16} />
           <span className="text-xs font-bold uppercase tracking-wider">
@@ -108,7 +107,7 @@ export const FilterPreview = () => {
         </div>
       </div>
 
-      <div className="flex-1 bg-black rounded border border-border-main overflow-hidden flex items-center justify-center relative h-[100px]">
+      <div className="flex-1 bg-black rounded border border-border-main overflow-hidden flex items-center justify-center relative h-full">
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
             <Loader2 className="animate-spin text-brand-500" size={20} />

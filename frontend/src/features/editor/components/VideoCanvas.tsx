@@ -1,5 +1,5 @@
 /**
- * Main video editing canvas with support for cropping and blur geometry adjustments.
+ * Main video editing canvas securely anchored with absolute positioning to avoid dynamic content shifts.
  */
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop';
@@ -220,20 +220,20 @@ export const VideoCanvas = () => {
                         crop={crop}
                         onChange={(c) => setCrop(c)}
                         onComplete={onCropComplete}
-                        className="w-full h-full block"
+                        className="absolute inset-0 flex items-center justify-center"
                     >
                         <img
                             ref={imgRef}
                             src={imgSrc}
                             alt="Frame"
-                            className="w-full h-full object-contain select-none block"
+                            className="max-w-full max-h-full object-contain select-none block pointer-events-none"
                             onDragStart={(e) => e.preventDefault()}
                         />
                     </ReactCrop>
                 )}
 
                 {isBlurMode && (
-                    <div className="relative w-full h-full">
+                    <div className="absolute inset-0">
                         <img
                             src={blurPreviewUrl || imgSrc}
                             alt="Frame"

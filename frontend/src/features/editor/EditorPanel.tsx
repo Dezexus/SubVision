@@ -1,5 +1,5 @@
 /**
- * Main editor layout orchestration with global hotkey support for frame navigation.
+ * Main editor layout orchestration with rigid flexbox boundaries to prevent layout shifts.
  */
 import React, { useEffect } from 'react';
 import { VideoCanvas } from './components/VideoCanvas';
@@ -45,11 +45,11 @@ export const EditorPanel = () => {
          <VideoCanvas />
       </div>
 
-      <div className="flex-none px-4 h-[126px]">
+      <div className="shrink-0 h-[126px] w-full relative">
          <FilterPreview />
       </div>
 
-      <div className="flex-none px-4 pb-4">
+      <div className="shrink-0 px-4 pb-4">
          <HybridTimeline />
       </div>
     </div>
