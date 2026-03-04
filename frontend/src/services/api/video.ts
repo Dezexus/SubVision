@@ -1,5 +1,5 @@
 /**
- * API methods related to video uploading, resuming, and frame fetching.
+ * API methods related to direct S3 multipart video uploading and frame fetching.
  */
 import axios from 'axios';
 import { API_URL } from './config';
@@ -14,57 +14,45 @@ export const videoApi = {
   uploadVideo: async (file: File, clientId: string, onProgress?: (pct: number) => void): Promise<VideoMetadata> => {
     const chunkSize = 10 * 1024 * 1024;
     const totalChunks = Math.ceil(file.size / chunkSize);
+    const safeFilename = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
 
-    const rawId = `${file.name}-${file.size}-${file.lastModified}`;
-    const uploadId = rawId.replace(/[^a-zA-Z0-9\-]/g, '');
-
-    const statusRes = await axios.get(`${API_URL}/video/upload/status/${uploadId}`, {
-      params: { total_chunks: totalChunks }
+    const initRes = await axios.post(`${API_URL}/video/upload/init`, {
+        filename: safeFilename,
+        content_type: file.type || 'application/octet-stream',
+        total_chunks: totalChunks
     });
 
-    let missingChunks: number[] = statusRes.data.missing_chunks;
-
-    if (missingChunks.length === 0) {
-      missingChunks = [totalChunks - 1];
-    }
-
-    let lastResponse: any;
-    let uploadedCount = totalChunks - missingChunks.length;
-
-    if (onProgress && uploadedCount > 0) {
-      onProgress(Math.round((uploadedCount / totalChunks) * 100));
-    }
+    const { upload_id, urls } = initRes.data;
+    const parts = [];
 
     for (let i = 0; i < totalChunks; i++) {
-      if (!missingChunks.includes(i)) {
-        continue;
-      }
+        const start = i * chunkSize;
+        const end = Math.min(start + chunkSize, file.size);
+        const chunk = file.slice(start, end);
 
-      const start = i * chunkSize;
-      const end = Math.min(start + chunkSize, file.size);
-      const chunk = file.slice(start, end);
+        if (urls && urls.length > 0) {
+            const uploadUrl = urls[i];
+            const chunkRes = await axios.put(uploadUrl, chunk, {
+                headers: { 'Content-Type': file.type || 'application/octet-stream' }
+            });
+            const etag = chunkRes.headers['etag'] || chunkRes.headers['Etag'] || '';
+            parts.push({ PartNumber: i + 1, ETag: etag.replace(/"/g, '') });
+        } else {
+            parts.push({ PartNumber: i + 1, ETag: `local_${i}` });
+        }
 
-      const formData = new FormData();
-      formData.append('file', chunk);
-      formData.append('upload_id', uploadId);
-      formData.append('chunk_index', i.toString());
-      formData.append('total_chunks', totalChunks.toString());
-      formData.append('filename', file.name);
-      formData.append('client_id', clientId);
-
-      const response = await axios.post(`${API_URL}/video/upload`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-
-      lastResponse = response.data;
-      uploadedCount++;
-
-      if (onProgress) {
-        onProgress(Math.round((uploadedCount / totalChunks) * 100));
-      }
+        if (onProgress) {
+            onProgress(Math.round(((i + 1) / totalChunks) * 100));
+        }
     }
 
-    return lastResponse as VideoMetadata;
+    const completeRes = await axios.post(`${API_URL}/video/upload/complete`, {
+        filename: safeFilename,
+        upload_id: upload_id,
+        parts: parts
+    });
+
+    return completeRes.data as VideoMetadata;
   },
 
   getFrameBlob: async (filename: string, frameIndex: number, signal?: AbortSignal) => {

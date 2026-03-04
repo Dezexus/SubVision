@@ -1,5 +1,5 @@
 """
-Router module handling OCR processing jobs, subtitle imports, and blur rendering synchronized with S3.
+Router module handling OCR processing jobs, subtitle imports, and blur rendering.
 """
 import os
 import time
@@ -12,7 +12,7 @@ import cv2
 
 from api.schemas import ProcessConfig, RenderConfig, BlurPreviewConfig, BlurSettings
 from api.websockets.manager import connection_manager
-from api.dependencies import ensure_video_cached
+from api.dependencies import ensure_video_cached, get_video_url
 from media.blur_manager import BlurManager
 from core.srt_parser import parse_srt
 from core.storage import storage_manager
@@ -22,12 +22,14 @@ from core.presets import get_all_presets, get_supported_languages
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+
 @router.get("/presets")
 async def get_presets():
     """
     Returns a list of all available OCR processing presets.
     """
     return get_all_presets()
+
 
 @router.get("/languages")
 async def get_languages():
@@ -36,12 +38,14 @@ async def get_languages():
     """
     return get_supported_languages()
 
+
 @router.get("/blur-defaults")
 async def get_blur_defaults():
     """
     Returns the default configuration values for blur settings.
     """
     return BlurSettings().model_dump()
+
 
 @router.get("/process-defaults")
 async def get_process_defaults():
@@ -51,10 +55,11 @@ async def get_process_defaults():
     dummy = ProcessConfig(filename="", client_id="", roi=[0,0,0,0])
     return dummy.model_dump(exclude={"filename", "client_id", "roi"})
 
+
 @router.post("/start")
 async def start_process(config: ProcessConfig, request: Request):
     """
-    Initiates a background OCR process ensuring the video is cached from S3.
+    Initiates a background OCR process (Requires Stage 4 refactoring for TemporaryDirectory).
     """
     process_mgr = request.app.state.process_mgr
     thread_pool = getattr(request.app.state, "thread_pool", None)
@@ -93,24 +98,29 @@ async def start_process(config: ProcessConfig, request: Request):
         logger.error(f"Error starting process: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.post("/stop/{client_id}")
 async def stop_process(client_id: str, request: Request):
     """
     Terminates active OCR or rendering tasks for a specific client session.
     """
-    process_mgr = request.app.state.process_mgr
-    render_registry = request.app.state.render_registry
-    render_lock = request.app.state.render_lock
+    process_mgr = getattr(request.app.state, "process_mgr", None)
+    render_registry = getattr(request.app.state, "render_registry", {})
+    render_lock = getattr(request.app.state, "render_lock", None)
 
-    ocr_stopped = process_mgr.stop_process(client_id)
+    ocr_stopped = False
+    if process_mgr:
+        ocr_stopped = process_mgr.stop_process(client_id)
 
     render_stopped = False
-    async with render_lock:
-        if client_id in render_registry:
-            render_registry[client_id].stop()
-            render_stopped = True
+    if render_lock:
+        async with render_lock:
+            if client_id in render_registry:
+                render_registry[client_id].stop()
+                render_stopped = True
 
     return {"status": "stopped", "ocr_stopped": ocr_stopped, "render_stopped": render_stopped}
+
 
 @router.post("/import_srt")
 async def import_srt(file: UploadFile = File(...)):
@@ -132,17 +142,18 @@ async def import_srt(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to parse SRT: {str(e)}")
 
+
 @router.post("/preview_blur")
 async def preview_blur_frame(config: BlurPreviewConfig):
     """
-    Generates a preview frame fetching the source video from S3 if absent.
+    Generates a preview frame fetching the source video stream statelessly via S3 URL.
     """
-    file_path = await ensure_video_cached(config.filename)
+    video_url = await get_video_url(config.filename)
     blur_mgr = BlurManager()
 
     try:
         preview_image = blur_mgr.generate_preview(
-            video_path=file_path,
+            video_path=video_url,
             frame_index=config.frame_index,
             settings=config.blur_settings.model_dump(),
             text=config.subtitle_text
@@ -158,10 +169,11 @@ async def preview_blur_frame(config: BlurPreviewConfig):
         logger.error(f"Preview generation failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.post("/render_blur")
 async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTasks, request: Request):
     """
-    Starts a background render task, uploading the output video to S3 upon completion.
+    Starts a background render task (Requires Stage 4 refactoring for TemporaryDirectory).
     """
     render_registry = request.app.state.render_registry
     render_lock = request.app.state.render_lock
@@ -248,5 +260,4 @@ async def render_blur_video(config: RenderConfig, background_tasks: BackgroundTa
             )
 
     background_tasks.add_task(run_render_task)
-
     return {"status": "rendering_started", "output": output_filename}
