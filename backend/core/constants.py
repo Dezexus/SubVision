@@ -3,9 +3,6 @@ Centralized module for defining algorithmic, heuristic, and system constants.
 """
 import numpy as np
 
-MAX_QUEUE_SIZE: int = 30
-OCR_BATCH_SIZE: int = 4
-WATCHDOG_TIMEOUT_SEC: float = 45.0
 DEFAULT_FPS: float = 25.0
 
 MOTION_BLUR_KSIZE: tuple[int, int] = (5, 5)

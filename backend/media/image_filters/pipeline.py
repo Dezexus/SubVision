@@ -2,8 +2,7 @@
 This module defines the ImagePipeline class, which orchestrates a sequence
 of image processing operations on a frame dynamically.
 """
-from typing import Any, Optional
-import concurrent.futures
+from typing import Any
 import numpy as np
 import cv2
 from core.filters import (
@@ -27,12 +26,11 @@ def _is_paddle_tensor(obj: Any) -> bool:
 
 class ImagePipeline:
     """
-    Manages the chain of filters applied to video frames, optimizing for GPU resident data using lazy imports.
+    Manages the chain of filters applied to video frames sequentially.
     """
-    def __init__(self, roi: list[int], config: dict[str, Any], thread_pool: Optional[concurrent.futures.ThreadPoolExecutor] = None) -> None:
+    def __init__(self, roi: list[int], config: dict[str, Any]) -> None:
         self.roi = roi
         self.config = config
-        self.thread_pool = thread_pool
         self.last_raw_roi: Any = None
         self.skipped_count = 0
 
@@ -101,7 +99,7 @@ class ImagePipeline:
             cpu_img_rgb = frame_roi.numpy()
             working_img = cv2.cvtColor(cpu_img_rgb, cv2.COLOR_RGB2BGR)
 
-            denoised = denoise_frame(working_img, strength=denoise_str, thread_pool=self.thread_pool)
+            denoised = denoise_frame(working_img, strength=denoise_str)
             processed = denoised
 
             if scale_factor > 1.0:
@@ -123,7 +121,7 @@ class ImagePipeline:
             return final, False
 
         else:
-            denoised = denoise_frame(frame_roi, strength=denoise_str, thread_pool=self.thread_pool)
+            denoised = denoise_frame(frame_roi, strength=denoise_str)
             processed = denoised
 
             scaled = apply_scaling(processed, scale_factor=scale_factor)

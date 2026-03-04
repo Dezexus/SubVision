@@ -1,9 +1,8 @@
 """
 Module containing image filtering operations including denoising, scaling, and sharpening.
 """
-import concurrent.futures
 import logging
-from typing import Any, Optional
+from typing import Any
 import cv2
 import numpy as np
 
@@ -49,14 +48,14 @@ def ensure_cpu(frame: Any) -> np.ndarray:
 
 def _apply_cpu_denoise(cpu_frame: np.ndarray, h_val: float) -> np.ndarray:
     """
-    Isolated CPU denoise function for multithreading.
+    Applies CPU-bound fast non-local means denoising.
     """
     return cv2.fastNlMeansDenoisingColored(cpu_frame, None, h_val, h_val, 7, 21)
 
 
-def denoise_frame(frame: Any | None, strength: float, thread_pool: Optional[concurrent.futures.ThreadPoolExecutor] = None) -> Any | None:
+def denoise_frame(frame: Any | None, strength: float) -> Any | None:
     """
-    Applies Fast Non-Local Means Denoising using GPU or multithreaded CPU fallback.
+    Applies Fast Non-Local Means Denoising using GPU or synchronous CPU fallback.
     """
     if frame is None or strength <= 0:
         return frame
@@ -73,20 +72,7 @@ def denoise_frame(frame: Any | None, strength: float, thread_pool: Optional[conc
             pass
 
     cpu_frame = ensure_cpu(frame)
-
-    local_pool = thread_pool or concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    future = local_pool.submit(_apply_cpu_denoise, cpu_frame, h_val)
-
-    try:
-        result = future.result(timeout=30.0)
-    except concurrent.futures.TimeoutError:
-        logging.error("CPU Denoise thread hung, bypassing filter.")
-        result = cpu_frame
-    finally:
-        if thread_pool is None:
-            local_pool.shutdown(wait=False)
-
-    return result
+    return _apply_cpu_denoise(cpu_frame, h_val)
 
 
 def apply_scaling(frame: Any | None, scale_factor: float) -> Any | None:
