@@ -52,7 +52,7 @@ export const VideoCanvas = () => {
   }
 
   const aspectRatio = useMemo(() => {
-    if (!metadata || metadata.height === 0) return 16 / 9;
+    if (!metadata) return 16 / 9;
     return metadata.width / metadata.height;
   }, [metadata]);
 

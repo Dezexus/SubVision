@@ -8,6 +8,7 @@ export interface VideoMetadata {
   height: number;
   fps: number;
   duration: number;
+  display_aspect_ratio: number;
 }
 
 export interface PresetConfig {
