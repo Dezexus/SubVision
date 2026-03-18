@@ -26,10 +26,11 @@ class BlurManager:
         """
         Generates a single preview frame with the obscuring filter applied.
         """
-        cached_frame = extract_frame_cv2(video_path, frame_index)
-        if cached_frame is None:
+        cached = extract_frame_cv2(video_path, frame_index)
+        if cached is None:
             return None
-        frame = cached_frame.copy()
+        frame_bgr, _ = cached
+        frame = frame_bgr.copy()
         height, width = frame.shape[:2]
         roi = calculate_blur_roi(text, width, height, settings)
         return apply_blur_to_frame(frame, roi, settings)
@@ -43,9 +44,6 @@ class BlurManager:
             progress_callback: Callable[[int, int], None],
             cancel_check: Callable[[], bool]
     ) -> str:
-        """
-        Executes the blurring and rendering pipeline sequentially without internal threading.
-        """
         base_name, ext = os.path.splitext(output_path)
         temp_video_path = f"{base_name}_temp{ext}"
 

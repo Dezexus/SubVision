@@ -16,6 +16,7 @@ from api.schemas import VideoMetadata, PreviewConfig
 from api.dependencies import get_video_url
 from core.storage import storage_manager
 from core.config import settings
+from core.video_io import get_video_dar
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -24,26 +25,17 @@ ALLOWED_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm"}
 
 
 class UploadInitRequest(BaseModel):
-    """
-    Schema for initializing a multipart upload.
-    """
     filename: str
     content_type: str
     total_chunks: int
 
 
 class UploadPart(BaseModel):
-    """
-    Schema for a successfully uploaded chunk.
-    """
     PartNumber: int
     ETag: str
 
 
 class UploadCompleteRequest(BaseModel):
-    """
-    Schema for finalizing an upload session.
-    """
     filename: str
     upload_id: str
     parts: List[UploadPart]
@@ -51,17 +43,11 @@ class UploadCompleteRequest(BaseModel):
 
 @router.get("/allowed-extensions")
 async def get_allowed_extensions() -> List[str]:
-    """
-    Returns a list of allowed video file extensions.
-    """
     return list(ALLOWED_EXTENSIONS)
 
 
 @router.post("/upload/init")
 async def init_upload(req: UploadInitRequest) -> Dict[str, Any]:
-    """
-    Creates a multipart upload session and issues presigned URLs based on the active storage mode.
-    """
     ext = os.path.splitext(req.filename)[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
@@ -89,9 +75,6 @@ async def upload_local_chunk(
     part_number: int = Form(...),
     file: UploadFile = File(...)
 ) -> Dict[str, Any]:
-    """
-    Endpoint for receiving chunk bytes directly when operating in local storage mode.
-    """
     data = await file.read()
     await storage_manager.save_local_chunk(upload_id, part_number, data)
     return {"status": "ok"}
@@ -99,9 +82,6 @@ async def upload_local_chunk(
 
 @router.post("/upload/complete")
 async def complete_upload(req: UploadCompleteRequest) -> VideoMetadata:
-    """
-    Finalizes the upload routing assembly to the appropriate backend layer based on the storage mode.
-    """
     parts_dict = [{"PartNumber": p.PartNumber, "ETag": p.ETag} for p in req.parts]
 
     if settings.storage_mode == "s3":
@@ -113,7 +93,8 @@ async def complete_upload(req: UploadCompleteRequest) -> VideoMetadata:
         raise HTTPException(status_code=500, detail="Failed to complete storage upload.")
 
     video_url = await get_video_url(req.filename)
-    frame, total_frames = await asyncio.to_thread(VideoManager.get_video_info, video_url)
+
+    frame, total_frames, corrected_width = await asyncio.to_thread(VideoManager.get_video_info, video_url)
 
     if frame is None:
         raise HTTPException(
@@ -121,27 +102,29 @@ async def complete_upload(req: UploadCompleteRequest) -> VideoMetadata:
             detail="Invalid video format or unsupported codec."
         )
 
-    height, width, _ = frame.shape
+    height = frame.shape[0]
     cap = cv2.VideoCapture(video_url)
     fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
     duration = total_frames / fps
     cap.release()
 
+    dar = await asyncio.to_thread(get_video_dar, video_url)
+    if dar is None:
+        dar = corrected_width / height
+
     return VideoMetadata(
         filename=req.filename,
         total_frames=total_frames,
-        width=width,
+        width=corrected_width,
         height=height,
         fps=fps,
-        duration=duration
+        duration=duration,
+        display_aspect_ratio=dar
     )
 
 
 @router.get("/download/{filename}")
 async def download_file(filename: str):
-    """
-    Redirects the user to a secure Presigned URL or serves the file locally depending on storage mode.
-    """
     safe_filename = os.path.basename(filename)
 
     if settings.storage_mode == "s3":
@@ -162,9 +145,6 @@ async def download_file(filename: str):
 
 @router.get("/frame/{filename}/{frame_index}")
 async def get_frame(frame_index: int, video_url: str = Depends(get_video_url)):
-    """
-    Extracts a frame statelessly.
-    """
     image = await asyncio.to_thread(VideoManager.get_frame_image, video_url, frame_index)
     if image is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Frame not found")
@@ -177,9 +157,6 @@ async def get_frame(frame_index: int, video_url: str = Depends(get_video_url)):
 
 @router.post("/preview")
 async def get_preview(config: PreviewConfig):
-    """
-    Generates a processed preview frame statelessly.
-    """
     video_url = await get_video_url(config.filename)
 
     preview_image = await asyncio.to_thread(

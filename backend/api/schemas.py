@@ -8,6 +8,7 @@ from pydantic import BaseModel
 class VideoMetadata(BaseModel):
     """
     Schema defining the structural metadata of an uploaded video.
+    Includes the display aspect ratio to handle non‑square pixels correctly.
     """
     filename: str
     total_frames: int
@@ -15,6 +16,7 @@ class VideoMetadata(BaseModel):
     height: int
     fps: float
     duration: float
+    display_aspect_ratio: float = 1.0
 
 
 class PreviewConfig(BaseModel):

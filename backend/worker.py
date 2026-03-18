@@ -12,37 +12,26 @@ from arq.connections import RedisSettings
 
 from core.config import settings
 from core.storage import storage_manager
+from core.video_io import get_video_dar
 from media.blur_manager import BlurManager
 from media.transcoder import FFmpegTranscoder
 from ocr.worker import run_ocr_pipeline
 
 
 async def startup(ctx: Dict[str, Any]) -> None:
-    """
-    Initializes worker resources on startup.
-    """
     logging.info("Worker starting up...")
 
 
 async def shutdown(ctx: Dict[str, Any]) -> None:
-    """
-    Cleans up worker resources on shutdown.
-    """
     logging.info("Worker shutting down...")
 
 
 async def publish_ws(ctx: Dict[str, Any], client_id: str, payload: Dict[str, Any]) -> None:
-    """
-    Publishes real-time progress events to the Redis Pub/Sub channel.
-    """
     redis = ctx['redis']
     await redis.publish(f"ws_{client_id}", json.dumps(payload))
 
 
 async def on_job_end_handler(ctx: Dict[str, Any], job_id: str, result: Any, exc: Exception) -> None:
-    """
-    Global exception catcher for tasks, ensuring the client receives a failure notification.
-    """
     if exc is not None:
         logging.error(f"Job {job_id} failed critically: {exc}")
         try:
@@ -57,9 +46,6 @@ async def on_job_end_handler(ctx: Dict[str, Any], job_id: str, result: Any, exc:
 
 
 async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
-    """
-    Executes the OCR extraction lifecycle utilizing a clean temporary directory.
-    """
     client_id = config['client_id']
     filename = config['filename']
     safe_filename = os.path.basename(filename)
@@ -98,9 +84,6 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
 
 
 async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
-    """
-    Executes the video obscuring and transcoding lifecycle utilizing a clean temporary directory.
-    """
     client_id = config['client_id']
     filename = config['filename']
     safe_filename = os.path.basename(filename)
@@ -117,6 +100,8 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
         dl_ok = await storage_manager.download_file(safe_filename, local_video_path)
         if not dl_ok:
             raise FileNotFoundError(f"Source video file '{safe_filename}' not found in storage.")
+
+        dar = await asyncio.to_thread(get_video_dar, local_video_path)
 
         start_time = time.time()
 
@@ -139,7 +124,7 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
         )
 
         await publish_ws(ctx, client_id, {"type": "log", "message": "Transcoding audio and video..."})
-        await FFmpegTranscoder.transcode_with_audio(temp_video_path, local_video_path, final_output_path)
+        await FFmpegTranscoder.transcode_with_audio(temp_video_path, local_video_path, final_output_path, dar=dar)
 
         await publish_ws(ctx, client_id, {"type": "log", "message": "Uploading result..."})
 
@@ -155,9 +140,6 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
 
 
 class WorkerSettings:
-    """
-    ARQ worker configuration binding task functions and global exception handlers.
-    """
     functions = [process_ocr_task, render_blur_task]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     on_startup = startup

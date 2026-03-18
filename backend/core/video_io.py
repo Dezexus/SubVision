@@ -1,9 +1,12 @@
 """
 Module for extracting frames from video streams robustly.
+Also provides correction for non‑square pixels (SAR).
 """
 import functools
 import logging
 import subprocess
+import json
+from typing import Optional, Tuple
 import cv2
 import numpy as np
 
@@ -29,10 +32,56 @@ def create_video_capture(video_path: str) -> cv2.VideoCapture:
 
     return cap
 
+
+def get_video_dar(video_path: str) -> Optional[float]:
+    """
+    Extracts the Display Aspect Ratio (DAR) of a video using ffprobe.
+    Returns None if the information cannot be retrieved.
+    """
+    cmd = [
+        "ffprobe", "-v", "quiet", "-print_format", "json",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=width,height,sample_aspect_ratio",
+        video_path
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        stream = data.get("streams", [{}])[0]
+        width = int(stream.get("width", 1))
+        height = int(stream.get("height", 1))
+        sar = stream.get("sample_aspect_ratio", "1:1")
+        if sar == "N/A":
+            sar = "1:1"
+        sar_num, sar_den = map(int, sar.split(':'))
+        dar = (width / height) * (sar_num / sar_den)
+        return dar
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"Failed to get DAR for {video_path}: {e}")
+        return None
+
+
+def _correct_sar(frame: np.ndarray, src_width: int, src_height: int, dar: float) -> np.ndarray:
+    """
+    Resizes the frame horizontally so that its physical aspect ratio becomes equal to DAR.
+    Returns the corrected frame (may be larger in width).
+    """
+    current_par = src_width / src_height
+    if abs(current_par - dar) < 1e-3:
+        return frame
+    new_width = int(round(src_height * dar))
+    if new_width == src_width:
+        return frame
+    corrected = cv2.resize(frame, (new_width, src_height), interpolation=cv2.INTER_CUBIC)
+    return corrected
+
+
 @functools.lru_cache(maxsize=32)
-def extract_frame_cv2(video_path: str, frame_index: int) -> np.ndarray | None:
+def extract_frame_cv2(video_path: str, frame_index: int, dar: Optional[float] = None) -> Optional[Tuple[np.ndarray, int]]:
     """
     Extracts a single frame using HW-accelerated capture with FFmpeg subprocess fallbacks.
+    If DAR is provided and differs from the pixel aspect ratio, the frame is resized
+    to obtain correct physical proportions. Returns the corrected frame and its new width.
     """
     if not video_path:
         return None
@@ -50,11 +99,14 @@ def extract_frame_cv2(video_path: str, frame_index: int) -> np.ndarray | None:
     ok, frame = False, None
     fps = 25.0
     safe_index = frame_index
+    width, height = 0, 0
 
     if cap.isOpened():
         try:
             fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
             total = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
             if total > 0 and frame_index >= total:
                 safe_index = int(total - 1)
@@ -77,11 +129,17 @@ def extract_frame_cv2(video_path: str, frame_index: int) -> np.ndarray | None:
                 if decoded is not None:
                     frame = decoded
                     ok = True
+                    height, width = frame.shape[:2]
         except Exception as e:
             logging.getLogger(__name__).warning(f"FFmpeg fallback failed: {e}")
 
     if ok and frame is not None:
-        frame.setflags(write=False)
-        return frame
+        if dar is None:
+            dar = get_video_dar(video_path)
+        if dar is not None and abs(dar - (width / height)) > 1e-3:
+            frame = _correct_sar(frame, width, height, dar)
+            new_width = int(round(height * dar))
+            return frame, new_width
+        return frame, width
 
     return None
