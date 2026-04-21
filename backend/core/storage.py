@@ -1,6 +1,4 @@
-"""
-Module providing an abstraction layer strictly enforcing explicit storage operational modes.
-"""
+"""Module providing an abstraction layer strictly enforcing explicit storage operational modes."""
 import os
 import logging
 import uuid
@@ -14,17 +12,13 @@ from core.config import settings
 
 logger = logging.getLogger(__name__)
 
-
 class StorageManager:
-    """
-    Manages file transfers strictly routing operations based on the configured storage_mode.
-    """
+    """Manages file transfers strictly routing operations based on the configured storage_mode."""
 
     def __init__(self) -> None:
         self.mode = settings.storage_mode.lower()
         self.bucket_name = settings.s3_bucket
         self._bucket_checked = False
-
         if self.mode == "s3":
             self.session = aioboto3.Session(
                 aws_access_key_id=settings.s3_access_key,
@@ -43,7 +37,6 @@ class StorageManager:
     async def _ensure_bucket(self, client: Any) -> None:
         if self._bucket_checked:
             return
-
         try:
             await client.head_bucket(Bucket=self.bucket_name)
             self._bucket_checked = True
@@ -69,7 +62,6 @@ class StorageManager:
     async def complete_local_upload(self, upload_id: str, filename: str, total_chunks: int) -> bool:
         temp_dir = os.path.join(settings.cache_dir, ".temp", upload_id)
         final_path = os.path.join(settings.cache_dir, filename)
-
         def _assemble():
             with open(final_path, "wb") as final_file:
                 for i in range(1, total_chunks + 1):
@@ -79,7 +71,6 @@ class StorageManager:
                             final_file.write(chunk_file.read())
                         os.remove(chunk_path)
             os.rmdir(temp_dir)
-
         try:
             await asyncio.to_thread(_assemble)
             return True
@@ -92,7 +83,6 @@ class StorageManager:
             upload_id = str(uuid.uuid4())
             self.init_local_upload(upload_id)
             return upload_id
-
         try:
             async with self.session.client(**self._get_client_kwargs()) as client:
                 await self._ensure_bucket(client)
@@ -109,7 +99,6 @@ class StorageManager:
     async def get_presigned_upload_part(self, s3_key: str, upload_id: str, part_number: int) -> Optional[str]:
         if self.mode == "local":
             return None
-
         try:
             async with self.session.client(**self._get_client_kwargs()) as client:
                 return await client.generate_presigned_url(
@@ -129,7 +118,6 @@ class StorageManager:
     async def complete_multipart_upload(self, s3_key: str, upload_id: str, parts: List[Dict[str, Any]]) -> bool:
         if self.mode == "local":
             return False
-
         try:
             async with self.session.client(**self._get_client_kwargs()) as client:
                 await client.complete_multipart_upload(
@@ -152,7 +140,6 @@ class StorageManager:
             except Exception as e:
                 logger.error(f"Local upload failed: {e}")
                 return False
-
         try:
             async with self.session.client(**self._get_client_kwargs()) as client:
                 await self._ensure_bucket(client)
@@ -173,7 +160,6 @@ class StorageManager:
             except Exception as e:
                 logger.error(f"Local download failed: {e}")
                 return False
-
         try:
             async with self.session.client(**self._get_client_kwargs()) as client:
                 await self._ensure_bucket(client)
@@ -183,10 +169,28 @@ class StorageManager:
             logger.error(f"Download failed: {e}")
             return False
 
+    async def delete_file(self, s3_key: str) -> bool:
+        if self.mode == "local":
+            target_path = os.path.join(settings.cache_dir, s3_key)
+            if os.path.exists(target_path):
+                try:
+                    os.remove(target_path)
+                    return True
+                except Exception as e:
+                    logger.error(f"Local file deletion failed: {e}")
+                    return False
+            return True
+        try:
+            async with self.session.client(**self._get_client_kwargs()) as client:
+                await client.delete_object(Bucket=self.bucket_name, Key=s3_key)
+            return True
+        except Exception as e:
+            logger.error(f"S3 file deletion failed: {e}")
+            return False
+
     async def get_presigned_url(self, s3_key: str, expiration: int = 3600) -> Optional[str]:
         if self.mode == "local":
             return None
-
         try:
             async with self.session.client(**self._get_client_kwargs()) as client:
                 url = await client.generate_presigned_url(
@@ -198,6 +202,5 @@ class StorageManager:
         except Exception as e:
             logger.error(f"Presigned URL generation failed: {e}")
             return None
-
 
 storage_manager = StorageManager()
