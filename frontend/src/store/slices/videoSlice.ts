@@ -4,6 +4,7 @@
 import { StateCreator } from 'zustand';
 import type { VideoMetadata } from '../../types';
 import type { AppState } from '../types';
+import { api } from '../../services/api';
 
 export interface VideoSlice {
   file: File | null;
@@ -19,7 +20,7 @@ export interface VideoSlice {
   resetProject: () => void;
 }
 
-export const createVideoSlice: StateCreator<AppState, [], [], VideoSlice> = (set) => ({
+export const createVideoSlice: StateCreator<AppState, [], [], VideoSlice> = (set, get) => ({
   file: null,
   metadata: null,
   currentFrameIndex: 0,
@@ -33,19 +34,25 @@ export const createVideoSlice: StateCreator<AppState, [], [], VideoSlice> = (set
   })),
   setPreviewModalOpen: (isOpen) => set({ isPreviewModalOpen: isOpen }),
   setAllowedExtensions: (extensions) => set({ allowedExtensions: extensions }),
-  resetProject: () => set({
-    file: null,
-    metadata: null,
-    currentFrameIndex: 0,
-    roi: [0, 0, 0, 0],
-    isBlurMode: false,
-    subtitles: [],
-    pastSubtitles: [],
-    futureSubtitles: [],
-    logs: [],
-    progress: { current: 0, total: 0, eta: '--:--' },
-    renderedVideoUrl: null,
-    blurPreviewUrl: null,
-    isPreviewModalOpen: false
-  })
+  resetProject: () => {
+    const state = get();
+    if (state.metadata) {
+      api.deleteVideo(state.metadata.filename).catch(() => {});
+    }
+    set({
+      file: null,
+      metadata: null,
+      currentFrameIndex: 0,
+      roi: [0, 0, 0, 0],
+      isBlurMode: false,
+      subtitles: [],
+      pastSubtitles: [],
+      futureSubtitles: [],
+      logs: [],
+      progress: { current: 0, total: 0, eta: '--:--' },
+      renderedVideoUrl: null,
+      blurPreviewUrl: null,
+      isPreviewModalOpen: false
+    });
+  }
 });

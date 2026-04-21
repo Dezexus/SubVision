@@ -15,21 +15,17 @@ export const videoApi = {
     const chunkSize = 10 * 1024 * 1024;
     const totalChunks = Math.ceil(file.size / chunkSize);
     const safeFilename = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-
     const initRes = await axios.post(`${API_URL}/video/upload/init`, {
         filename: safeFilename,
         content_type: file.type || 'application/octet-stream',
         total_chunks: totalChunks
     });
-
     const { upload_id, urls } = initRes.data;
     const parts = [];
-
     for (let i = 0; i < totalChunks; i++) {
         const start = i * chunkSize;
         const end = Math.min(start + chunkSize, file.size);
         const chunk = file.slice(start, end);
-
         if (urls && urls.length > 0) {
             const uploadUrl = urls[i];
             const chunkRes = await axios.put(uploadUrl, chunk, {
@@ -45,18 +41,15 @@ export const videoApi = {
             await axios.post(`${API_URL}/video/upload/chunk`, formData);
             parts.push({ PartNumber: i + 1, ETag: `local_${i}` });
         }
-
         if (onProgress) {
             onProgress(Math.round(((i + 1) / totalChunks) * 100));
         }
     }
-
     const completeRes = await axios.post(`${API_URL}/video/upload/complete`, {
         filename: safeFilename,
         upload_id: upload_id,
         parts: parts
     });
-
     return completeRes.data as VideoMetadata;
   },
 
@@ -79,5 +72,9 @@ export const videoApi = {
       signal
     });
     return URL.createObjectURL(response.data);
+  },
+
+  deleteVideo: async (filename: string) => {
+    await axios.delete(`${API_URL}/video/delete/${filename}`);
   }
 };
