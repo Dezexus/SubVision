@@ -22,15 +22,9 @@ export const useAppStore = create<AppState>()(
     {
       name: 'subvision-storage',
       partialize: (state) => ({
-        metadata: state.metadata,
-        currentFrameIndex: state.currentFrameIndex,
-        roi: state.roi,
         preset: state.preset,
         config: state.config,
-        isBlurMode: state.isBlurMode,
-        blurSettings: state.blurSettings,
-        subtitles: state.subtitles,
-        clientId: state.clientId
+        blurSettings: state.blurSettings
       }),
     }
   )
