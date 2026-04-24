@@ -10,6 +10,7 @@ const frameCache = new Map<string, string>();
 export const useVideoFrame = (metadata: VideoMetadata | null, currentFrameIndex: number) => {
   const [imgSrc, setImgSrc] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -21,6 +22,7 @@ export const useVideoFrame = (metadata: VideoMetadata | null, currentFrameIndex:
   useEffect(() => {
     if (!metadata) {
       setImgSrc(null);
+      setError(null);
       return;
     }
 
@@ -32,6 +34,7 @@ export const useVideoFrame = (metadata: VideoMetadata | null, currentFrameIndex:
       frameCache.set(cacheKey, url);
       setImgSrc(url);
       setIsLoading(false);
+      setError(null);
       return;
     }
 
@@ -43,6 +46,7 @@ export const useVideoFrame = (metadata: VideoMetadata | null, currentFrameIndex:
     }
 
     let isActive = true;
+    setError(null);
 
     debounceTimerRef.current = setTimeout(async () => {
       if (!isActive) return;
@@ -66,18 +70,23 @@ export const useVideoFrame = (metadata: VideoMetadata | null, currentFrameIndex:
           }
           frameCache.set(cacheKey, url);
           setImgSrc(url);
+          setError(null);
         } else if (url) {
           URL.revokeObjectURL(url);
         }
       } catch (err: unknown) {
-        if (!axios.isCancel(err) && isActive) {
-          console.error('Failed to fetch frame:', err);
-          const typedErr = err as { response?: { status?: number } };
-          if (typedErr.response && typedErr.response.status === 404) {
-            const state = useAppStore.getState();
-            state.resetProject();
-            state.addToast("Session expired. The video file was cleaned up by the server.", "error");
-          }
+        if (!isActive) return;
+        if (axios.isCancel(err)) return;
+
+        const typedErr = err as { response?: { status?: number; data?: { detail?: string } }; message?: string };
+        if (typedErr.response && typedErr.response.status === 404) {
+          const state = useAppStore.getState();
+          state.resetProject();
+          state.addToast("Session expired. The video file was cleaned up by the server.", "error");
+        } else {
+          const msg = typedErr.response?.data?.detail || typedErr.message || 'Failed to load frame';
+          setError(msg);
+          console.error('Frame fetch error:', err);
         }
       } finally {
         if (isActive) setIsLoading(false);
@@ -91,5 +100,5 @@ export const useVideoFrame = (metadata: VideoMetadata | null, currentFrameIndex:
     };
   }, [currentFrameIndex, metadata]);
 
-  return { imgSrc, isLoading };
+  return { imgSrc, isLoading, error };
 };

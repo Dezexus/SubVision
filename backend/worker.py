@@ -47,14 +47,27 @@ async def on_job_end_handler(ctx: Dict[str, Any], job_id: str, result: Any, exc:
 
 
 def _make_cancel_check(job_id: str) -> callable:
+    r = redis.Redis.from_url(settings.redis_url, socket_timeout=1, socket_connect_timeout=1)
     def check() -> bool:
         try:
-            r = redis.Redis.from_url(settings.redis_url)
             flag = r.get(f"job:{job_id}:cancel")
             return bool(flag)
         except Exception:
             return False
     return check
+
+
+def throttle(interval: float):
+    def decorator(func):
+        last_call = 0.0
+        def wrapper(*args, **kwargs):
+            nonlocal last_call
+            now = time.time()
+            if now - last_call >= interval:
+                last_call = now
+                func(*args, **kwargs)
+        return wrapper
+    return decorator
 
 
 async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
@@ -77,8 +90,12 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
         def log_cb(msg: str) -> None:
             asyncio.run_coroutine_threadsafe(publish_ws(ctx, client_id, {"type": "log", "message": msg}), loop)
 
+        raw_prog = throttle(0.2)(lambda c, t, e: asyncio.run_coroutine_threadsafe(
+            publish_ws(ctx, client_id, {"type": "progress", "current": c, "total": t, "eta": e}), loop
+        ))
+
         def prog_cb(c: int, t: int, e: str) -> None:
-            asyncio.run_coroutine_threadsafe(publish_ws(ctx, client_id, {"type": "progress", "current": c, "total": t, "eta": e}), loop)
+            raw_prog(c, t, e)
 
         def sub_cb(item: Dict[str, Any]) -> None:
             asyncio.run_coroutine_threadsafe(publish_ws(ctx, client_id, {"type": "subtitle_new", "item": item}), loop)
@@ -118,14 +135,15 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
 
         start_time = time.time()
 
+        raw_prog = throttle(0.2)(lambda c, t: asyncio.run_coroutine_threadsafe(
+            publish_ws(ctx, client_id, {"type": "progress", "current": c, "total": t, "eta": ""}), loop
+        ))
+
         def prog_cb(c: int, t: int) -> None:
             elapsed = time.time() - start_time
             eta_sec = int((t - c) * (elapsed / max(c, 1)))
             eta_str = f"{eta_sec // 60:02d}:{eta_sec % 60:02d}"
-            asyncio.run_coroutine_threadsafe(
-                publish_ws(ctx, client_id, {"type": "progress", "current": c, "total": t, "eta": eta_str}),
-                loop
-            )
+            raw_prog(c, t, eta_str)
 
         cancel_check = _make_cancel_check(job_id)
 

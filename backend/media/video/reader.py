@@ -28,14 +28,18 @@ class VideoProvider:
         self.fps = self.cap.get(cv2.CAP_PROP_FPS) or DEFAULT_FPS
 
     def __iter__(self) -> Iterator[tuple[int, float, Any]]:
-        """
-        Yields frame index, timestamp, and contiguous frame data.
-        """
         frame_idx = 0
+        consecutive_errors = 0
+        max_consecutive_errors = 100
         while self.cap.isOpened():
             ok, frame = self.cap.read()
             if not ok:
-                break
+                consecutive_errors += 1
+                logger.warning("Frame read failed at index %d, consecutive errors: %d", frame_idx, consecutive_errors)
+                if consecutive_errors > max_consecutive_errors:
+                    raise RuntimeError(f"Too many consecutive frame read errors at index {frame_idx}")
+                continue
+            consecutive_errors = 0
 
             if frame_idx % self.step == 0:
                 msec = self.cap.get(cv2.CAP_PROP_POS_MSEC)
@@ -45,8 +49,5 @@ class VideoProvider:
             frame_idx += 1
 
     def release(self) -> None:
-        """
-        Releases the underlying video decoding resources safely.
-        """
         if self.cap:
             self.cap.release()

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { useAppStore } from '../../../store/useAppStore';
-import { Loader2, ImageOff, Eye, EyeOff, MoveVertical } from 'lucide-react';
+import { Loader2, ImageOff, Eye, EyeOff, MoveVertical, AlertTriangle } from 'lucide-react';
 import { useVideoFrame } from '../hooks/useVideoFrame';
 
 const estimateTextWidth = (text: string, fontSizePx: number, multiplier: number): number => {
@@ -56,7 +56,7 @@ export const VideoCanvas = () => {
     return metadata.width / metadata.height;
   }, [metadata]);
 
-  const { imgSrc, isLoading } = useVideoFrame(metadata, currentFrameIndex);
+  const { imgSrc, isLoading, error } = useVideoFrame(metadata, currentFrameIndex);
 
   const onCropComplete = (crop: PixelCrop) => {
     if (!imgRef.current || !metadata) return;
@@ -194,13 +194,20 @@ export const VideoCanvas = () => {
         className="relative shadow-2xl shadow-black/50 border border-border-main rounded-xl overflow-hidden bg-black group/canvas select-none"
         style={{ aspectRatio, maxHeight: '100%', maxWidth: '100%' }}
       >
-          {isLoading && (
+          {error && !isLoading && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-30 gap-3">
+                <AlertTriangle size={32} className="text-red-400" />
+                <p className="text-red-300 text-sm px-4 text-center">{error}</p>
+            </div>
+          )}
+
+          {isLoading && !error && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/20 z-20 backdrop-blur-[2px]">
                 <Loader2 className="animate-spin text-brand-500" size={32} />
             </div>
           )}
 
-          {imgSrc && (
+          {imgSrc && !error && (
               <>
                 {isBlurMode && (
                     <button

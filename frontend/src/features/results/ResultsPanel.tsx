@@ -32,7 +32,8 @@ export const ResultsPanel = () => {
     undo,
     redo,
     pastSubtitles,
-    futureSubtitles
+    futureSubtitles,
+    addToast
   } = useAppStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -43,7 +44,6 @@ export const ResultsPanel = () => {
   }, [subtitles]);
 
   const handleDownloadSrt = () => {
-    // [Logic remains unchanged]
     if (!metadata || subtitles.length === 0) return;
     let srtContent = "";
     subtitles.forEach((sub, index) => {
@@ -64,7 +64,6 @@ export const ResultsPanel = () => {
   };
 
   const handleImportSrt = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    // [Logic remains unchanged]
     const file = e.target.files?.[0];
     if (!file) return;
     addLog(`Importing ${file.name}...`);
@@ -72,15 +71,17 @@ export const ResultsPanel = () => {
       const subs = await api.importSrt(file);
       setSubtitles(subs);
       addLog(`Imported ${subs.length} subtitles.`);
-    } catch (err) {
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { detail?: string } }; message?: string };
+      const detail = axiosErr.response?.data?.detail || axiosErr.message || 'Unknown error';
       console.error(err);
-      addLog("Error importing SRT.");
+      addLog(`Error importing SRT: ${detail}`);
+      addToast(`Failed to import SRT: ${detail}`, 'error');
     }
     e.target.value = '';
   };
 
   const handleDownloadVideo = () => {
-    // [Logic remains unchanged]
     if (!renderedVideoUrl || !metadata) return;
     const downloadLink = renderedVideoUrl.startsWith('http')
         ? renderedVideoUrl
@@ -95,7 +96,6 @@ export const ResultsPanel = () => {
   };
 
   return (
-    // Restored the w-full lg:w-1/4 min-w-[320px] width definition
     <GlassPanel className="w-full lg:w-1/4 min-w-[320px] flex flex-col h-full z-20 bg-bg-main">
       <ProgressHeader />
 
@@ -143,7 +143,6 @@ export const ResultsPanel = () => {
       </div>
 
       <div className="p-4 border-t border-border-main bg-bg-panel space-y-3">
-        {/* [Footer buttons logic remains unchanged] */}
         {subtitles.length > 0 && (
           <div className="flex justify-between text-xs text-txt-subtle font-mono px-1">
             <span>Lines: <b className="text-txt-main">{stats.total}</b></span>
