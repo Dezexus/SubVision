@@ -43,7 +43,7 @@ class BlurManager:
             output_path: str,
             progress_callback: Callable[[int, int], None],
             cancel_check: Callable[[], bool]
-    ) -> str:
+    ) -> Tuple[str, int]:
         base_name, ext = os.path.splitext(output_path)
         temp_video_path = f"{base_name}_temp{ext}"
 
@@ -101,4 +101,4 @@ class BlurManager:
             cap.release()
             writer.release()
 
-        return temp_video_path
+        return temp_video_path, total_frames

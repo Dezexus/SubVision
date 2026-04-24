@@ -57,17 +57,58 @@ def _make_cancel_check(job_id: str) -> callable:
     return check
 
 
-def throttle(interval: float):
-    def decorator(func):
-        last_call = 0.0
-        def wrapper(*args, **kwargs):
-            nonlocal last_call
-            now = time.time()
-            if now - last_call >= interval:
-                last_call = now
-                func(*args, **kwargs)
-        return wrapper
-    return decorator
+class ProgressReporter:
+    """Safely sends throttled progress updates from a non‑async thread and guarantees final delivery."""
+
+    def __init__(self, ctx: Dict[str, Any], client_id: str, loop: asyncio.AbstractEventLoop) -> None:
+        self._ctx = ctx
+        self._client_id = client_id
+        self._loop = loop
+        self._last_progress = None
+        self._throttle_interval = 0.2
+        self._throttle_task = None
+        self._total = 0
+
+    def set_total(self, total: int) -> None:
+        self._total = total
+
+    async def _send_progress_now(self) -> None:
+        if self._last_progress:
+            await publish_ws(self._ctx, self._client_id, self._last_progress)
+
+    async def _throttled_progress(self, payload: Dict[str, Any]) -> None:
+        self._last_progress = payload
+        if self._throttle_task is None:
+            async def delayed_send():
+                await asyncio.sleep(self._throttle_interval)
+                self._throttle_task = None
+                await self._send_progress_now()
+            self._throttle_task = asyncio.create_task(delayed_send())
+
+    def log(self, message: str) -> None:
+        asyncio.run_coroutine_threadsafe(
+            publish_ws(self._ctx, self._client_id, {"type": "log", "message": message}),
+            self._loop
+        )
+
+    def progress(self, current: int, total: int, eta: str) -> None:
+        asyncio.run_coroutine_threadsafe(
+            self._throttled_progress({"type": "progress", "current": current, "total": total, "eta": eta}),
+            self._loop
+        )
+
+    def subtitle(self, item: Dict[str, Any]) -> None:
+        asyncio.run_coroutine_threadsafe(
+            publish_ws(self._ctx, self._client_id, {"type": "subtitle_new", "item": item}),
+            self._loop
+        )
+
+    async def done(self) -> None:
+        if self._throttle_task:
+            self._throttle_task.cancel()
+            self._throttle_task = None
+        self._last_progress = {"type": "progress", "current": self._total, "total": self._total, "eta": "00:00"}
+        await self._send_progress_now()
 
 
 async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
@@ -77,36 +118,25 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
     job_id = ctx.get('job_id', 'unknown')
 
     loop = asyncio.get_running_loop()
+    reporter = ProgressReporter(ctx, client_id, loop)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         local_video_path = os.path.join(tmpdir, safe_filename)
 
-        await publish_ws(ctx, client_id, {"type": "log", "message": "Downloading video from storage..."})
+        reporter.log("Downloading video from storage...")
 
         dl_ok = await storage_manager.download_file(safe_filename, local_video_path)
         if not dl_ok:
             raise FileNotFoundError(f"Source video file '{safe_filename}' not found in storage.")
 
-        def log_cb(msg: str) -> None:
-            asyncio.run_coroutine_threadsafe(publish_ws(ctx, client_id, {"type": "log", "message": msg}), loop)
-
-        raw_prog = throttle(0.2)(lambda c, t, e: asyncio.run_coroutine_threadsafe(
-            publish_ws(ctx, client_id, {"type": "progress", "current": c, "total": t, "eta": e}), loop
-        ))
-
-        def prog_cb(c: int, t: int, e: str) -> None:
-            raw_prog(c, t, e)
-
-        def sub_cb(item: Dict[str, Any]) -> None:
-            asyncio.run_coroutine_threadsafe(publish_ws(ctx, client_id, {"type": "subtitle_new", "item": item}), loop)
-
         cancel_check = _make_cancel_check(job_id)
 
         success = await asyncio.to_thread(
-            run_ocr_pipeline, local_video_path, config, log_cb, prog_cb, sub_cb, cancel_check
+            run_ocr_pipeline, local_video_path, config, reporter, cancel_check
         )
 
         if success:
+            await reporter.done()
             await publish_ws(ctx, client_id, {"type": "finish", "success": True})
         else:
             raise RuntimeError("OCR pipeline execution failed or was interrupted.")
@@ -120,12 +150,13 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
     job_id = ctx.get('job_id', 'unknown')
 
     loop = asyncio.get_running_loop()
+    reporter = ProgressReporter(ctx, client_id, loop)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         local_video_path = os.path.join(tmpdir, safe_filename)
         final_output_path = os.path.join(tmpdir, output_filename)
 
-        await publish_ws(ctx, client_id, {"type": "log", "message": "Downloading video from storage..."})
+        reporter.log("Downloading video from storage...")
 
         dl_ok = await storage_manager.download_file(safe_filename, local_video_path)
         if not dl_ok:
@@ -135,28 +166,26 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
 
         start_time = time.time()
 
-        raw_prog = throttle(0.2)(lambda c, t: asyncio.run_coroutine_threadsafe(
-            publish_ws(ctx, client_id, {"type": "progress", "current": c, "total": t, "eta": ""}), loop
-        ))
-
         def prog_cb(c: int, t: int) -> None:
             elapsed = time.time() - start_time
             eta_sec = int((t - c) * (elapsed / max(c, 1)))
             eta_str = f"{eta_sec // 60:02d}:{eta_sec % 60:02d}"
-            raw_prog(c, t, eta_str)
+            reporter.progress(c, t, eta_str)
 
         cancel_check = _make_cancel_check(job_id)
 
-        temp_video_path = await asyncio.to_thread(
+        temp_video_path, total_frames = await asyncio.to_thread(
             BlurManager.apply_blur_task_sync,
             local_video_path, config['subtitles'], config['blur_settings'],
             final_output_path, prog_cb, cancel_check
         )
+        reporter.set_total(total_frames)
+        await reporter.done()
 
-        await publish_ws(ctx, client_id, {"type": "log", "message": "Transcoding audio and video..."})
+        reporter.log("Transcoding audio and video...")
         await FFmpegTranscoder.transcode_with_audio(temp_video_path, local_video_path, final_output_path, dar=dar)
 
-        await publish_ws(ctx, client_id, {"type": "log", "message": "Uploading result..."})
+        reporter.log("Uploading result...")
 
         up_ok = await storage_manager.upload_file(final_output_path, output_filename)
         if not up_ok:

@@ -2,7 +2,7 @@
 import logging
 import time
 import cv2
-from typing import Any, Callable, Dict
+from typing import Any, Dict
 
 from media.image_filters.pipeline import ImagePipeline
 from ocr.engine import PaddleWrapper, get_paddle_engine
@@ -16,15 +16,11 @@ logger = logging.getLogger(__name__)
 def run_ocr_pipeline(
     video_path: str,
     params: Dict[str, Any],
-    log_cb: Callable[[str], None],
-    progress_cb: Callable[[int, int, str], None],
-    subtitle_cb: Callable[[Dict[str, Any]], None],
-    cancel_check: Callable[[], bool]
+    reporter,
+    cancel_check: callable
 ) -> bool:
     cv2.setNumThreads(0)
-    start_msg = "--- START OCR (Batched GPU Pipeline) ---"
-    log_cb(start_msg)
-    logger.info(start_msg)
+    reporter.log("--- START OCR (Batched GPU Pipeline) ---")
 
     conf_threshold_pct = float(params.get("conf_threshold", 80.0))
     min_conf = conf_threshold_pct / 100.0
@@ -44,10 +40,12 @@ def run_ocr_pipeline(
         raise
 
     logger.info(f"Video parsed successfully. Total frames: {video.total_frames}, FPS: {video.fps}")
+    reporter.set_total(video.total_frames)
+
     pipeline = ImagePipeline(roi=params.get("roi", [0, 0, 0, 0]), config=config)
     ocr_engine = get_paddle_engine(lang=str(params.get("languages", "en")), use_gpu=True)
     aggregator = SubtitleAggregator(min_conf=min_conf, fps=video.fps)
-    aggregator.on_new_subtitle = subtitle_cb
+    aggregator.on_new_subtitle = reporter.subtitle
     start_time = time.time()
     total_frames = video.total_frames
     batch_size = OCR_BATCH_SIZE
@@ -69,7 +67,7 @@ def run_ocr_pipeline(
             if idx > 0 and idx % 25 == 0:
                 elapsed = time.time() - start_time
                 eta_sec = int((total_frames - idx) * (elapsed / idx))
-                progress_cb(idx, total_frames, f"{eta_sec // 60:02d}:{eta_sec % 60:02d}")
+                reporter.progress(idx, total_frames, f"{eta_sec // 60:02d}:{eta_sec % 60:02d}")
             if is_skip:
                 text, conf = last_ocr_result
             elif f_img is not None:
@@ -89,7 +87,7 @@ def run_ocr_pipeline(
     try:
         for frame_idx, timestamp, frame in video:
             if cancel_check():
-                log_cb("Process stopped by user.")
+                reporter.log("Process stopped by user.")
                 logger.info("OCR process cancelled by user request.")
                 return False
             final_img, skipped = pipeline.process(frame)
@@ -99,10 +97,10 @@ def run_ocr_pipeline(
             if len(valid_frames) >= batch_size:
                 _process_batch()
         _process_batch()
-        progress_cb(total_frames, total_frames, "00:00")
         aggregator.finalize()
+
         skip_msg = f"Smart Skip: {pipeline.skipped_count} frames"
-        log_cb(skip_msg)
+        reporter.log(skip_msg)
         logger.info(skip_msg)
         logger.info("OCR pipeline completed successfully.")
         return True

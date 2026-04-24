@@ -6,7 +6,7 @@ import functools
 import logging
 import subprocess
 import json
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, Any
 import cv2
 import numpy as np
 
@@ -31,6 +31,49 @@ def create_video_capture(video_path: str) -> cv2.VideoCapture:
         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
     return cap
+
+
+def get_video_metadata(video_path: str) -> Dict[str, Any]:
+    """
+    Extracts reliable video metadata (width, height, fps, total frames) via ffprobe.
+    Raises RuntimeError if essential information is missing.
+    """
+    cmd = [
+        "ffprobe", "-v", "quiet", "-print_format", "json",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=width,height,r_frame_rate,nb_frames,duration",
+        video_path
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    data = json.loads(result.stdout)
+    streams = data.get("streams", [])
+    if not streams:
+        raise RuntimeError("No video stream found")
+    stream = streams[0]
+    width = int(stream.get("width", 0))
+    height = int(stream.get("height", 0))
+    if width <= 0 or height <= 0:
+        raise RuntimeError("Invalid video dimensions")
+
+    r_frame_rate = stream.get("r_frame_rate", "25/1")
+    num, den = r_frame_rate.split("/")
+    fps = float(num) / float(den) if float(den) != 0 else 25.0
+
+    nb_frames = stream.get("nb_frames")
+    duration = stream.get("duration")
+    if nb_frames and int(nb_frames) > 0:
+        total_frames = int(nb_frames)
+    elif duration:
+        total_frames = int(float(duration) * fps)
+    else:
+        raise RuntimeError("Could not determine total frames")
+
+    return {
+        "width": width,
+        "height": height,
+        "fps": fps,
+        "total_frames": total_frames
+    }
 
 
 def get_video_dar(video_path: str) -> Optional[float]:
@@ -146,29 +189,16 @@ def extract_frame_cv2(video_path: str, frame_index: int, dar: Optional[float] = 
 
 
 def iter_frames_ffmpeg(video_path: str, step: int = 1, fps: float = 25.0, total: int = 0,
-                        width: Optional[int] = None, height: Optional[int] = None,
+                        width: int = 0, height: int = 0,
                         use_hwaccel: bool = True) -> None:
     """
     Generator that yields frames via system ffmpeg pipe.
-    Optionally accepts explicit width/height to avoid a secondary metadata probe.
+    Requires explicit width/height to avoid a secondary metadata probe.
 
     Yields tuples (frame_index, timestamp, bgr_frame).
     """
-    if total <= 0 or fps <= 0:
-        cap = create_video_capture(video_path)
-        if cap.isOpened():
-            total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            fps = cap.get(cv2.CAP_PROP_FPS) or fps
-            if width is None:
-                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            if height is None:
-                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            cap.release()
-        else:
-            total = 0
-
-    if total <= 0 or width is None or height is None:
-        raise RuntimeError("Cannot determine video frame count or dimensions")
+    if total <= 0 or fps <= 0 or width <= 0 or height <= 0:
+        raise RuntimeError("Invalid video metadata for ffmpeg pipe")
 
     cmd = ["ffmpeg"]
     if use_hwaccel:
