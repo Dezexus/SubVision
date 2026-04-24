@@ -21,18 +21,20 @@ def run_ocr_pipeline(
     subtitle_cb: Callable[[Dict[str, Any]], None],
     cancel_check: Callable[[], bool]
 ) -> bool:
-    """Executes the OCR extraction pipeline utilizing batched GPU inference and broadcasting results."""
     cv2.setNumThreads(0)
     start_msg = "--- START OCR (Batched GPU Pipeline) ---"
     log_cb(start_msg)
     logger.info(start_msg)
+
+    conf_threshold_pct = float(params.get("conf_threshold", 80.0))
+    min_conf = conf_threshold_pct / 100.0
+
     preset_name = str(params.get("preset", "⚖️ Balance"))
     config = get_preset_config(preset_name)
     config.update({
         "step": params.get("step", config["step"]),
         "smart_skip": params.get("smart_skip", config["smart_skip"]),
         "scale_factor": params.get("scale_factor", config["scale_factor"]),
-        "min_conf": params.get("min_conf", 0.80),
     })
 
     try:
@@ -44,7 +46,7 @@ def run_ocr_pipeline(
     logger.info(f"Video parsed successfully. Total frames: {video.total_frames}, FPS: {video.fps}")
     pipeline = ImagePipeline(roi=params.get("roi", [0, 0, 0, 0]), config=config)
     ocr_engine = get_paddle_engine(lang=str(params.get("languages", "en")), use_gpu=True)
-    aggregator = SubtitleAggregator(min_conf=float(config["min_conf"]), fps=video.fps)
+    aggregator = SubtitleAggregator(min_conf=min_conf, fps=video.fps)
     aggregator.on_new_subtitle = subtitle_cb
     start_time = time.time()
     total_frames = video.total_frames
@@ -74,7 +76,7 @@ def run_ocr_pipeline(
                 raw_res = batch_results[res_idx] if res_idx < len(batch_results) else None
                 res_idx += 1
                 try:
-                    text, conf = PaddleWrapper.parse_results(raw_res, params.get("conf", 0.5))
+                    text, conf = PaddleWrapper.parse_results(raw_res, min_conf)
                 except Exception:
                     text, conf = "", 0.0
                 last_ocr_result = (text, conf)
