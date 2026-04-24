@@ -4,6 +4,9 @@ Main application module for the stateless SubVision API integrating ARQ and Redi
 import asyncio
 import json
 import logging
+import time
+import shutil
+from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,6 +24,25 @@ from core.config import settings
 logger = logging.getLogger(__name__)
 
 
+async def cleanup_loop():
+    """Periodically removes stale temporary upload directories."""
+    while True:
+        await asyncio.sleep(3600)
+        temp_root = Path(settings.cache_dir) / ".temp"
+        if not temp_root.exists():
+            continue
+        now = time.time()
+        for entry in temp_root.iterdir():
+            if entry.is_dir():
+                try:
+                    mtime = entry.stat().st_mtime
+                    if now - mtime > 3600:
+                        shutil.rmtree(entry, ignore_errors=True)
+                        logger.info("Cleaned up stale upload: %s", entry)
+                except Exception as e:
+                    logger.warning("Could not clean up %s: %s", entry, e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -28,7 +50,17 @@ async def lifespan(app: FastAPI):
     """
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     app.state.arq_pool = await create_pool(redis_settings)
+
+    cleanup_task = asyncio.create_task(cleanup_loop())
+
     yield
+
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
+
     await app.state.arq_pool.close()
 
 

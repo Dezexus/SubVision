@@ -128,7 +128,9 @@ async def download_file(filename: str):
     )
 
 @router.get("/frame/{filename}/{frame_index}")
-async def get_frame(frame_index: int, video_url: str = Depends(get_video_url)):
+async def get_frame(filename: str, frame_index: int):
+    """Returns a single video frame as JPEG."""
+    video_url = await get_video_url(filename)
     image = await asyncio.to_thread(VideoManager.get_frame_image, video_url, frame_index)
     if image is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Frame not found")
