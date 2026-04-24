@@ -6,7 +6,7 @@ from typing import Any
 import cv2
 import logging
 
-from core.video_io import create_video_capture
+from core.video_io import create_video_capture, iter_frames_ffmpeg
 from core.constants import DEFAULT_FPS
 
 logger = logging.getLogger(__name__)
@@ -18,6 +18,7 @@ class VideoProvider:
     """
 
     def __init__(self, video_path: str, step: int = 1) -> None:
+        self.video_path = video_path
         self.step = step
         self.cap = create_video_capture(video_path)
 
@@ -31,13 +32,18 @@ class VideoProvider:
         frame_idx = 0
         consecutive_errors = 0
         max_consecutive_errors = 100
-        while self.cap.isOpened():
+        ffmpeg_fallback = False
+
+        while self.cap.isOpened() and not ffmpeg_fallback:
             ok, frame = self.cap.read()
             if not ok:
                 consecutive_errors += 1
                 logger.warning("Frame read failed at index %d, consecutive errors: %d", frame_idx, consecutive_errors)
                 if consecutive_errors > max_consecutive_errors:
-                    raise RuntimeError(f"Too many consecutive frame read errors at index {frame_idx}")
+                    logger.warning("Too many consecutive errors, switching to ffmpeg pipe")
+                    ffmpeg_fallback = True
+                    break
+                frame_idx += 1
                 continue
             consecutive_errors = 0
 
@@ -47,6 +53,12 @@ class VideoProvider:
                 yield frame_idx, timestamp, frame
 
             frame_idx += 1
+
+        if ffmpeg_fallback:
+            self.release()
+            logger.info("Starting ffmpeg pipe fallback for %s", self.video_path)
+            for f_idx, ts, frm in iter_frames_ffmpeg(self.video_path, step=self.step, fps=self.fps, total=self.total_frames):
+                yield f_idx, ts, frm
 
     def release(self) -> None:
         if self.cap:

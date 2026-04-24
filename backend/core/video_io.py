@@ -143,3 +143,57 @@ def extract_frame_cv2(video_path: str, frame_index: int, dar: Optional[float] = 
         return frame, width
 
     return None
+
+
+def iter_frames_ffmpeg(video_path: str, step: int = 1, fps: float = 25.0, total: int = 0):
+    """
+    Generator that yields frames via system ffmpeg pipe.
+
+    Yields tuples (frame_index, timestamp, bgr_frame).
+    """
+    if total <= 0:
+        cap = create_video_capture(video_path)
+        if cap.isOpened():
+            total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps = cap.get(cv2.CAP_PROP_FPS) or fps
+            cap.release()
+        else:
+            total = 0
+
+    if total <= 0:
+        raise RuntimeError("Cannot determine video frame count")
+
+    cmd = [
+        "ffmpeg", "-i", video_path,
+        "-f", "rawvideo", "-pix_fmt", "bgr24",
+        "-vsync", "0",
+        "pipe:1"
+    ]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    frame_size = None
+    frame_idx = 0
+    try:
+        while proc.poll() is None:
+            if frame_size is None:
+                cap = create_video_capture(video_path)
+                if cap.isOpened():
+                    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                    cap.release()
+                    if w > 0 and h > 0:
+                        frame_size = w * h * 3
+                    else:
+                        raise RuntimeError("Could not read video dimensions")
+                else:
+                    raise RuntimeError("Could not open video for dimensions")
+            raw = proc.stdout.read(frame_size)
+            if len(raw) != frame_size:
+                break
+            if frame_idx % step == 0:
+                arr = np.frombuffer(raw, np.uint8).reshape((h, w, 3))
+                timestamp = frame_idx / fps
+                yield frame_idx, timestamp, arr.copy()
+            frame_idx += 1
+    finally:
+        proc.kill()
+        proc.wait()
