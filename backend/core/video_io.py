@@ -1,6 +1,6 @@
 """
 Extracts frames and video metadata.
-Provides caching for Display Aspect Ratio.
+Provides caching for Display Aspect Ratio and codec detection.
 """
 import functools
 import logging
@@ -11,6 +11,30 @@ import cv2
 import numpy as np
 
 _dar_cache: Dict[str, float] = {}
+_codec_cache: Dict[str, str] = {}
+HW_DISABLED_CODECS = frozenset({"av1", "vp9"})  # codecs without reliable hardware decoding
+
+
+def get_video_codec(video_path: str) -> str:
+    """Return the video codec name from the first video stream."""
+    if video_path in _codec_cache:
+        return _codec_cache[video_path]
+    cmd = [
+        "ffprobe", "-v", "quiet", "-print_format", "json",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=codec_name",
+        video_path
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        streams = data.get("streams", [])
+        codec = streams[0].get("codec_name", "unknown") if streams else "unknown"
+        _codec_cache[video_path] = codec
+        return codec
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"Failed to get codec for {video_path}: {e}")
+        return "unknown"
 
 
 def get_video_dar(video_path: str) -> Optional[float]:
@@ -42,6 +66,17 @@ def get_video_dar(video_path: str) -> Optional[float]:
 
 
 def create_video_capture(video_path: str) -> cv2.VideoCapture:
+    codec = get_video_codec(video_path)
+    if codec in HW_DISABLED_CODECS:
+        cap = cv2.VideoCapture(video_path)
+        ok, _ = cap.read()
+        if not ok:
+            cap.release()
+            cap = cv2.VideoCapture(video_path)
+        if cap.isOpened():
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        return cap
+
     cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY])
     ok, _ = cap.read()
 
@@ -182,7 +217,9 @@ def iter_frames_ffmpeg(video_path: str, step: int = 1, fps: float = 25.0, total:
 
     cmd = ["ffmpeg"]
     if use_hwaccel:
-        cmd += ["-hwaccel", "auto"]
+        codec = get_video_codec(video_path)
+        if codec not in HW_DISABLED_CODECS:
+            cmd += ["-hwaccel", "auto"]
     cmd += [
         "-i", video_path,
         "-f", "rawvideo",
