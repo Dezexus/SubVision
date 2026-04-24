@@ -9,7 +9,7 @@ ENV VITE_API_URL=""
 RUN npm run build
 
 
-FROM python:3.10-slim AS api
+FROM python:3.10-slim-bookworm AS api
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/usr/local/bin:$PATH"
@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
     tzdata \
-    libdav1d5 \
+    libdav1d6 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
