@@ -43,6 +43,8 @@ services:
     environment:
       - PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
       - FLAGS_fraction_of_gpu_memory_to_use=0.9
+      - FLAGS_use_autotune=1
+      - FLAGS_amp=1
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
       - REDIS_URL=redis://redis:6379/0
     deploy:

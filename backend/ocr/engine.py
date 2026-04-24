@@ -1,5 +1,5 @@
 """
-PaddleOCR wrapper with singleton management, inference locks, and batch processing.
+PaddleOCR wrapper with singleton management, inference locks, and GPU optimizations.
 """
 import logging
 import threading
@@ -16,7 +16,7 @@ class PaddleWrapper:
         "det_db_thresh": 0.3,
         "det_db_box_thresh": 0.6,
         "det_db_unclip_ratio": 1.5,
-        "rec_batch_num": 8,
+        "rec_batch_num": 16,
     }
 
     def __init__(self, lang: str = "en", use_gpu: bool = True) -> None:
