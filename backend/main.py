@@ -82,6 +82,20 @@ app.include_router(processing.router, prefix="/api/process", tags=["Processing"]
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 
+@app.get("/health")
+async def health_check():
+    """Returns API and Redis connectivity status."""
+    redis_up = False
+    try:
+        r = aioredis.from_url(settings.redis_url)
+        await r.ping()
+        redis_up = True
+        await r.aclose()
+    except Exception:
+        pass
+    return {"status": "ok", "redis": redis_up}
+
+
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
     """

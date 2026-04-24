@@ -16,6 +16,7 @@ const getOrCreateClientId = (): string => {
 
 export interface ProcessSlice {
   isProcessing: boolean;
+  stoppedJobId: string | null;
   progress: { current: number; total: number; eta: string };
   subtitles: SubtitleItem[];
   pastSubtitles: SubtitleItem[][];
@@ -24,6 +25,7 @@ export interface ProcessSlice {
   clientId: string;
   renderedVideoUrl: string | null;
   setProcessing: (isProcessing: boolean) => void;
+  setStoppedJobId: (id: string | null) => void;
   addLog: (msg: string) => void;
   updateProgress: (current: number, total: number, eta: string) => void;
   addSubtitle: (sub: SubtitleItem) => void;
@@ -39,6 +41,7 @@ export interface ProcessSlice {
 
 export const createProcessSlice: StateCreator<AppState, [], [], ProcessSlice> = (set) => ({
   isProcessing: false,
+  stoppedJobId: null,
   progress: { current: 0, total: 0, eta: '--:--' },
   subtitles: [],
   pastSubtitles: [],
@@ -48,6 +51,7 @@ export const createProcessSlice: StateCreator<AppState, [], [], ProcessSlice> = 
   renderedVideoUrl: null,
 
   setProcessing: (isProcessing) => set({ isProcessing }),
+  setStoppedJobId: (id) => set({ stoppedJobId: id }),
   addLog: (msg) => set((state) => ({ logs: [...state.logs, msg] })),
   updateProgress: (current, total, eta) => set({ progress: { current, total, eta } }),
   addSubtitle: (sub) => set((state) => ({ subtitles: [...state.subtitles, sub] })),
@@ -56,9 +60,9 @@ export const createProcessSlice: StateCreator<AppState, [], [], ProcessSlice> = 
 
   saveHistory: () => set((state) => {
     const lastPast = state.pastSubtitles[state.pastSubtitles.length - 1];
-    if (lastPast === state.subtitles) return state; // Prevent duplicate history states
+    if (lastPast === state.subtitles) return state;
     return {
-      pastSubtitles: [...state.pastSubtitles, state.subtitles].slice(-50), // Keep last 50 edits
+      pastSubtitles: [...state.pastSubtitles, state.subtitles].slice(-50),
       futureSubtitles: []
     };
   }),

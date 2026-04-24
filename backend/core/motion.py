@@ -4,14 +4,11 @@ Module providing motion and change detection algorithms for smart skipping.
 from typing import Any
 import cv2
 import numpy as np
-from core.filters import ensure_gpu, ensure_cpu, _has_cuda
+from core.gpu_utils import ensure_gpu, ensure_cpu, has_cuda
 from core.constants import MOTION_BLUR_KSIZE, MOTION_DIFF_THRESH, MOTION_PIXEL_COUNT_THRESH
 
 
 def _has_paddle() -> bool:
-    """
-    Dynamically checks for PaddlePaddle availability avoiding module-level execution.
-    """
     try:
         import paddle
         return True
@@ -20,9 +17,6 @@ def _has_paddle() -> bool:
 
 
 def detect_change_paddle(img1: Any, img2: Any) -> bool:
-    """
-    Performs GPU-based change detection using Paddle operations lazily.
-    """
     if not _has_paddle() or img1 is None or img2 is None:
         return True
     if img1.shape != img2.shape:
@@ -48,17 +42,21 @@ def detect_change_paddle(img1: Any, img2: Any) -> bool:
 
 
 def detect_change_absolute(img1: Any, img2: Any) -> bool:
-    """
-    Performs CPU or OpenCV-CUDA fallback change detection dynamically checking for CUDA.
-    """
     if img1 is None or img2 is None:
         return True
-    size1 = img1.size() if type(img1).__name__ == "GpuMat" else (img1.shape[1], img1.shape[0])
-    size2 = img2.size() if type(img2).__name__ == "GpuMat" else (img2.shape[1], img2.shape[0])
+    try:
+        size1 = img1.shape[1], img1.shape[0]
+        size2 = img2.shape[1], img2.shape[0]
+    except AttributeError:
+        try:
+            size1 = img1.size()
+            size2 = img2.size()
+        except Exception:
+            return True
     if size1 != size2:
         return True
 
-    if _has_cuda():
+    if has_cuda():
         try:
             gpu_1 = ensure_gpu(img1)
             gpu_2 = ensure_gpu(img2)

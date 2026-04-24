@@ -5,13 +5,14 @@ import os
 from fastapi import HTTPException
 from core.storage import storage_manager
 from core.config import settings
+from core.utils import validate_filename
 
 
 async def get_video_url(filename: str) -> str:
     """
     Resolves the video location returning either a presigned S3 URL or a local file path based on strict mode.
     """
-    safe_filename = os.path.basename(filename)
+    safe_filename = validate_filename(filename)
 
     if settings.storage_mode == "s3":
         url = await storage_manager.get_presigned_url(safe_filename)

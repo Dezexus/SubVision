@@ -8,6 +8,7 @@ import time
 import asyncio
 import tempfile
 from typing import Dict, Any
+import redis
 from arq.connections import RedisSettings
 
 from core.config import settings
@@ -27,8 +28,8 @@ async def shutdown(ctx: Dict[str, Any]) -> None:
 
 
 async def publish_ws(ctx: Dict[str, Any], client_id: str, payload: Dict[str, Any]) -> None:
-    redis = ctx['redis']
-    await redis.publish(f"ws_{client_id}", json.dumps(payload))
+    redis_conn = ctx['redis']
+    await redis_conn.publish(f"ws_{client_id}", json.dumps(payload))
 
 
 async def on_job_end_handler(ctx: Dict[str, Any], job_id: str, result: Any, exc: Exception) -> None:
@@ -45,10 +46,22 @@ async def on_job_end_handler(ctx: Dict[str, Any], job_id: str, result: Any, exc:
             logging.error(f"Failed to publish error state for {job_id}: {e}")
 
 
+def _make_cancel_check(job_id: str) -> callable:
+    def check() -> bool:
+        try:
+            r = redis.Redis.from_url(settings.redis_url)
+            flag = r.get(f"job:{job_id}:cancel")
+            return bool(flag)
+        except Exception:
+            return False
+    return check
+
+
 async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
     client_id = config['client_id']
     filename = config['filename']
     safe_filename = os.path.basename(filename)
+    job_id = ctx.get('job_id', 'unknown')
 
     loop = asyncio.get_running_loop()
 
@@ -70,8 +83,7 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
         def sub_cb(item: Dict[str, Any]) -> None:
             asyncio.run_coroutine_threadsafe(publish_ws(ctx, client_id, {"type": "subtitle_new", "item": item}), loop)
 
-        def cancel_check() -> bool:
-            return False
+        cancel_check = _make_cancel_check(job_id)
 
         success = await asyncio.to_thread(
             run_ocr_pipeline, local_video_path, config, log_cb, prog_cb, sub_cb, cancel_check
@@ -88,6 +100,7 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
     filename = config['filename']
     safe_filename = os.path.basename(filename)
     output_filename = f"blurred_{safe_filename}"
+    job_id = ctx.get('job_id', 'unknown')
 
     loop = asyncio.get_running_loop()
 
@@ -114,8 +127,7 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
                 loop
             )
 
-        def cancel_check() -> bool:
-            return False
+        cancel_check = _make_cancel_check(job_id)
 
         temp_video_path = await asyncio.to_thread(
             BlurManager.apply_blur_task_sync,

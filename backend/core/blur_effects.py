@@ -4,22 +4,10 @@ Module providing text obscuring effects combining targeted mask inpainting with 
 from typing import Tuple, Dict, Any, Optional
 import cv2
 import numpy as np
-
-
-def _has_cuda() -> bool:
-    """
-    Dynamically checks for CUDA availability avoiding module-level execution.
-    """
-    try:
-        return cv2.cuda.getCudaEnabledDeviceCount() > 0
-    except AttributeError:
-        return False
+from core.gpu_utils import has_cuda
 
 
 def generate_text_mask(frame: np.ndarray, roi: Tuple[int, int, int, int], font_size_px: int) -> np.ndarray:
-    """
-    Generates a tight binary mask around text contours within the specified region of interest.
-    """
     bx, by, bw, bh = roi
     pad = max(15, int(font_size_px * 0.5))
     h, w = frame.shape[:2]
@@ -60,9 +48,6 @@ def generate_text_mask(frame: np.ndarray, roi: Tuple[int, int, int, int], font_s
 
 
 def _apply_hybrid_inpaint(frame: np.ndarray, roi: Tuple[int, int, int, int], font_size_px: int, precalculated_mask: Optional[np.ndarray] = None) -> None:
-    """
-    Applies text-aware inpainting using a low-threshold gradient processed via Navier-Stokes.
-    """
     bx, by, bw, bh = roi
     pad = max(15, int(font_size_px * 0.5))
     h, w = frame.shape[:2]
@@ -102,9 +87,6 @@ def _apply_hybrid_inpaint(frame: np.ndarray, roi: Tuple[int, int, int, int], fon
 
 
 def _apply_cuda_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original_roi: np.ndarray, sigma: int, feather: int, alpha: float) -> np.ndarray:
-    """
-    Applies hardware-accelerated 3-pass box blur to the region and blends it with the original frame.
-    """
     bx, by, bw, bh = roi
     h, w = frame.shape[:2]
     gpu_frame = cv2.cuda_GpuMat()
@@ -181,9 +163,6 @@ def _apply_cuda_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original
 
 
 def _apply_cpu_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original_roi: np.ndarray, sigma: int, feather: int, alpha: float) -> np.ndarray:
-    """
-    Applies software-based 3-pass box blur to the region and blends it with the original frame.
-    """
     bx, by, bw, bh = roi
     h, w = frame.shape[:2]
     roi_img = frame[by:by+bh, bx:bx+bw]
@@ -238,9 +217,6 @@ def _apply_cpu_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original_
 
 
 def apply_blur_to_frame(frame: np.ndarray, roi: Tuple[int, int, int, int], settings: Dict[str, Any], alpha: float = 1.0, precalculated_mask: Optional[np.ndarray] = None) -> np.ndarray:
-    """
-    Coordinates the execution sequence of inpainting, blurring, and final compositing based on user settings.
-    """
     bx, by, bw, bh = roi
     if bw <= 0 or bh <= 0 or alpha <= 0.0:
         return frame
@@ -255,7 +231,7 @@ def apply_blur_to_frame(frame: np.ndarray, roi: Tuple[int, int, int, int], setti
     sigma = int(settings.get('sigma', 5))
     feather = int(settings.get('feather', 30))
 
-    if _has_cuda():
+    if has_cuda():
         try:
             return _apply_cuda_blur(frame, roi, original_roi, sigma, feather, alpha)
         except cv2.error:

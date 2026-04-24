@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Request
 from fastapi.responses import StreamingResponse
 from io import BytesIO
 import cv2
+import redis
 from arq.jobs import Job
 
 from api.schemas import ProcessConfig, RenderConfig, BlurPreviewConfig, BlurSettings
@@ -13,6 +14,7 @@ from api.dependencies import get_video_url
 from media.blur_manager import BlurManager
 from core.srt_parser import parse_srt
 from core.presets import get_all_presets, get_supported_languages
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -20,42 +22,27 @@ router = APIRouter()
 
 @router.get("/presets")
 async def get_presets():
-    """
-    Returns a list of all available OCR processing presets.
-    """
     return get_all_presets()
 
 
 @router.get("/languages")
 async def get_languages():
-    """
-    Returns a list of all supported OCR languages.
-    """
     return get_supported_languages()
 
 
 @router.get("/blur-defaults")
 async def get_blur_defaults():
-    """
-    Returns the default configuration values for blur settings.
-    """
     return BlurSettings().model_dump()
 
 
 @router.get("/process-defaults")
 async def get_process_defaults():
-    """
-    Returns the default configuration values for process settings.
-    """
     dummy = ProcessConfig(filename="", client_id="", roi=[0,0,0,0])
     return dummy.model_dump(exclude={"filename", "client_id", "roi"})
 
 
 @router.post("/start")
 async def start_process(config: ProcessConfig, request: Request):
-    """
-    Enqueues an OCR processing task to the ARQ message broker.
-    """
     try:
         pool = request.app.state.arq_pool
         job_id = f"ocr_{config.client_id}"
@@ -68,9 +55,6 @@ async def start_process(config: ProcessConfig, request: Request):
 
 @router.post("/stop/{client_id}")
 async def stop_process(client_id: str, request: Request):
-    """
-    Revokes active or pending tasks for a specific client session via ARQ.
-    """
     pool = request.app.state.arq_pool
     ocr_job = Job(f"ocr_{client_id}", pool)
     blur_job = Job(f"blur_{client_id}", pool)
@@ -78,14 +62,18 @@ async def stop_process(client_id: str, request: Request):
     ocr_stopped = await ocr_job.abort()
     blur_stopped = await blur_job.abort()
 
+    try:
+        r = redis.Redis.from_url(settings.redis_url)
+        r.setex(f"job:ocr_{client_id}:cancel", 3600, "1")
+        r.setex(f"job:blur_{client_id}:cancel", 3600, "1")
+    except Exception as e:
+        logger.warning(f"Could not set cancel flag in Redis: {e}")
+
     return {"status": "stopped", "ocr_stopped": ocr_stopped, "render_stopped": blur_stopped}
 
 
 @router.post("/import_srt")
 async def import_srt(file: UploadFile = File(...)):
-    """
-    Parses an uploaded SRT file and returns subtitle objects.
-    """
     try:
         content = await file.read()
         content_str = content.decode("utf-8")
@@ -104,9 +92,6 @@ async def import_srt(file: UploadFile = File(...)):
 
 @router.post("/preview_blur")
 async def preview_blur_frame(config: BlurPreviewConfig):
-    """
-    Generates a preview frame fetching the source video stream statelessly via S3 URL.
-    """
     video_url = await get_video_url(config.filename)
 
     try:
@@ -129,9 +114,6 @@ async def preview_blur_frame(config: BlurPreviewConfig):
 
 @router.post("/render_blur")
 async def render_blur_video(config: RenderConfig, request: Request):
-    """
-    Enqueues a video rendering and blurring task to the ARQ message broker.
-    """
     try:
         pool = request.app.state.arq_pool
         job_id = f"blur_{config.client_id}"

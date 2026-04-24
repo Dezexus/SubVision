@@ -7,65 +7,23 @@ import cv2
 import numpy as np
 
 from core.constants import SHARPEN_KERNEL_NP, SHARPEN_KERNEL_LIST
-
-
-def _has_cuda() -> bool:
-    """
-    Dynamically checks for CUDA availability avoiding module-level execution.
-    """
-    try:
-        return cv2.cuda.getCudaEnabledDeviceCount() > 0
-    except AttributeError:
-        return False
-
-
-def ensure_gpu(frame: Any) -> Any:
-    """
-    Uploads frame to GPU if currently on CPU.
-    """
-    if not _has_cuda():
-        return frame
-    if type(frame).__name__ == "GpuMat":
-        return frame
-    try:
-        gpu_mat = cv2.cuda_GpuMat()
-        gpu_mat.upload(frame)
-        return gpu_mat
-    except cv2.error:
-        return frame
-
-
-def ensure_cpu(frame: Any) -> np.ndarray:
-    """
-    Downloads frame to CPU if currently on GPU.
-    """
-    if not _has_cuda():
-        return frame
-    if type(frame).__name__ == "GpuMat":
-        return frame.download()
-    return frame
+from core.gpu_utils import has_cuda, ensure_gpu, ensure_cpu
 
 
 def _apply_cpu_denoise(cpu_frame: np.ndarray, h_val: float) -> np.ndarray:
-    """
-    Applies CPU-bound fast non-local means denoising.
-    """
     return cv2.fastNlMeansDenoisingColored(cpu_frame, None, h_val, h_val, 7, 21)
 
 
 def denoise_frame(frame: Any | None, strength: float) -> Any | None:
-    """
-    Applies Fast Non-Local Means Denoising using GPU or synchronous CPU fallback.
-    """
     if frame is None or strength <= 0:
         return frame
     h_val = float(strength)
 
-    if _has_cuda():
+    if has_cuda():
         try:
             gpu_mat = ensure_gpu(frame)
             denoised_gpu = cv2.cuda.fastNlMeansDenoisingColored(gpu_mat, h_val, h_val, 21, 7)
-            if type(frame).__name__ == "GpuMat":
+            if isinstance(frame, cv2.cuda_GpuMat):
                 return denoised_gpu
             return denoised_gpu.download()
         except cv2.error:
@@ -76,21 +34,18 @@ def denoise_frame(frame: Any | None, strength: float) -> Any | None:
 
 
 def apply_scaling(frame: Any | None, scale_factor: float) -> Any | None:
-    """
-    Resizes the frame using Bicubic interpolation.
-    """
     if frame is None:
         return None
     if scale_factor == 1.0:
         return frame
 
-    if _has_cuda():
+    if has_cuda():
         try:
             gpu_mat = ensure_gpu(frame)
             size = gpu_mat.size()
             new_size = (int(size[0] * scale_factor), int(size[1] * scale_factor))
             resized_gpu = cv2.cuda.resize(gpu_mat, new_size, interpolation=cv2.INTER_CUBIC)
-            if type(frame).__name__ == "GpuMat":
+            if isinstance(frame, cv2.cuda_GpuMat):
                 return resized_gpu
             return resized_gpu.download()
         except cv2.error:
@@ -101,18 +56,15 @@ def apply_scaling(frame: Any | None, scale_factor: float) -> Any | None:
 
 
 def apply_sharpening(frame: Any | None) -> Any | None:
-    """
-    Applies a sharpening filter kernel.
-    """
     if frame is None:
         return None
 
-    if _has_cuda():
+    if has_cuda():
         try:
             gpu_mat = ensure_gpu(frame)
             filter_gpu = cv2.cuda.createLinearFilter(cv2.CV_8UC3, cv2.CV_8UC3, SHARPEN_KERNEL_NP)
             result_gpu = filter_gpu.apply(gpu_mat)
-            if type(frame).__name__ == "GpuMat":
+            if isinstance(frame, cv2.cuda_GpuMat):
                 return result_gpu
             return result_gpu.download()
         except cv2.error:
@@ -123,9 +75,6 @@ def apply_sharpening(frame: Any | None) -> Any | None:
 
 
 def apply_scaling_paddle(tensor: Any, scale_factor: float) -> Any:
-    """
-    Applies bicubic scaling directly on a Paddle GPU tensor.
-    """
     import paddle
     import paddle.nn.functional as F
 
@@ -138,9 +87,6 @@ def apply_scaling_paddle(tensor: Any, scale_factor: float) -> Any:
 
 
 def apply_sharpening_paddle(tensor: Any) -> Any:
-    """
-    Applies sharpening convolution on a Paddle GPU tensor.
-    """
     import paddle
     import paddle.nn.functional as F
 

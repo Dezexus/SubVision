@@ -15,6 +15,7 @@ from api.dependencies import get_video_url
 from core.storage import storage_manager
 from core.config import settings
 from core.video_io import get_video_dar
+from core.utils import validate_filename
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -104,8 +105,7 @@ async def complete_upload(req: UploadCompleteRequest) -> VideoMetadata:
 
 @router.delete("/delete/{filename}")
 async def delete_video(filename: str):
-    """Deletes a video file from storage."""
-    safe_filename = os.path.basename(filename)
+    safe_filename = validate_filename(filename)
     success = await storage_manager.delete_file(safe_filename)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to delete file.")
@@ -113,7 +113,7 @@ async def delete_video(filename: str):
 
 @router.get("/download/{filename}")
 async def download_file(filename: str):
-    safe_filename = os.path.basename(filename)
+    safe_filename = validate_filename(filename)
     if settings.storage_mode == "s3":
         url = await storage_manager.get_presigned_url(safe_filename)
         if url:
@@ -129,8 +129,8 @@ async def download_file(filename: str):
 
 @router.get("/frame/{filename}/{frame_index}")
 async def get_frame(filename: str, frame_index: int):
-    """Returns a single video frame as JPEG."""
-    video_url = await get_video_url(filename)
+    safe_filename = validate_filename(filename)
+    video_url = await get_video_url(safe_filename)
     image = await asyncio.to_thread(VideoManager.get_frame_image, video_url, frame_index)
     if image is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Frame not found")

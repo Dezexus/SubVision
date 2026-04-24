@@ -23,7 +23,9 @@ export const useSocket = () => {
     addSubtitle,
     updateSubtitle,
     setProcessing,
-    setRenderedVideoUrl
+    setRenderedVideoUrl,
+    isProcessing,
+    stoppedJobId,
   } = useAppStore();
 
   const { lastJsonMessage, sendJsonMessage } = useWebSocket(`${SOCKET_URL}/${clientId}`, {
@@ -43,8 +45,14 @@ export const useSocket = () => {
     if (!lastJsonMessage) return;
 
     const msg = lastJsonMessage as WebSocketMessage | { type: 'pong' };
-
     if (msg.type === 'pong') return;
+
+    const currentProcessing = useAppStore.getState().isProcessing;
+    const currentStopped = useAppStore.getState().stoppedJobId;
+
+    if (!currentProcessing && currentStopped) {
+      return;
+    }
 
     switch (msg.type) {
       case 'log':
@@ -62,16 +70,16 @@ export const useSocket = () => {
       case 'finish':
         setProcessing(false);
         if (msg.success) {
-            addLog('--- Process Completed Successfully ---');
-            if (msg.download_url) {
-                const uniqueUrl = `${msg.download_url}?t=${Date.now()}`;
-                setRenderedVideoUrl(uniqueUrl);
-            }
+          addLog('--- Process Completed Successfully ---');
+          if (msg.download_url) {
+            const uniqueUrl = `${msg.download_url}?t=${Date.now()}`;
+            setRenderedVideoUrl(uniqueUrl);
+          }
         } else {
-            addLog('--- Process Failed ---');
-            if (msg.error) {
-                addLog(`Error details: ${msg.error}`);
-            }
+          addLog('--- Process Failed ---');
+          if (msg.error) {
+            addLog(`Error details: ${msg.error}`);
+          }
         }
         break;
       default:

@@ -23,7 +23,8 @@ export const SettingsPanel = () => {
     defaultConfig,
     setDefaultConfig,
     setPreset,
-    resetProject
+    resetProject,
+    setStoppedJobId,
   } = useAppStore();
 
   useEffect(() => {
@@ -47,6 +48,7 @@ export const SettingsPanel = () => {
   const handleStart = async () => {
     if (!metadata || !defaultConfig) return;
     setProcessing(true);
+    setStoppedJobId(null);
     addLog('--- Starting Process ---');
     try {
       await api.startProcessing({
@@ -68,10 +70,12 @@ export const SettingsPanel = () => {
 
   const handleStop = async () => {
     try {
+      setStoppedJobId(`ocr_${clientId}`);
+      setProcessing(false);
       await api.stopProcessing(clientId);
+      addLog('--- Processing stopped by user ---');
     } catch (e) {
       console.error("Failed to send stop signal", e);
-      setProcessing(false);
     }
   };
 
