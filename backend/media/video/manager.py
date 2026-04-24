@@ -3,7 +3,6 @@ Module for handling standard video metadata parsing and conversions asynchronous
 """
 import logging
 import os
-import asyncio
 from typing import Any, Tuple
 
 import cv2
@@ -19,43 +18,6 @@ class VideoManager:
     """
     A collection of static methods for video conversion, metadata extraction, and previews.
     """
-
-    @staticmethod
-    async def convert_video_to_h264(input_path: str) -> str | None:
-        if not input_path:
-            return None
-
-        output_path = f"{os.path.splitext(input_path)[0]}_converted.mp4"
-        if os.path.exists(output_path):
-            return output_path
-
-        logger.info(f"Attempting to convert {input_path} to a compatible format...")
-        cmd = [
-            "ffmpeg", "-y", "-i", input_path, "-c:v", "libx264",
-            "-preset", "ultrafast", "-crf", "26", "-c:a", "aac", "-b:a", "192k",
-            output_path,
-        ]
-        try:
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL
-            )
-            await process.wait()
-
-            if process.returncode == 0:
-                logger.info("Conversion successful.")
-                return output_path
-
-            logger.error("FFmpeg conversion failed.")
-            if os.path.exists(output_path):
-                os.remove(output_path)
-            return None
-        except Exception:
-            logger.error("FFmpeg conversion failed.")
-            if os.path.exists(output_path):
-                os.remove(output_path)
-            return None
 
     @staticmethod
     def get_video_info(video_path: str | None) -> Tuple[np.ndarray | None, int, int]:

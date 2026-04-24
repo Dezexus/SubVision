@@ -13,7 +13,6 @@ export const WelcomeScreen = () => {
     isUploading,
     uploadProgress,
     errorMsg,
-    isConverting,
     dragHandlers,
     onFileInputChange
   } = useVideoUpload();
@@ -98,9 +97,7 @@ export const WelcomeScreen = () => {
                 ? "bg-bg-panel"
                 : "bg-bg-input group-hover:bg-brand-500 group-hover:text-white text-txt-muted shadow-sm group-hover:shadow-md group-hover:-translate-y-1"
             )}>
-              {isConverting ? (
-                  <Loader2 size={28} className="animate-spin text-amber-500" />
-              ) : isUploading ? (
+              {isUploading ? (
                   <Loader2 size={28} className="animate-spin text-brand-500" />
               ) : (
                   <Upload size={28} />
@@ -111,8 +108,8 @@ export const WelcomeScreen = () => {
               <h2 className="text-lg font-medium text-txt-main">
                 {isUploading ? (uploadProgress === 100 ? 'Processing...' : `Uploading ${uploadProgress}%...`) : 'Select or drop video'}
               </h2>
-              <p className={cn("text-xs", isConverting ? "text-amber-500 animate-pulse font-medium" : "text-txt-subtle")}>
-                {isUploading ? (isConverting ? 'Converting to H.264 format...' : 'Analyzing file structure...') : displayExts}
+              <p className={cn("text-xs", isUploading ? "text-amber-500 animate-pulse font-medium" : "text-txt-subtle")}>
+                {isUploading ? 'Analyzing file structure...' : displayExts}
               </p>
               {errorMsg && (
                 <div className="flex items-center justify-center gap-1.5 text-red-400 text-xs mt-3 font-medium bg-red-500/10 py-1 px-3 rounded border border-red-500/20">

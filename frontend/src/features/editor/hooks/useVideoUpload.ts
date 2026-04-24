@@ -3,13 +3,11 @@ import { useAppStore } from '../../../store/useAppStore';
 import { api } from '../../../services/api';
 
 export const useVideoUpload = () => {
-  const { setFile, setMetadata, addLog, clientId, logs, addToast, allowedExtensions, resetProject } = useAppStore();
+  const { setFile, setMetadata, addLog, clientId, addToast, allowedExtensions, resetProject } = useAppStore();
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  const isConverting = logs.includes('CONVERTING_CODEC');
 
   const handleFile = useCallback(async (selectedFile: File) => {
     setErrorMsg(null);
@@ -78,7 +76,6 @@ export const useVideoUpload = () => {
     isUploading,
     uploadProgress,
     errorMsg,
-    isConverting,
     dragHandlers: {
       onDrop,
       onDragOver,

@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
     tzdata \
+    libdav1d5 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
@@ -52,6 +53,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxext6 \
     wget \
     tzdata \
+    libdav1d5 \
     && ln -s /usr/bin/python3.10 /usr/bin/python \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
