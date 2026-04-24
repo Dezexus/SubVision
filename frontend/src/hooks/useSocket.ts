@@ -13,22 +13,22 @@ const getSocketUrl = () => {
 const SOCKET_URL = getSocketUrl();
 
 export const useSocket = () => {
-  const {
-    clientId,
-    addLog,
-    updateProgress,
-    addSubtitle,
-    updateSubtitle,
-    setProcessing,
-    setRenderedVideoUrl,
-    isProcessing,
-    stoppedJobId,
-  } = useAppStore();
+  const clientId = useAppStore((state) => state.clientId);
+  const addLog = useAppStore((state) => state.addLog);
+  const updateProgress = useAppStore((state) => state.updateProgress);
+  const addSubtitle = useAppStore((state) => state.addSubtitle);
+  const updateSubtitle = useAppStore((state) => state.updateSubtitle);
+  const setProcessing = useAppStore((state) => state.setProcessing);
+  const setRenderedVideoUrl = useAppStore((state) => state.setRenderedVideoUrl);
+  const stoppedJobId = useAppStore((state) => state.stoppedJobId);
 
-  const { lastJsonMessage } = useWebSocket(`${SOCKET_URL}/${clientId}`, {
-    shouldReconnect: () => true,
-    reconnectInterval: 3000,
-  });
+  const { lastJsonMessage } = useWebSocket(
+    clientId ? `${SOCKET_URL}/${clientId}` : null,
+    {
+      shouldReconnect: () => true,
+      reconnectInterval: 3000,
+    }
+  );
 
   useEffect(() => {
     if (!lastJsonMessage) return;

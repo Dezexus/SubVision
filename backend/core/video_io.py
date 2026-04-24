@@ -1,6 +1,6 @@
 """
-Module for extracting frames from video streams robustly.
-Also provides correction for non‑square pixels (SAR).
+Extracts frames and video metadata.
+Provides caching for Display Aspect Ratio.
 """
 import functools
 import logging
@@ -10,10 +10,38 @@ from typing import Optional, Tuple, Dict, Any
 import cv2
 import numpy as np
 
+_dar_cache: Dict[str, float] = {}
+
+
+def get_video_dar(video_path: str) -> Optional[float]:
+    """Return Display Aspect Ratio, using cached value if available."""
+    if video_path in _dar_cache:
+        return _dar_cache[video_path]
+    cmd = [
+        "ffprobe", "-v", "quiet", "-print_format", "json",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=width,height,sample_aspect_ratio",
+        video_path
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        stream = data.get("streams", [{}])[0]
+        width = int(stream.get("width", 1))
+        height = int(stream.get("height", 1))
+        sar = stream.get("sample_aspect_ratio", "1:1")
+        if sar == "N/A":
+            sar = "1:1"
+        sar_num, sar_den = map(int, sar.split(':'))
+        dar = (width / height) * (sar_num / sar_den)
+        _dar_cache[video_path] = dar
+        return dar
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"Failed to get DAR for {video_path}: {e}")
+        return None
+
+
 def create_video_capture(video_path: str) -> cv2.VideoCapture:
-    """
-    Creates a robust cv2.VideoCapture instance with hardware acceleration fallback.
-    """
     cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY])
     ok, _ = cap.read()
 
@@ -34,10 +62,6 @@ def create_video_capture(video_path: str) -> cv2.VideoCapture:
 
 
 def get_video_metadata(video_path: str) -> Dict[str, Any]:
-    """
-    Extracts reliable video metadata (width, height, fps, total frames) via ffprobe.
-    Raises RuntimeError if essential information is missing.
-    """
     cmd = [
         "ffprobe", "-v", "quiet", "-print_format", "json",
         "-select_streams", "v:0",
@@ -76,60 +100,22 @@ def get_video_metadata(video_path: str) -> Dict[str, Any]:
     }
 
 
-def get_video_dar(video_path: str) -> Optional[float]:
-    """
-    Extracts the Display Aspect Ratio (DAR) of a video using ffprobe.
-    Returns None if the information cannot be retrieved.
-    """
-    cmd = [
-        "ffprobe", "-v", "quiet", "-print_format", "json",
-        "-select_streams", "v:0",
-        "-show_entries", "stream=width,height,sample_aspect_ratio",
-        video_path
-    ]
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        data = json.loads(result.stdout)
-        stream = data.get("streams", [{}])[0]
-        width = int(stream.get("width", 1))
-        height = int(stream.get("height", 1))
-        sar = stream.get("sample_aspect_ratio", "1:1")
-        if sar == "N/A":
-            sar = "1:1"
-        sar_num, sar_den = map(int, sar.split(':'))
-        dar = (width / height) * (sar_num / sar_den)
-        return dar
-    except Exception as e:
-        logging.getLogger(__name__).warning(f"Failed to get DAR for {video_path}: {e}")
-        return None
-
-
 def _correct_sar(frame: np.ndarray, src_width: int, src_height: int, dar: float) -> np.ndarray:
-    """
-    Resizes the frame horizontally so that its physical aspect ratio becomes equal to DAR.
-    Returns the corrected frame (may be larger in width).
-    """
     current_par = src_width / src_height
     if abs(current_par - dar) < 1e-3:
         return frame
     new_width = int(round(src_height * dar))
     if new_width == src_width:
         return frame
-    corrected = cv2.resize(frame, (new_width, src_height), interpolation=cv2.INTER_CUBIC)
-    return corrected
+    return cv2.resize(frame, (new_width, src_height), interpolation=cv2.INTER_CUBIC)
 
 
 @functools.lru_cache(maxsize=32)
 def extract_frame_cv2(video_path: str, frame_index: int, dar: Optional[float] = None) -> Optional[Tuple[np.ndarray, int]]:
-    """
-    Extracts a single frame using HW-accelerated capture with FFmpeg subprocess fallbacks.
-    If DAR is provided and differs from the pixel aspect ratio, the frame is resized
-    to obtain correct physical proportions. Returns the corrected frame and its new width.
-    """
     if not video_path:
         return None
 
-    def _try_read(cap_obj: cv2.VideoCapture, idx: int, fps_val: float) -> tuple[bool, np.ndarray | None]:
+    def _try_read(cap_obj, idx, fps_val):
         cap_obj.set(cv2.CAP_PROP_POS_FRAMES, idx)
         success, frm = cap_obj.read()
         if not success and fps_val > 0:
@@ -190,13 +176,7 @@ def extract_frame_cv2(video_path: str, frame_index: int, dar: Optional[float] = 
 
 def iter_frames_ffmpeg(video_path: str, step: int = 1, fps: float = 25.0, total: int = 0,
                         width: int = 0, height: int = 0,
-                        use_hwaccel: bool = True) -> None:
-    """
-    Generator that yields frames via system ffmpeg pipe.
-    Requires explicit width/height to avoid a secondary metadata probe.
-
-    Yields tuples (frame_index, timestamp, bgr_frame).
-    """
+                        use_hwaccel: bool = True):
     if total <= 0 or fps <= 0 or width <= 0 or height <= 0:
         raise RuntimeError("Invalid video metadata for ffmpeg pipe")
 

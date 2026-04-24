@@ -1,17 +1,21 @@
-/**
- * Zustand slice for processing state, history tracking (undo/redo), and subtitles.
- */
 import { StateCreator } from 'zustand';
 import type { SubtitleItem } from '../../types';
 import type { AppState } from '../types';
+import { api } from '../../services/api';
 
-const getOrCreateClientId = (): string => {
+let cachedClientId: string | null = null;
+
+const getOrCreateClientId = async (): Promise<string> => {
+  if (cachedClientId) return cachedClientId;
   const stored = sessionStorage.getItem('subvision_client_id');
-  if (stored) return stored;
-
-  const newId = crypto.randomUUID();
-  sessionStorage.setItem('subvision_client_id', newId);
-  return newId;
+  if (stored) {
+    cachedClientId = stored;
+    return stored;
+  }
+  const { client_id } = await api.registerSession();
+  sessionStorage.setItem('subvision_client_id', client_id);
+  cachedClientId = client_id;
+  return client_id;
 };
 
 export interface ProcessSlice {
@@ -22,8 +26,9 @@ export interface ProcessSlice {
   pastSubtitles: SubtitleItem[][];
   futureSubtitles: SubtitleItem[][];
   logs: string[];
-  clientId: string;
+  clientId: string | null;
   renderedVideoUrl: string | null;
+  initializeClientId: () => Promise<void>;
   setProcessing: (isProcessing: boolean) => void;
   setStoppedJobId: (id: string | null) => void;
   addLog: (msg: string) => void;
@@ -39,7 +44,7 @@ export interface ProcessSlice {
   redo: () => void;
 }
 
-export const createProcessSlice: StateCreator<AppState, [], [], ProcessSlice> = (set) => ({
+export const createProcessSlice: StateCreator<AppState, [], [], ProcessSlice> = (set, get) => ({
   isProcessing: false,
   stoppedJobId: null,
   progress: { current: 0, total: 0, eta: '--:--' },
@@ -47,8 +52,13 @@ export const createProcessSlice: StateCreator<AppState, [], [], ProcessSlice> = 
   pastSubtitles: [],
   futureSubtitles: [],
   logs: [],
-  clientId: getOrCreateClientId(),
+  clientId: null,
   renderedVideoUrl: null,
+
+  initializeClientId: async () => {
+    const id = await getOrCreateClientId();
+    set({ clientId: id });
+  },
 
   setProcessing: (isProcessing) => set({ isProcessing }),
   setStoppedJobId: (id) => set({ stoppedJobId: id }),

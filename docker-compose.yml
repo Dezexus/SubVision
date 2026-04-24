@@ -53,6 +53,11 @@ services:
               count: 1
               capabilities: [compute, utility, video]
     shm_size: '${SHM_SIZE:-2gb}'
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'arq worker' || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
 
 volumes:
   paddle_models:

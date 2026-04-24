@@ -11,7 +11,15 @@ import { useAppStore } from './store/useAppStore';
 import { useSocket } from './hooks/useSocket';
 
 function App() {
+  const initializeClientId = useAppStore((state) => state.initializeClientId);
+  const clientId = useAppStore((state) => state.clientId);
+  
+  useEffect(() => {
+    initializeClientId();
+  }, [initializeClientId]);
+
   useSocket();
+
   const file = useAppStore((state) => state.file);
   const metadata = useAppStore((state) => state.metadata);
   const undo = useAppStore((state) => state.undo);

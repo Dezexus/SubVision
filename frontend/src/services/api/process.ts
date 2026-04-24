@@ -1,11 +1,13 @@
-/**
- * API methods related to subtitle processing and video rendering.
- */
 import axios from 'axios';
 import { API_URL } from './config';
 import type { ProcessConfig, RenderConfig, SubtitleItem, BlurSettings, Preset, Language } from '../../types';
 
 export const processApi = {
+  registerSession: async (): Promise<{ client_id: string }> => {
+    const response = await axios.post(`${API_URL}/session/register`);
+    return response.data;
+  },
+
   getPresets: async (): Promise<Preset[]> => {
     const response = await axios.get(`${API_URL}/process/presets`);
     return response.data;

@@ -16,7 +16,7 @@ import redis.asyncio as aioredis
 from arq import create_pool
 from arq.connections import RedisSettings
 
-from api.routers import video, processing
+from api.routers import video, processing, session
 from api.websockets.manager import connection_manager
 from api.schemas import WebSocketMessage
 from core.config import settings
@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 
 
 async def cleanup_loop():
-    """Periodically removes stale temporary upload directories."""
     while True:
         await asyncio.sleep(3600)
         temp_root = Path(settings.cache_dir) / ".temp"
@@ -45,9 +44,6 @@ async def cleanup_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Manages application startup and shutdown lifecycle events.
-    """
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     app.state.arq_pool = await create_pool(redis_settings)
 
@@ -78,13 +74,13 @@ app.add_middleware(
 
 app.include_router(video.router, prefix="/api/video", tags=["Video"])
 app.include_router(processing.router, prefix="/api/process", tags=["Processing"])
+app.include_router(session.router, prefix="/api/session", tags=["Session"])
 
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 
 @app.get("/health")
 async def health_check():
-    """Returns API and Redis connectivity status."""
     redis_up = False
     try:
         r = aioredis.from_url(settings.redis_url)
@@ -98,9 +94,15 @@ async def health_check():
 
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
-    """
-    Handles highly resilient WebSocket connections mapping Redis Pub/Sub messages.
-    """
+    redis_client = aioredis.from_url(settings.redis_url)
+    valid = await redis_client.get(f"ws_valid:{client_id}")
+    if not valid:
+        await websocket.close(code=4001, reason="Invalid or expired client ID")
+        await redis_client.aclose()
+        return
+    await redis_client.expire(f"ws_valid:{client_id}", 3600)
+    await redis_client.aclose()
+
     await connection_manager.connect(websocket, client_id)
 
     redis_client = None

@@ -1,25 +1,25 @@
 """
 Applies video blurring and obscuring effects.
 """
-import cv2
 import os
 import logging
-import numpy as np
+import time
 from typing import Optional, Tuple, List, Dict, Any, Callable
+import cv2
+import numpy as np
 
 from core.geometry import calculate_blur_roi
 from core.blur_effects import apply_blur_to_frame, generate_text_mask
-from core.video_io import extract_frame_cv2, create_video_capture
+from core.video_io import get_video_dar, get_video_metadata, iter_frames_ffmpeg
 from core.constants import DEFAULT_FPS
 
 logger = logging.getLogger(__name__)
 
 
 class BlurManager:
-    """Provides stateless video blurring functionality using a sequential processing pipeline."""
-
     @staticmethod
     def generate_preview(video_path: str, frame_index: int, settings: Dict[str, Any], text: str) -> Optional[np.ndarray]:
+        from core.video_io import extract_frame_cv2
         cached = extract_frame_cv2(video_path, frame_index)
         if cached is None:
             return None
@@ -41,43 +41,36 @@ class BlurManager:
         base_name, ext = os.path.splitext(output_path)
         temp_video_path = f"{base_name}_temp{ext}"
 
-        cap = create_video_capture(video_path)
-        if not cap.isOpened():
-            raise ValueError("Could not open video file")
-
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps = cap.get(cv2.CAP_PROP_FPS) or DEFAULT_FPS
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        meta = get_video_metadata(video_path)
+        width = meta["width"]
+        height = meta["height"]
+        fps = meta["fps"]
+        total_frames = meta["total_frames"]
 
         font_size_px = int(blur_settings.get('font_size', 21))
-        sample_frames = {}
+
+        sample_frame = None
         for sub in subtitles:
             sub_id = sub.get('id', -1)
             start_f = max(0, int(sub['start'] * fps))
             end_f = min(total_frames - 1, int(sub['end'] * fps))
             mid_f = (start_f + end_f) // 2
-            sample_frames[sub_id] = mid_f
+            for f_idx, _, frame in iter_frames_ffmpeg(video_path, step=1, fps=fps, total=total_frames, width=width, height=height, use_hwaccel=False):
+                if f_idx == mid_f:
+                    sample_frame = frame
+                    break
+            if sample_frame is not None:
+                break
 
-        cap_for_masks = create_video_capture(video_path)
-        mask_frames = {}
-        if cap_for_masks.isOpened():
-            for sub_id, f_idx in sample_frames.items():
-                cap_for_masks.set(cv2.CAP_PROP_POS_FRAMES, f_idx)
-                ret, frm = cap_for_masks.read()
-                if ret and frm is not None:
-                    mask_frames[sub_id] = frm
-            cap_for_masks.release()
-
-        subtitle_masks = {}
-        if blur_settings.get('mode', 'hybrid') == 'hybrid':
+        subtitle_masks: Dict[int, np.ndarray] = {}
+        if blur_settings.get('mode', 'hybrid') == 'hybrid' and sample_frame is not None:
             for sub in subtitles:
                 sub_id = sub.get('id', -1)
                 text = sub.get('text', '').strip()
-                if not text or sub_id not in mask_frames:
+                if not text:
                     continue
                 roi = calculate_blur_roi(text, width, height, blur_settings)
-                mask = generate_text_mask(mask_frames[sub_id], roi, font_size_px)
+                mask = generate_text_mask(sample_frame, roi, font_size_px)
                 subtitle_masks[sub_id] = mask
 
         frame_blur_map: Dict[int, Tuple[Tuple[int, int, int, int], int]] = {}
@@ -94,18 +87,14 @@ class BlurManager:
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         writer = cv2.VideoWriter(temp_video_path, fourcc, fps, (width, height))
 
+        frame_idx = 0
         try:
-            frame_idx = 0
-            while cap.isOpened():
+            for f_idx, _, frame in iter_frames_ffmpeg(video_path, step=1, fps=fps, total=total_frames, width=width, height=height, use_hwaccel=True):
                 if cancel_check():
                     raise InterruptedError("Stopped by user")
 
-                ret, frame = cap.read()
-                if not ret:
-                    break
-
-                if frame_idx in frame_blur_map:
-                    roi, sub_id = frame_blur_map[frame_idx]
+                if f_idx in frame_blur_map:
+                    roi, sub_id = frame_blur_map[f_idx]
                     precalc_mask = subtitle_masks.get(sub_id)
                     frame = apply_blur_to_frame(frame, roi, blur_settings, precalculated_mask=precalc_mask)
 
@@ -118,7 +107,6 @@ class BlurManager:
 
             progress_callback(total_frames, total_frames)
         finally:
-            cap.release()
             writer.release()
 
         return temp_video_path, total_frames

@@ -19,12 +19,29 @@ from media.transcoder import FFmpegTranscoder
 from ocr.worker import run_ocr_pipeline
 
 
+_redis_pool = None
+
+
+def _get_redis_pool():
+    global _redis_pool
+    if _redis_pool is None:
+        _redis_pool = redis.ConnectionPool.from_url(settings.redis_url, max_connections=10)
+    return _redis_pool
+
+
+def _redis_client():
+    return redis.Redis(connection_pool=_get_redis_pool())
+
+
 async def startup(ctx: Dict[str, Any]) -> None:
     logging.info("Worker starting up...")
 
 
 async def shutdown(ctx: Dict[str, Any]) -> None:
     logging.info("Worker shutting down...")
+    global _redis_pool
+    if _redis_pool:
+        _redis_pool.disconnect()
 
 
 async def publish_ws(ctx: Dict[str, Any], client_id: str, payload: Dict[str, Any]) -> None:
@@ -51,10 +68,7 @@ async def on_job_end_handler(ctx: Dict[str, Any], job_id: str, result: Any, exc:
 
 
 class ProgressReporter:
-    """Thread-safe reporter sending throttled progress via Redis Pub/Sub."""
-
-    def __init__(self, redis_client: redis.Redis, client_id: str) -> None:
-        self._redis = redis_client
+    def __init__(self, client_id: str) -> None:
         self._client_id = client_id
         self._last_progress = None
         self._throttle_interval = 0.2
@@ -64,29 +78,42 @@ class ProgressReporter:
     def set_total(self, total: int) -> None:
         self._total = total
 
-    def _send_progress(self) -> None:
-        if self._last_progress:
-            self._redis.publish(f"ws_{self._client_id}", json.dumps(self._last_progress))
+    def _send(self, payload: dict) -> None:
+        r = _redis_client()
+        try:
+            r.publish(f"ws_{self._client_id}", json.dumps(payload))
+        finally:
+            r.close()
 
-    def _throttled_progress(self, payload: Dict[str, Any]) -> None:
+    def log(self, message: str) -> None:
+        self._send({"type": "log", "message": message})
+
+    def progress(self, current: int, total: int, eta: str) -> None:
         now = time.time()
         if now - self._throttle_ts >= self._throttle_interval:
             self._throttle_ts = now
-            self._redis.publish(f"ws_{self._client_id}", json.dumps(payload))
-        self._last_progress = payload
-
-    def log(self, message: str) -> None:
-        self._redis.publish(f"ws_{self._client_id}", json.dumps({"type": "log", "message": message}))
-
-    def progress(self, current: int, total: int, eta: str) -> None:
-        self._throttled_progress({"type": "progress", "current": current, "total": total, "eta": eta})
+            self._send({"type": "progress", "current": current, "total": total, "eta": eta})
+        self._last_progress = {"type": "progress", "current": current, "total": total, "eta": eta}
 
     def subtitle(self, item: Dict[str, Any]) -> None:
-        self._redis.publish(f"ws_{self._client_id}", json.dumps({"type": "subtitle_new", "item": item}))
+        self._send({"type": "subtitle_new", "item": item})
 
     def done(self) -> None:
         payload = {"type": "progress", "current": self._total, "total": self._total, "eta": "00:00"}
-        self._redis.publish(f"ws_{self._client_id}", json.dumps(payload))
+        self._send(payload)
+
+
+def _make_cancel_check(job_id: str):
+    def check() -> bool:
+        r = _redis_client()
+        try:
+            flag = r.get(f"job:{job_id}:cancel")
+            return bool(flag)
+        except Exception:
+            return False
+        finally:
+            r.close()
+    return check
 
 
 async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
@@ -95,9 +122,7 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
     safe_filename = os.path.basename(filename)
     job_id = ctx.get('job_id', 'unknown')
 
-    loop = asyncio.get_running_loop()
-    redis_sync = redis.Redis.from_url(settings.redis_url, decode_responses=False)
-    reporter = ProgressReporter(redis_sync, client_id)
+    reporter = ProgressReporter(client_id)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         local_video_path = os.path.join(tmpdir, safe_filename)
@@ -108,7 +133,7 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
         if not dl_ok:
             raise FileNotFoundError(f"Source video file '{safe_filename}' not found in storage.")
 
-        cancel_check = (lambda: bool(redis_sync.get(f"job:{job_id}:cancel")))
+        cancel_check = _make_cancel_check(job_id)
 
         success = await asyncio.to_thread(
             run_ocr_pipeline, local_video_path, config, reporter, cancel_check
@@ -128,9 +153,7 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
     output_filename = f"blurred_{safe_filename}"
     job_id = ctx.get('job_id', 'unknown')
 
-    loop = asyncio.get_running_loop()
-    redis_sync = redis.Redis.from_url(settings.redis_url, decode_responses=False)
-    reporter = ProgressReporter(redis_sync, client_id)
+    reporter = ProgressReporter(client_id)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         local_video_path = os.path.join(tmpdir, safe_filename)
@@ -152,7 +175,7 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
             eta_str = f"{eta_sec // 60:02d}:{eta_sec % 60:02d}"
             reporter.progress(c, t, eta_str)
 
-        cancel_check = (lambda: bool(redis_sync.get(f"job:{job_id}:cancel")))
+        cancel_check = _make_cancel_check(job_id)
 
         temp_video_path, total_frames = await asyncio.to_thread(
             BlurManager.apply_blur_task_sync,
