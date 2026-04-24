@@ -1,10 +1,8 @@
-/**
- * Zustand slice for video file and metadata management including global project reset.
- */
 import { StateCreator } from 'zustand';
 import type { VideoMetadata } from '../../types';
 import type { AppState } from '../types';
 import { api } from '../../services/api';
+import { clearFrameCache } from '../../features/editor/hooks/useVideoFrame';
 
 export interface VideoSlice {
   file: File | null;
@@ -39,6 +37,7 @@ export const createVideoSlice: StateCreator<AppState, [], [], VideoSlice> = (set
     if (state.metadata) {
       api.deleteVideo(state.metadata.filename).catch(() => {});
     }
+    clearFrameCache();
     set({
       file: null,
       metadata: null,

@@ -3,7 +3,7 @@ import os
 import logging
 import cv2
 import asyncio
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, status, Depends, Form, UploadFile, File
 from fastapi.responses import StreamingResponse, RedirectResponse, FileResponse
 from io import BytesIO
@@ -34,7 +34,8 @@ class UploadPart(BaseModel):
 class UploadCompleteRequest(BaseModel):
     filename: str
     upload_id: str
-    parts: List[UploadPart]
+    total_chunks: int
+    parts: Optional[List[UploadPart]] = None
 
 @router.get("/allowed-extensions")
 async def get_allowed_extensions() -> List[str]:
@@ -71,13 +72,17 @@ async def upload_local_chunk(
 
 @router.post("/upload/complete")
 async def complete_upload(req: UploadCompleteRequest) -> VideoMetadata:
-    parts_dict = [{"PartNumber": p.PartNumber, "ETag": p.ETag} for p in req.parts]
     if settings.storage_mode == "s3":
+        if not req.parts:
+            raise HTTPException(status_code=400, detail="Parts list is required for S3 upload")
+        parts_dict = [{"PartNumber": p.PartNumber, "ETag": p.ETag} for p in req.parts]
         success = await storage_manager.complete_multipart_upload(req.filename, req.upload_id, parts_dict)
     else:
-        success = await storage_manager.complete_local_upload(req.upload_id, req.filename, len(req.parts))
+        success = await storage_manager.complete_local_upload(req.upload_id, req.filename, req.total_chunks)
+
     if not success:
         raise HTTPException(status_code=500, detail="Failed to complete storage upload.")
+
     video_url = await get_video_url(req.filename)
     frame, total_frames, corrected_width = await asyncio.to_thread(VideoManager.get_video_info, video_url)
     if frame is None:

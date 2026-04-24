@@ -45,7 +45,6 @@ services:
       - FLAGS_fraction_of_gpu_memory_to_use=0.9
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
       - REDIS_URL=redis://redis:6379/0
-      - SHM_SIZE=${SHM_SIZE:-2gb}
     deploy:
       resources:
         reservations:

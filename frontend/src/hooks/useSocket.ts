@@ -1,6 +1,3 @@
-/**
- * WebSocket hook for real-time bidirectional communication.
- */
 import { useEffect } from 'react';
 import useWebSocket from 'react-use-websocket';
 import { useAppStore } from '../store/useAppStore';
@@ -28,18 +25,10 @@ export const useSocket = () => {
     stoppedJobId,
   } = useAppStore();
 
-  const { lastJsonMessage, sendJsonMessage } = useWebSocket(`${SOCKET_URL}/${clientId}`, {
+  const { lastJsonMessage } = useWebSocket(`${SOCKET_URL}/${clientId}`, {
     shouldReconnect: () => true,
     reconnectInterval: 3000,
   });
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      sendJsonMessage({ type: 'ping' });
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, [sendJsonMessage]);
 
   useEffect(() => {
     if (!lastJsonMessage) return;

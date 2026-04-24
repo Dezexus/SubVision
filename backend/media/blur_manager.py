@@ -1,5 +1,5 @@
 """
-Manager responsible for applying video blurring and obscuring effects.
+Applies video blurring and obscuring effects.
 """
 import cv2
 import os
@@ -8,24 +8,18 @@ import numpy as np
 from typing import Optional, Tuple, List, Dict, Any, Callable
 
 from core.geometry import calculate_blur_roi
-from core.blur_effects import apply_blur_to_frame
+from core.blur_effects import apply_blur_to_frame, generate_text_mask
 from core.video_io import extract_frame_cv2, create_video_capture
 from core.constants import DEFAULT_FPS
-from media.mask_generator import MaskGenerator
 
 logger = logging.getLogger(__name__)
 
 
 class BlurManager:
-    """
-    Provides stateless video blurring functionality using a sequential processing pipeline.
-    """
+    """Provides stateless video blurring functionality using a sequential processing pipeline."""
 
     @staticmethod
     def generate_preview(video_path: str, frame_index: int, settings: Dict[str, Any], text: str) -> Optional[np.ndarray]:
-        """
-        Generates a single preview frame with the obscuring filter applied.
-        """
         cached = extract_frame_cv2(video_path, frame_index)
         if cached is None:
             return None
@@ -56,12 +50,35 @@ class BlurManager:
         fps = cap.get(cv2.CAP_PROP_FPS) or DEFAULT_FPS
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        writer = cv2.VideoWriter(temp_video_path, fourcc, fps, (width, height))
+        font_size_px = int(blur_settings.get('font_size', 21))
+        sample_frames = {}
+        for sub in subtitles:
+            sub_id = sub.get('id', -1)
+            start_f = max(0, int(sub['start'] * fps))
+            end_f = min(total_frames - 1, int(sub['end'] * fps))
+            mid_f = (start_f + end_f) // 2
+            sample_frames[sub_id] = mid_f
 
-        subtitle_masks = MaskGenerator.generate_best_masks(
-            video_path, subtitles, blur_settings, width, height, fps, total_frames
-        )
+        cap_for_masks = create_video_capture(video_path)
+        mask_frames = {}
+        if cap_for_masks.isOpened():
+            for sub_id, f_idx in sample_frames.items():
+                cap_for_masks.set(cv2.CAP_PROP_POS_FRAMES, f_idx)
+                ret, frm = cap_for_masks.read()
+                if ret and frm is not None:
+                    mask_frames[sub_id] = frm
+            cap_for_masks.release()
+
+        subtitle_masks = {}
+        if blur_settings.get('mode', 'hybrid') == 'hybrid':
+            for sub in subtitles:
+                sub_id = sub.get('id', -1)
+                text = sub.get('text', '').strip()
+                if not text or sub_id not in mask_frames:
+                    continue
+                roi = calculate_blur_roi(text, width, height, blur_settings)
+                mask = generate_text_mask(mask_frames[sub_id], roi, font_size_px)
+                subtitle_masks[sub_id] = mask
 
         frame_blur_map: Dict[int, Tuple[Tuple[int, int, int, int], int]] = {}
         for sub in subtitles:
@@ -73,6 +90,9 @@ class BlurManager:
             end_f = min(total_frames + 5, int(sub['end'] * fps) + 1)
             for f_idx in range(start_f, end_f):
                 frame_blur_map[f_idx] = (roi, sub.get('id', -1))
+
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        writer = cv2.VideoWriter(temp_video_path, fourcc, fps, (width, height))
 
         try:
             frame_idx = 0

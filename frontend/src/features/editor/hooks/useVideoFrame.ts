@@ -7,6 +7,11 @@ import { useAppStore } from '../../../store/useAppStore';
 const MAX_FRAME_CACHE = 50;
 const frameCache = new Map<string, string>();
 
+export const clearFrameCache = () => {
+  frameCache.forEach(url => URL.revokeObjectURL(url));
+  frameCache.clear();
+};
+
 export const useVideoFrame = (metadata: VideoMetadata | null, currentFrameIndex: number) => {
   const [imgSrc, setImgSrc] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -15,8 +20,7 @@ export const useVideoFrame = (metadata: VideoMetadata | null, currentFrameIndex:
   const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    frameCache.forEach(url => URL.revokeObjectURL(url));
-    frameCache.clear();
+    clearFrameCache();
   }, [metadata?.filename]);
 
   useEffect(() => {

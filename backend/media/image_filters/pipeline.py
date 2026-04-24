@@ -1,83 +1,46 @@
 """
-This module defines the ImagePipeline class, which orchestrates a sequence
-of image processing operations on a frame dynamically.
+Orchestrates image processing operations on a frame dynamically.
 """
 from typing import Any
 import numpy as np
 import cv2
-from core.filters import (
-    apply_scaling, apply_sharpening,
-    denoise_frame, apply_scaling_paddle,
-    apply_sharpening_paddle
-)
-from core.motion import detect_change_absolute, detect_change_paddle
-
-
-def _is_paddle_tensor(obj: Any) -> bool:
-    """
-    Safely checks if an object is a Paddle tensor without a global import.
-    """
-    try:
-        import paddle
-        return isinstance(obj, paddle.Tensor)
-    except ImportError:
-        return False
+from core.filters import apply_scaling, apply_sharpening, denoise_frame
+from core.motion import detect_change_absolute
 
 
 class ImagePipeline:
-    """
-    Manages the chain of filters applied to video frames sequentially.
-    """
+    """Manages the chain of filters applied to video frames sequentially."""
+
     def __init__(self, roi: list[int], config: dict[str, Any]) -> None:
         self.roi = roi
         self.config = config
         self.last_raw_roi: Any = None
         self.skipped_count = 0
 
-    def process(self, frame: Any) -> tuple[np.ndarray | None, bool]:
-        """
-        Processes a single frame through ROI extraction, motion detection, and image filtering.
-        """
-        is_tensor = _is_paddle_tensor(frame)
-
+    def process(self, frame: np.ndarray) -> tuple[np.ndarray | None, bool]:
         if self.roi and len(self.roi) == 4 and self.roi[2] > 0:
             x, y, w_roi, h_roi = self.roi
-            if is_tensor:
-                h, w, _ = frame.shape
-            else:
-                h, w = frame.shape[:2]
-
+            h, w = frame.shape[:2]
             y1, y2 = max(0, y), min(h, y + h_roi)
             x1, x2 = max(0, x), min(w, x + w_roi)
-
             frame_roi = frame[y1:y2, x1:x2]
         else:
             frame_roi = frame
 
-        if is_tensor:
-            if frame_roi.shape[0] == 0 or frame_roi.shape[1] == 0:
-                return None, True
-        elif frame_roi.size == 0:
+        if frame_roi.size == 0:
             return None, True
 
         smart_skip = self.config.get("smart_skip", True)
         skipped = False
 
         if smart_skip and self.last_raw_roi is not None:
-            if is_tensor:
-                has_changed = detect_change_paddle(frame_roi, self.last_raw_roi)
-            else:
-                has_changed = detect_change_absolute(frame_roi, self.last_raw_roi)
-
+            has_changed = detect_change_absolute(frame_roi, self.last_raw_roi)
             if not has_changed:
                 self.skipped_count += 1
                 skipped = True
 
         if not skipped:
-            if is_tensor:
-                self.last_raw_roi = frame_roi.clone()
-            else:
-                self.last_raw_roi = frame_roi.copy()
+            self.last_raw_roi = frame_roi.copy()
 
         if skipped:
             return None, True
@@ -85,45 +48,8 @@ class ImagePipeline:
         denoise_str = float(self.config.get("denoise_strength", 3))
         scale_factor = float(self.config.get("scale_factor", 2.0))
 
-        if is_tensor:
-            import paddle
-
-            if denoise_str == 0:
-                processed = apply_scaling_paddle(frame_roi, scale_factor)
-                processed = apply_sharpening_paddle(processed)
-
-                cpu_img_rgb = processed.numpy()
-                final = cv2.cvtColor(cpu_img_rgb, cv2.COLOR_RGB2BGR)
-                return final, False
-
-            cpu_img_rgb = frame_roi.numpy()
-            working_img = cv2.cvtColor(cpu_img_rgb, cv2.COLOR_RGB2BGR)
-
-            denoised = denoise_frame(working_img, strength=denoise_str)
-            processed = denoised
-
-            if scale_factor > 1.0:
-                try:
-                    proc_rgb = cv2.cvtColor(processed, cv2.COLOR_BGR2RGB)
-                    proc_tensor = paddle.to_tensor(proc_rgb)
-
-                    scaled_tensor = apply_scaling_paddle(proc_tensor, scale_factor)
-                    final_tensor = apply_sharpening_paddle(scaled_tensor)
-
-                    final_rgb = final_tensor.numpy()
-                    final = cv2.cvtColor(final_rgb, cv2.COLOR_RGB2BGR)
-                    return final, False
-                except Exception:
-                    pass
-
-            scaled = apply_scaling(processed, scale_factor=scale_factor)
-            final = apply_sharpening(scaled)
-            return final, False
-
-        else:
-            denoised = denoise_frame(frame_roi, strength=denoise_str)
-            processed = denoised
-
-            scaled = apply_scaling(processed, scale_factor=scale_factor)
-            final = apply_sharpening(scaled)
-            return final, False
+        denoised = denoise_frame(frame_roi, strength=denoise_str)
+        processed = denoised
+        scaled = apply_scaling(processed, scale_factor=scale_factor)
+        final = apply_sharpening(scaled)
+        return final, False

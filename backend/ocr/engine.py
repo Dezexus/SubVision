@@ -8,9 +8,7 @@ import numpy as np
 
 
 class PaddleWrapper:
-    """
-    Provides isolated, thread-safe access to the PaddleOCR inference engine with lazy loading.
-    """
+    """Provides isolated, thread-safe access to the PaddleOCR inference engine."""
 
     DET_PARAMS = {
         "det_limit_side_len": 2500,
@@ -60,9 +58,6 @@ class PaddleWrapper:
             paddle.set_device("cpu")
 
     def predict_batch(self, frames: list[np.ndarray]) -> list[Any]:
-        """
-        Safely processes a batch of frames preventing memory access violations.
-        """
         if not frames:
             return []
 
@@ -83,9 +78,6 @@ class PaddleWrapper:
 
     @staticmethod
     def parse_results(result_list: Any, conf_thresh: float) -> tuple[str, float]:
-        """
-        Extracts the highest confidence text from raw OCR outputs.
-        """
         if not result_list:
             return "", 0.0
 
@@ -111,20 +103,19 @@ class PaddleWrapper:
             text = str(raw_text).strip()
             score = float(scores_list[i]) if i < len(scores_list) else 0.0
             if score >= conf_thresh and text:
-                box = boxes_list[i] if i < len(boxes_list) else [[0, 0]]
+                box = boxes_list[i] if i < len(boxes_list) else []
                 valid_items.append((box, text, score))
 
         if not valid_items:
             return "", 0.0
 
         try:
-            valid_items.sort(key=lambda x: (x[0][0][1] + x[0][2][1]) / 2.0)
+            valid_items.sort(key=lambda x: (x[0][0][1] + x[0][2][1]) / 2.0 if len(x[0]) >= 3 and len(x[0][0]) >= 2 and len(x[0][2]) >= 2 else 0)
         except (IndexError, TypeError):
             pass
 
         final_texts = [item[1] for item in valid_items]
         final_scores = [item[2] for item in valid_items]
-
         avg_conf = sum(final_scores) / len(final_scores) if final_scores else 0.0
         return " ".join(final_texts), avg_conf
 
@@ -134,9 +125,6 @@ _engines: dict[tuple[str, bool], PaddleWrapper] = {}
 
 
 def get_paddle_engine(lang: str = "en", use_gpu: bool = True) -> PaddleWrapper:
-    """
-    Thread-safe factory ensuring singleton instances of PaddleWrapper per language and device.
-    """
     key = (lang, use_gpu)
     if key not in _engines:
         with _engine_lock:

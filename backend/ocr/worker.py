@@ -1,7 +1,8 @@
-"""Module executing frame extraction, processing, and batch OCR inference synchronously."""
+"""
+Executes frame extraction, processing, and OCR inference synchronously.
+"""
 import logging
 import time
-import cv2
 from typing import Any, Dict
 
 from media.image_filters.pipeline import ImagePipeline
@@ -9,9 +10,9 @@ from ocr.engine import PaddleWrapper, get_paddle_engine
 from core.presets import get_preset_config
 from ocr.aggregator import SubtitleAggregator
 from media.video.reader import VideoProvider
-from core.constants import OCR_BATCH_SIZE
 
 logger = logging.getLogger(__name__)
+
 
 def run_ocr_pipeline(
     video_path: str,
@@ -19,8 +20,7 @@ def run_ocr_pipeline(
     reporter,
     cancel_check: callable
 ) -> bool:
-    cv2.setNumThreads(0)
-    reporter.log("--- START OCR (Batched GPU Pipeline) ---")
+    logger.info("Starting OCR pipeline")
 
     conf_threshold_pct = float(params.get("conf_threshold", 80.0))
     min_conf = conf_threshold_pct / 100.0
@@ -46,43 +46,9 @@ def run_ocr_pipeline(
     ocr_engine = get_paddle_engine(lang=str(params.get("languages", "en")), use_gpu=True)
     aggregator = SubtitleAggregator(min_conf=min_conf, fps=video.fps)
     aggregator.on_new_subtitle = reporter.subtitle
+
     start_time = time.time()
     total_frames = video.total_frames
-    batch_size = OCR_BATCH_SIZE
-    pending_items = []
-    valid_frames = []
-    last_ocr_result = ("", 0.0)
-
-    def _process_batch() -> None:
-        nonlocal valid_frames, pending_items, last_ocr_result
-        if not pending_items:
-            return
-        if valid_frames:
-            batch_results = ocr_engine.predict_batch(valid_frames)
-        else:
-            batch_results = []
-        res_idx = 0
-        for item in pending_items:
-            idx, ts, f_img, is_skip = item
-            if idx > 0 and idx % 25 == 0:
-                elapsed = time.time() - start_time
-                eta_sec = int((total_frames - idx) * (elapsed / idx))
-                reporter.progress(idx, total_frames, f"{eta_sec // 60:02d}:{eta_sec % 60:02d}")
-            if is_skip:
-                text, conf = last_ocr_result
-            elif f_img is not None:
-                raw_res = batch_results[res_idx] if res_idx < len(batch_results) else None
-                res_idx += 1
-                try:
-                    text, conf = PaddleWrapper.parse_results(raw_res, min_conf)
-                except Exception:
-                    text, conf = "", 0.0
-                last_ocr_result = (text, conf)
-            else:
-                text, conf = "", 0.0
-            aggregator.add_result(text, conf, ts)
-        pending_items.clear()
-        valid_frames.clear()
 
     try:
         for frame_idx, timestamp, frame in video:
@@ -90,15 +56,25 @@ def run_ocr_pipeline(
                 reporter.log("Process stopped by user.")
                 logger.info("OCR process cancelled by user request.")
                 return False
-            final_img, skipped = pipeline.process(frame)
-            pending_items.append((frame_idx, timestamp, final_img, skipped))
-            if not skipped and final_img is not None:
-                valid_frames.append(final_img)
-            if len(valid_frames) >= batch_size:
-                _process_batch()
-        _process_batch()
-        aggregator.finalize()
 
+            final_img, skipped = pipeline.process(frame)
+
+            if frame_idx > 0 and frame_idx % 25 == 0:
+                elapsed = time.time() - start_time
+                eta_sec = int((total_frames - frame_idx) * (elapsed / frame_idx))
+                reporter.progress(frame_idx, total_frames, f"{eta_sec // 60:02d}:{eta_sec % 60:02d}")
+
+            if skipped:
+                continue
+
+            if final_img is not None:
+                raw_res = ocr_engine.predict_batch([final_img])
+                text, conf = PaddleWrapper.parse_results(raw_res[0], min_conf)
+                aggregator.add_result(text, conf, timestamp)
+            else:
+                aggregator.add_result("", 0.0, timestamp)
+
+        aggregator.finalize()
         skip_msg = f"Smart Skip: {pipeline.skipped_count} frames"
         reporter.log(skip_msg)
         logger.info(skip_msg)

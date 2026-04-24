@@ -1,6 +1,3 @@
-/**
- * API methods related to direct S3 multipart video uploading and frame fetching.
- */
 import axios from 'axios';
 import { API_URL } from './config';
 import type { VideoMetadata } from '../../types';
@@ -16,40 +13,50 @@ export const videoApi = {
     const totalChunks = Math.ceil(file.size / chunkSize);
     const safeFilename = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
     const initRes = await axios.post(`${API_URL}/video/upload/init`, {
-        filename: safeFilename,
-        content_type: file.type || 'application/octet-stream',
-        total_chunks: totalChunks
+      filename: safeFilename,
+      content_type: file.type || 'application/octet-stream',
+      total_chunks: totalChunks
     });
     const { upload_id, urls } = initRes.data;
-    const parts = [];
+    const parts: { PartNumber: number; ETag: string }[] = [];
+
     for (let i = 0; i < totalChunks; i++) {
-        const start = i * chunkSize;
-        const end = Math.min(start + chunkSize, file.size);
-        const chunk = file.slice(start, end);
-        if (urls && urls.length > 0) {
-            const uploadUrl = urls[i];
-            const chunkRes = await axios.put(uploadUrl, chunk, {
-                headers: { 'Content-Type': file.type || 'application/octet-stream' }
-            });
-            const etag = chunkRes.headers['etag'] || chunkRes.headers['Etag'] || '';
-            parts.push({ PartNumber: i + 1, ETag: etag.replace(/"/g, '') });
-        } else {
-            const formData = new FormData();
-            formData.append('file', chunk);
-            formData.append('upload_id', upload_id);
-            formData.append('part_number', (i + 1).toString());
-            await axios.post(`${API_URL}/video/upload/chunk`, formData);
-            parts.push({ PartNumber: i + 1, ETag: `local_${i}` });
-        }
-        if (onProgress) {
-            onProgress(Math.round(((i + 1) / totalChunks) * 100));
-        }
+      const start = i * chunkSize;
+      const end = Math.min(start + chunkSize, file.size);
+      const chunk = file.slice(start, end);
+
+      if (urls && urls.length > 0) {
+        const uploadUrl = urls[i];
+        const chunkRes = await axios.put(uploadUrl, chunk, {
+          headers: { 'Content-Type': file.type || 'application/octet-stream' }
+        });
+        const etag = chunkRes.headers['etag'] || chunkRes.headers['Etag'] || '';
+        parts.push({ PartNumber: i + 1, ETag: etag.replace(/"/g, '') });
+      } else {
+        const formData = new FormData();
+        formData.append('file', chunk);
+        formData.append('upload_id', upload_id);
+        formData.append('part_number', (i + 1).toString());
+        await axios.post(`${API_URL}/video/upload/chunk`, formData);
+      }
+
+      if (onProgress) {
+        onProgress(Math.round(((i + 1) / totalChunks) * 100));
+      }
     }
-    const completeRes = await axios.post(`${API_URL}/video/upload/complete`, {
-        filename: safeFilename,
-        upload_id: upload_id,
-        parts: parts
-    });
+
+    const completePayload: any = {
+      filename: safeFilename,
+      upload_id: upload_id,
+      total_chunks: totalChunks
+    };
+    if (urls && urls.length > 0) {
+      completePayload.parts = parts;
+    } else {
+      completePayload.parts = null;
+    }
+
+    const completeRes = await axios.post(`${API_URL}/video/upload/complete`, completePayload);
     return completeRes.data as VideoMetadata;
   },
 
