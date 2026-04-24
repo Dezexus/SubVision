@@ -145,52 +145,52 @@ def extract_frame_cv2(video_path: str, frame_index: int, dar: Optional[float] = 
     return None
 
 
-def iter_frames_ffmpeg(video_path: str, step: int = 1, fps: float = 25.0, total: int = 0):
+def iter_frames_ffmpeg(video_path: str, step: int = 1, fps: float = 25.0, total: int = 0,
+                        width: Optional[int] = None, height: Optional[int] = None,
+                        use_hwaccel: bool = True) -> None:
     """
     Generator that yields frames via system ffmpeg pipe.
+    Optionally accepts explicit width/height to avoid a secondary metadata probe.
 
     Yields tuples (frame_index, timestamp, bgr_frame).
     """
-    if total <= 0:
+    if total <= 0 or fps <= 0:
         cap = create_video_capture(video_path)
         if cap.isOpened():
             total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             fps = cap.get(cv2.CAP_PROP_FPS) or fps
+            if width is None:
+                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            if height is None:
+                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             cap.release()
         else:
             total = 0
 
-    if total <= 0:
-        raise RuntimeError("Cannot determine video frame count")
+    if total <= 0 or width is None or height is None:
+        raise RuntimeError("Cannot determine video frame count or dimensions")
 
-    cmd = [
-        "ffmpeg", "-i", video_path,
-        "-f", "rawvideo", "-pix_fmt", "bgr24",
+    cmd = ["ffmpeg"]
+    if use_hwaccel:
+        cmd += ["-hwaccel", "auto"]
+    cmd += [
+        "-i", video_path,
+        "-f", "rawvideo",
+        "-pix_fmt", "bgr24",
         "-vsync", "0",
         "pipe:1"
     ]
+
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-    frame_size = None
+    frame_size = width * height * 3
     frame_idx = 0
     try:
         while proc.poll() is None:
-            if frame_size is None:
-                cap = create_video_capture(video_path)
-                if cap.isOpened():
-                    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                    cap.release()
-                    if w > 0 and h > 0:
-                        frame_size = w * h * 3
-                    else:
-                        raise RuntimeError("Could not read video dimensions")
-                else:
-                    raise RuntimeError("Could not open video for dimensions")
             raw = proc.stdout.read(frame_size)
             if len(raw) != frame_size:
                 break
             if frame_idx % step == 0:
-                arr = np.frombuffer(raw, np.uint8).reshape((h, w, 3))
+                arr = np.frombuffer(raw, np.uint8).reshape((height, width, 3))
                 timestamp = frame_idx / fps
                 yield frame_idx, timestamp, arr.copy()
             frame_idx += 1
