@@ -1,9 +1,19 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { X, MoveVertical, Trash2 } from 'lucide-react';
+import { X, MoveVertical, Trash2, Eye, EyeOff, Plus, ChevronUp, ChevronDown } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { PlaybackControls } from './components/PlaybackControls';
 import { API_BASE } from '../../services/api';
+import { formatTimeDisplay } from '../../utils/format';
 import type { SubtitleItem } from '../../types';
+
+const generateNewSubtitle = (start: number, end: number, maxId: number): SubtitleItem => ({
+  id: maxId + 1,
+  start,
+  end,
+  text: '',
+  conf: 1.0,
+  isEdited: true,
+});
 
 export const PreviewModal = () => {
   const {
@@ -15,12 +25,13 @@ export const PreviewModal = () => {
     setPreviewModalOpen,
     updateSubtitle,
     deleteSubtitle,
-    saveHistory
+    saveHistory,
+    addSubtitle,
   } = useAppStore();
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const dragStartRef = useRef<{ y: number, initialOffset: number } | null>(null);
+  const dragStartRef = useRef<{ y: number; initialOffset: number } | null>(null);
   const animationFrameRef = useRef<number>();
   const initializedRef = useRef<boolean>(false);
   const activeSubIndexRef = useRef<number>(-1);
@@ -31,6 +42,8 @@ export const PreviewModal = () => {
   const [bottomOffset, setBottomOffset] = useState(20);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [activeSub, setActiveSub] = useState<SubtitleItem | null | undefined>(null);
+  const [volume, setVolume] = useState(1);
+  const [showOverlay, setShowOverlay] = useState(true);
 
   useEffect(() => {
     activeSubIndexRef.current = -1;
@@ -181,33 +194,10 @@ export const PreviewModal = () => {
   }, [subtitles, currentTime, isPlaying, updateActiveSubtitle]);
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        return;
-      }
-      if (e.code === 'Space') {
-        e.preventDefault();
-        handlePlayPause();
-      } else if (e.code === 'ArrowLeft') {
-        e.preventDefault();
-        handleStepFrame(-1);
-      } else if (e.code === 'ArrowRight') {
-        e.preventDefault();
-        handleStepFrame(1);
-      }
-    };
-
-    if (isPreviewModalOpen) {
-      window.addEventListener('keydown', handleKeyDown);
+    if (videoRef.current) {
+      videoRef.current.volume = volume;
     }
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isPreviewModalOpen, handlePlayPause, handleStepFrame]);
-
-  if (!isPreviewModalOpen || !metadata) {
-    return null;
-  }
+  }, [volume]);
 
   const handleSeek = (time: number) => {
     const video = videoRef.current;
@@ -242,14 +232,122 @@ export const PreviewModal = () => {
     window.addEventListener('mouseup', handleMouseUp);
   };
 
+  const handlePrevSub = () => {
+    const subs = useAppStore.getState().subtitles;
+    if (subs.length === 0) return;
+    const index = subs.findIndex(s => s.start >= currentTime - 0.001);
+    const prevIdx = index > 0 ? index - 1 : subs.length - 1;
+    handleSeek(subs[prevIdx].start);
+  };
+
+  const handleNextSub = () => {
+    const subs = useAppStore.getState().subtitles;
+    if (subs.length === 0) return;
+    const index = subs.findIndex(s => s.start > currentTime);
+    const nextIdx = index >= 0 ? index : 0;
+    handleSeek(subs[nextIdx].start);
+  };
+
+  const handleAddSubtitle = () => {
+    const subs = useAppStore.getState().subtitles;
+    const maxId = subs.reduce((max, s) => Math.max(max, s.id), 0);
+    const start = currentTime;
+    const end = Math.min(duration, start + 2);
+    const newSub = generateNewSubtitle(start, end, maxId);
+    addSubtitle(newSub);
+    saveHistory();
+  };
+
+  const handleDeleteCurrentSub = () => {
+    if (activeSub) {
+      deleteSubtitle(activeSub.id);
+    }
+  };
+
+  const handleVolumeChange = useCallback((newVol: number) => {
+    setVolume(Math.min(1, Math.max(0, newVol)));
+  }, []);
+
+  const handleSeekFrame = useCallback((frame: number) => {
+    if (metadata && metadata.fps > 0) {
+      const time = frame / metadata.fps;
+      handleSeek(Math.max(0, Math.min(duration, time)));
+    }
+  }, [metadata, duration]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        if (e.key === 'Escape') {
+          e.currentTarget.dispatchEvent(new Event('blur'));
+          return;
+        }
+        return;
+      }
+      if (!isPreviewModalOpen) return;
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        handlePlayPause();
+      } else if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        handleStepFrame(-1);
+      } else if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        handleStepFrame(1);
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (!activeSub) return;
+        e.preventDefault();
+        handleDeleteCurrentSub();
+      } else if (e.key === 't' || e.key === 'T') {
+        e.preventDefault();
+        setShowOverlay(prev => !prev);
+      } else if (e.ctrlKey && e.key === 'n') {
+        e.preventDefault();
+        handleAddSubtitle();
+      } else if (e.ctrlKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        e.preventDefault();
+        if (e.key === 'ArrowUp') handlePrevSub();
+        else handleNextSub();
+      } else if (e.key === 'Escape') {
+        setPreviewModalOpen(false);
+      }
+    };
+
+    if (isPreviewModalOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isPreviewModalOpen, handlePlayPause, handleStepFrame, activeSub, handlePrevSub, handleNextSub, handleAddSubtitle, handleDeleteCurrentSub, setPreviewModalOpen]);
+
+  if (!isPreviewModalOpen || !metadata) {
+    return null;
+  }
+
+  const activeStartFrame = metadata ? Math.round(activeSub ? activeSub.start * metadata.fps : 0) : 0;
+  const activeEndFrame = metadata ? Math.round(activeSub ? activeSub.end * metadata.fps : 0) : 0;
+
   return (
     <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 md:p-8 backdrop-blur-md transition-opacity">
       <div className="bg-bg-main rounded-xl border border-border-main shadow-2xl w-[80vw] h-[80vh] flex flex-col overflow-hidden relative">
         <div className="p-4 border-b border-border-main flex justify-between items-center bg-bg-panel shrink-0">
           <h2 className="text-white font-bold tracking-wide uppercase text-sm">Playback & Edit</h2>
-          <button onClick={() => setPreviewModalOpen(false)} className="p-1.5 text-txt-subtle hover:text-white hover:bg-red-500/20 hover:border-red-500/50 border border-transparent rounded transition-colors">
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={handlePrevSub} className="p-1.5 text-txt-subtle hover:text-white hover:bg-white/10 rounded" title="Previous subtitle">
+              <ChevronUp size={16} />
+            </button>
+            <button onClick={handleNextSub} className="p-1.5 text-txt-subtle hover:text-white hover:bg-white/10 rounded" title="Next subtitle">
+              <ChevronDown size={16} />
+            </button>
+            <button onClick={handleAddSubtitle} className="p-1.5 text-txt-subtle hover:text-white hover:bg-brand-500 hover:border-brand-500 border border-transparent rounded" title="Add subtitle (Ctrl+N)">
+              <Plus size={16} />
+            </button>
+            <button onClick={() => setPreviewModalOpen(false)} className="p-1.5 text-txt-subtle hover:text-white hover:bg-red-500/20 hover:border-red-500/50 border border-transparent rounded transition-colors">
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         <div ref={containerRef} className="relative w-full flex-1 bg-black flex items-center justify-center group/video overflow-hidden">
@@ -266,11 +364,24 @@ export const PreviewModal = () => {
             />
           )}
 
-          {activeSub && (
+          {activeSub && showOverlay && (
             <div
               className="absolute w-11/12 max-w-5xl left-1/2 -translate-x-1/2 flex flex-col items-center group/sub"
               style={{ bottom: `${bottomOffset}%` }}
             >
+              <div className="bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-t flex items-center gap-2 mb-0.5">
+                <span>{formatTimeDisplay(activeSub.start)} – {formatTimeDisplay(activeSub.end)}</span>
+                <span className="opacity-50">|</span>
+                <span>Frames: {activeStartFrame} – {activeEndFrame}</span>
+                <button
+                  onClick={() => setShowOverlay(false)}
+                  className="ml-1 p-0.5 hover:text-brand-400"
+                  title="Hide subtitle overlay"
+                >
+                  <EyeOff size={12} />
+                </button>
+              </div>
+
               <div
                 className="w-20 h-2.5 mb-1 bg-white/20 hover:bg-brand-500 rounded-full cursor-ns-resize backdrop-blur-sm transition-colors shadow-sm flex items-center justify-center opacity-0 group-hover/video:opacity-100"
                 onMouseDown={handleDragStart}
@@ -307,6 +418,16 @@ export const PreviewModal = () => {
               </div>
             </div>
           )}
+
+          {!showOverlay && activeSub && (
+            <button
+              onClick={() => setShowOverlay(true)}
+              className="absolute top-4 right-4 z-50 p-2 bg-black/60 hover:bg-black/90 text-white/80 rounded-full"
+              title="Show subtitle overlay"
+            >
+              <Eye size={18} />
+            </button>
+          )}
         </div>
 
         <PlaybackControls
@@ -317,6 +438,10 @@ export const PreviewModal = () => {
           onSeek={handleSeek}
           onPlayPause={handlePlayPause}
           onStepFrame={handleStepFrame}
+          volume={volume}
+          onVolumeChange={handleVolumeChange}
+          onSeekFrame={handleSeekFrame}
+          onAddSubtitle={handleAddSubtitle}
         />
       </div>
     </div>
