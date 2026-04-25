@@ -23,6 +23,7 @@ export const PreviewModal = () => {
   const dragStartRef = useRef<{ y: number, initialOffset: number } | null>(null);
   const animationFrameRef = useRef<number>();
   const initializedRef = useRef<boolean>(false);
+  const activeSubIndexRef = useRef<number>(-1);
 
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -31,14 +32,18 @@ export const PreviewModal = () => {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [activeSub, setActiveSub] = useState<SubtitleItem | null | undefined>(null);
 
+  useEffect(() => {
+    activeSubIndexRef.current = -1;
+  }, [subtitles]);
+
   const handlePlayPause = useCallback(() => {
     const video = videoRef.current;
     if (video) {
-        if (video.paused) {
-            video.play();
-        } else {
-            video.pause();
-        }
+      if (video.paused) {
+        video.play();
+      } else {
+        video.pause();
+      }
     }
   }, []);
 
@@ -48,15 +53,59 @@ export const PreviewModal = () => {
       if (!video.paused) {
         video.pause();
       }
-
       const currentFrame = Math.round(video.currentTime * metadata.fps);
       let newTime = (currentFrame + frames) / metadata.fps;
       newTime = Math.max(0, Math.min(video.duration || duration, newTime));
-
       video.currentTime = newTime + 0.0001;
       setCurrentTime(newTime);
     }
   }, [metadata, duration]);
+
+  const updateActiveSubtitle = useCallback((time: number) => {
+    const subs = useAppStore.getState().subtitles;
+    const len = subs.length;
+    if (len === 0) {
+      setActiveSub(null);
+      return;
+    }
+
+    let idx = activeSubIndexRef.current;
+    if (idx >= len) idx = len - 1;
+    if (idx < 0) idx = 0;
+
+    if (idx < len) {
+      const current = subs[idx];
+      if (time >= current.start && time <= current.end) {
+        setActiveSub(current);
+        activeSubIndexRef.current = idx;
+        return;
+      }
+      if (time < current.start) {
+        while (idx > 0 && subs[idx - 1].end > time) {
+          idx--;
+        }
+        idx = idx > 0 ? idx - 1 : 0;
+        while (idx > 0 && subs[idx].start > time) {
+          idx--;
+        }
+      } else {
+        while (idx < len - 1 && subs[idx + 1].start <= time) {
+          idx++;
+        }
+      }
+    }
+
+    const candidate = subs[idx];
+    if (candidate && time >= candidate.start && time <= candidate.end) {
+      setActiveSub(candidate);
+      activeSubIndexRef.current = idx;
+    } else {
+      setActiveSub(null);
+      if (idx < len && time > subs[idx].end) {
+        activeSubIndexRef.current = idx;
+      }
+    }
+  }, []);
 
   const animate = useCallback(function loop() {
     const video = videoRef.current;
@@ -64,12 +113,9 @@ export const PreviewModal = () => {
 
     const newTime = video.currentTime;
     setCurrentTime(newTime);
-
-    const currentSub = subtitles.find(s => newTime >= s.start && newTime <= s.end);
-    setActiveSub(currentSub);
-
+    updateActiveSubtitle(newTime);
     animationFrameRef.current = requestAnimationFrame(loop);
-  }, [subtitles]);
+  }, [updateActiveSubtitle]);
 
   const handleLoadedMetadata = useCallback((e: React.SyntheticEvent<HTMLVideoElement>) => {
     setDuration(e.currentTarget.duration);
@@ -95,7 +141,6 @@ export const PreviewModal = () => {
       if (file) {
         const url = URL.createObjectURL(file);
         setVideoUrl(url);
-
         return () => {
           URL.revokeObjectURL(url);
           setVideoUrl(null);
@@ -103,7 +148,6 @@ export const PreviewModal = () => {
       } else {
         const url = `${API_BASE}/api/video/download/${metadata.filename}`;
         setVideoUrl(url);
-
         return () => {
           setVideoUrl(null);
         };
@@ -132,16 +176,15 @@ export const PreviewModal = () => {
 
   useEffect(() => {
     if (!isPlaying) {
-      setActiveSub(subtitles.find(s => currentTime >= s.start && currentTime <= s.end));
+      updateActiveSubtitle(currentTime);
     }
-  }, [subtitles, currentTime, isPlaying]);
+  }, [subtitles, currentTime, isPlaying, updateActiveSubtitle]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
-
       if (e.code === 'Space') {
         e.preventDefault();
         handlePlayPause();
@@ -157,7 +200,6 @@ export const PreviewModal = () => {
     if (isPreviewModalOpen) {
       window.addEventListener('keydown', handleKeyDown);
     }
-
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
@@ -170,8 +212,8 @@ export const PreviewModal = () => {
   const handleSeek = (time: number) => {
     const video = videoRef.current;
     if (video) {
-        video.currentTime = time;
-        setCurrentTime(time);
+      video.currentTime = time;
+      setCurrentTime(time);
     }
   };
 
@@ -202,7 +244,7 @@ export const PreviewModal = () => {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 md:p-8 backdrop-blur-md transition-opacity">
-      <div className="bg-bg-main rounded-xl border border-border-main shadow-2xl w-[80vw] h-[80vh] flex flex-col overflow-hidden relative animate-in fade-in zoom-in-95 duration-200">
+      <div className="bg-bg-main rounded-xl border border-border-main shadow-2xl w-[80vw] h-[80vh] flex flex-col overflow-hidden relative">
         <div className="p-4 border-b border-border-main flex justify-between items-center bg-bg-panel shrink-0">
           <h2 className="text-white font-bold tracking-wide uppercase text-sm">Playback & Edit</h2>
           <button onClick={() => setPreviewModalOpen(false)} className="p-1.5 text-txt-subtle hover:text-white hover:bg-red-500/20 hover:border-red-500/50 border border-transparent rounded transition-colors">
@@ -268,13 +310,13 @@ export const PreviewModal = () => {
         </div>
 
         <PlaybackControls
-            currentTime={currentTime}
-            duration={duration}
-            subtitles={subtitles}
-            isPlaying={isPlaying}
-            onSeek={handleSeek}
-            onPlayPause={handlePlayPause}
-            onStepFrame={handleStepFrame}
+          currentTime={currentTime}
+          duration={duration}
+          subtitles={subtitles}
+          isPlaying={isPlaying}
+          onSeek={handleSeek}
+          onPlayPause={handlePlayPause}
+          onStepFrame={handleStepFrame}
         />
       </div>
     </div>

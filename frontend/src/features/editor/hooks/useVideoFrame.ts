@@ -18,9 +18,11 @@ export const useVideoFrame = (metadata: VideoMetadata | null, currentFrameIndex:
   const [error, setError] = useState<string | null>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const videoExpiredRef = useRef(false);
 
   useEffect(() => {
     clearFrameCache();
+    videoExpiredRef.current = false;
   }, [metadata?.filename]);
 
   useEffect(() => {
@@ -53,7 +55,13 @@ export const useVideoFrame = (metadata: VideoMetadata | null, currentFrameIndex:
     setError(null);
 
     debounceTimerRef.current = setTimeout(async () => {
-      if (!isActive) return;
+      if (!isActive || videoExpiredRef.current) {
+        if (videoExpiredRef.current) {
+          setError("Video unavailable");
+          setIsLoading(false);
+        }
+        return;
+      }
 
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
@@ -84,9 +92,9 @@ export const useVideoFrame = (metadata: VideoMetadata | null, currentFrameIndex:
 
         const typedErr = err as { response?: { status?: number; data?: { detail?: string } }; message?: string };
         if (typedErr.response && typedErr.response.status === 404) {
-          const state = useAppStore.getState();
-          state.resetProject();
-          state.addToast("Session expired. The video file was cleaned up by the server.", "error");
+          videoExpiredRef.current = true;
+          useAppStore.getState().addToast("Video file has expired or been deleted. Please re-upload.", "error");
+          setError("Video unavailable");
         } else {
           const msg = typedErr.response?.data?.detail || typedErr.message || 'Failed to load frame';
           setError(msg);

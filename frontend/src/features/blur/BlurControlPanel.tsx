@@ -1,7 +1,4 @@
-/**
- * Control panel for configuring blur effect geometry and appearance parameters safely.
- */
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   Video, RotateCcw, Wand2,
   ScanLine, BoxSelect, Droplet, Loader2
@@ -31,6 +28,8 @@ export const BlurControlPanel = () => {
     setBlurPreviewUrl
   } = useAppStore();
 
+  const userAdjustedY = useRef(false);
+
   const { isPreviewUpdating } = useBlurPreview(
     metadata,
     blurSettings,
@@ -58,11 +57,11 @@ export const BlurControlPanel = () => {
   }, [defaultBlurSettings, setDefaultBlurSettings, setBlurSettings]);
 
   useEffect(() => {
-    if (metadata && blurSettings.y === 900 && roi[1] > 0) {
-        const newY = roi[1] + roi[3];
-        setBlurSettings({ y: Math.max(0, Math.min(videoHeight, newY)) });
+    if (metadata && !userAdjustedY.current && roi[1] > 0) {
+      const newY = roi[1] + roi[3];
+      setBlurSettings({ y: Math.max(0, Math.min(videoHeight, newY)) });
     }
-  }, [roi, metadata, blurSettings.y, setBlurSettings, videoHeight]);
+  }, [roi, metadata, videoHeight, setBlurSettings]);
 
   const handleRender = async () => {
     if (!metadata) return;
@@ -86,9 +85,16 @@ export const BlurControlPanel = () => {
   };
 
   const handleReset = () => {
-      if (defaultBlurSettings) {
-          setBlurSettings(defaultBlurSettings);
-      }
+    if (defaultBlurSettings) {
+      setBlurSettings(defaultBlurSettings);
+      userAdjustedY.current = false;
+    }
+  };
+
+  const handleYChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    userAdjustedY.current = true;
+    const newY = videoHeight - Number(e.target.value);
+    setBlurSettings({ y: Math.max(0, Math.min(videoHeight, newY)) });
   };
 
   return (
@@ -147,10 +153,7 @@ export const BlurControlPanel = () => {
                   label="Vertical Position (Y)"
                   max={videoHeight}
                   value={videoHeight - blurSettings.y}
-                  onChange={(e) => {
-                      const newY = videoHeight - Number(e.target.value);
-                      setBlurSettings({ y: Math.max(0, Math.min(videoHeight, newY)) });
-                  }}
+                  onChange={handleYChange}
                 />
                 <Slider
                   label="Text Height"
