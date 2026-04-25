@@ -29,7 +29,7 @@ export const useVideoUpload = () => {
     addLog(`Uploading: ${selectedFile.name}...`);
 
     try {
-      const metadata = await api.uploadVideo(selectedFile, clientId, (pct) => setUploadProgress(pct));
+      const metadata = await api.uploadVideo(selectedFile, clientId!, (pct) => setUploadProgress(pct));
       setMetadata(metadata);
       setFile(selectedFile);
       addToast('Video uploaded successfully', 'success');

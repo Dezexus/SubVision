@@ -3,6 +3,7 @@
  */
 export interface VideoMetadata {
   filename: string;
+  original_filename: string;
   total_frames: number;
   width: number;
   height: number;

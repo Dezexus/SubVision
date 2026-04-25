@@ -11,6 +11,7 @@ class VideoMetadata(BaseModel):
     Includes the display aspect ratio to handle non‑square pixels correctly.
     """
     filename: str
+    original_filename: str = ""
     total_frames: int
     width: int
     height: int

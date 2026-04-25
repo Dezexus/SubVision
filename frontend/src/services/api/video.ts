@@ -11,13 +11,12 @@ export const videoApi = {
   uploadVideo: async (file: File, clientId: string, onProgress?: (pct: number) => void): Promise<VideoMetadata> => {
     const chunkSize = 10 * 1024 * 1024;
     const totalChunks = Math.ceil(file.size / chunkSize);
-    const safeFilename = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
     const initRes = await axios.post(`${API_URL}/video/upload/init`, {
-      filename: safeFilename,
+      filename: file.name,
       content_type: file.type || 'application/octet-stream',
       total_chunks: totalChunks
     });
-    const { upload_id, urls } = initRes.data;
+    const { upload_id, urls, storage_filename } = initRes.data;
     const parts: { PartNumber: number; ETag: string }[] = [];
 
     for (let i = 0; i < totalChunks; i++) {
@@ -46,7 +45,7 @@ export const videoApi = {
     }
 
     const completePayload: any = {
-      filename: safeFilename,
+      filename: storage_filename,
       upload_id: upload_id,
       total_chunks: totalChunks
     };

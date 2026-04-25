@@ -1,5 +1,6 @@
 """Router module for handling stateless direct video uploads dynamically supporting local or s3 modes."""
 import os
+import uuid
 import logging
 import cv2
 import asyncio
@@ -37,6 +38,8 @@ class UploadCompleteRequest(BaseModel):
     total_chunks: int
     parts: Optional[List[UploadPart]] = None
 
+_session_store: Dict[str, str] = {}
+
 @router.get("/allowed-extensions")
 async def get_allowed_extensions() -> List[str]:
     return list(ALLOWED_EXTENSIONS)
@@ -49,16 +52,18 @@ async def init_upload(req: UploadInitRequest) -> Dict[str, Any]:
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail=f"Extension not allowed. Supported: {', '.join(ALLOWED_EXTENSIONS)}"
         )
-    upload_id = await storage_manager.create_multipart_upload(req.filename, req.content_type)
+    safe_filename = f"{uuid.uuid4().hex}{ext}"
+    _session_store[safe_filename] = req.filename
+    upload_id = await storage_manager.create_multipart_upload(safe_filename, req.content_type)
     if not upload_id:
         raise HTTPException(status_code=500, detail="Failed to initialize storage upload.")
     presigned_urls = []
     if settings.storage_mode == "s3":
         for i in range(1, req.total_chunks + 1):
-            url = await storage_manager.get_presigned_upload_part(req.filename, upload_id, i)
+            url = await storage_manager.get_presigned_upload_part(safe_filename, upload_id, i)
             if url:
                 presigned_urls.append(url)
-    return {"upload_id": upload_id, "urls": presigned_urls}
+    return {"upload_id": upload_id, "urls": presigned_urls, "storage_filename": safe_filename}
 
 @router.post("/upload/chunk")
 async def upload_local_chunk(
@@ -72,18 +77,21 @@ async def upload_local_chunk(
 
 @router.post("/upload/complete")
 async def complete_upload(req: UploadCompleteRequest) -> VideoMetadata:
+    safe_filename = req.filename
+    original_name = _session_store.pop(safe_filename, safe_filename)
+
     if settings.storage_mode == "s3":
         if not req.parts:
             raise HTTPException(status_code=400, detail="Parts list is required for S3 upload")
         parts_dict = [{"PartNumber": p.PartNumber, "ETag": p.ETag} for p in req.parts]
-        success = await storage_manager.complete_multipart_upload(req.filename, req.upload_id, parts_dict)
+        success = await storage_manager.complete_multipart_upload(safe_filename, req.upload_id, parts_dict)
     else:
-        success = await storage_manager.complete_local_upload(req.upload_id, req.filename, req.total_chunks)
+        success = await storage_manager.complete_local_upload(req.upload_id, safe_filename, req.total_chunks)
 
     if not success:
         raise HTTPException(status_code=500, detail="Failed to complete storage upload.")
 
-    video_url = await get_video_url(req.filename)
+    video_url = await get_video_url(safe_filename)
     frame, total_frames, corrected_width = await asyncio.to_thread(VideoManager.get_video_info, video_url)
     if frame is None:
         raise HTTPException(
@@ -99,7 +107,8 @@ async def complete_upload(req: UploadCompleteRequest) -> VideoMetadata:
     if dar is None:
         dar = corrected_width / height
     return VideoMetadata(
-        filename=req.filename,
+        filename=safe_filename,
+        original_filename=original_name,
         total_frames=total_frames,
         width=corrected_width,
         height=height,
