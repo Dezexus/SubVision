@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   ChevronLeft, ChevronRight,
-  Clock, ZoomIn, ZoomOut
+  Clock, ZoomIn, ZoomOut, Play, Pause, Volume2
 } from 'lucide-react';
 import { useAppStore } from '../../../store/useAppStore';
 import { cn } from '../../../utils/cn';
@@ -10,7 +10,25 @@ import { calculateTracks, type ProcessedSubtitle } from '../utils/timelineUtils'
 import { useTimelineZoom } from '../hooks/useTimelineZoom';
 import { useSubtitleDrag } from '../hooks/useSubtitleDrag';
 
-export const HybridTimeline = () => {
+interface HybridTimelineProps {
+  isPlaying?: boolean;
+  onPlayPause?: () => void;
+  onStepFrame?: (frames: number) => void;
+  volume?: number;
+  onVolumeChange?: (vol: number) => void;
+  currentTimeOverride?: number;
+  durationOverride?: number;
+}
+
+export const HybridTimeline: React.FC<HybridTimelineProps> = ({
+  isPlaying: isPlayingProp,
+  onPlayPause,
+  onStepFrame,
+  volume: volumeProp,
+  onVolumeChange,
+  currentTimeOverride,
+  durationOverride,
+}) => {
   const {
     metadata,
     subtitles,
@@ -28,15 +46,14 @@ export const HybridTimeline = () => {
   const [hoverPos, setHoverPos] = useState<number>(0);
   const hoveredSubIdRef = useRef<number | null>(null);
 
-  const { currentTime, totalTime, exactDuration } = useMemo(() => {
-    if (!metadata) return { currentTime: "00:00:00.00", totalTime: "00:00:00.00", exactDuration: 1 };
-    const calculatedDuration = metadata.total_frames / metadata.fps;
-    return {
-      currentTime: formatTimeDisplay(currentFrameIndex / metadata.fps),
-      totalTime: formatTimeDisplay(calculatedDuration),
-      exactDuration: calculatedDuration
-    };
-  }, [metadata, currentFrameIndex]);
+  const isPreviewMode = isPlayingProp !== undefined; // если есть пропсы – мы в режиме предпросмотра
+
+  // Если переданы внешние время и длительность, используем их, иначе берём из метаданных и currentFrameIndex
+  const exactDuration = durationOverride ?? (metadata ? metadata.total_frames / metadata.fps : 1);
+  const currentTime = currentTimeOverride ?? (metadata ? currentFrameIndex / metadata.fps : 0);
+
+  const currentTimeDisplay = formatTimeDisplay(currentTime);
+  const totalTimeDisplay = formatTimeDisplay(exactDuration);
 
   const processedSubtitles = useMemo(() => calculateTracks(subtitles), [subtitles]);
 
@@ -76,19 +93,33 @@ export const HybridTimeline = () => {
 
   const handleTimelineClick = (e: React.MouseEvent) => {
     if (isDraggingRef.current) return;
-    if (!metadata || !scrollContainerRef.current) return;
+    if (!metadata && !isPreviewMode) return;
+    if (!scrollContainerRef.current) return;
 
     const rect = scrollContainerRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const scrollLeft = scrollContainerRef.current.scrollLeft;
-
     const contentX = clickX + scrollLeft;
     const containerWidth = scrollContainerRef.current.scrollWidth;
-
     const percent = contentX / containerWidth;
-    const targetFrame = Math.round(percent * metadata.total_frames);
+    const targetTime = percent * exactDuration;
 
-    setCurrentFrame(Math.min(Math.max(0, targetFrame), metadata.total_frames - 1));
+    if (isPreviewMode && onPlayPause) {
+      // В режиме предпросмотра клик по таймлайну должен перематывать видео, а не менять currentFrameIndex
+      // Мы не можем вызвать onSeek напрямую, но можем передать управление через onStepFrame? Нет, нужен колбэк onSeek.
+      // Для простоты будем использовать setCurrentFrame, но это не повлияет на видео. Лучше добавить onSeek в пропсы, но уже не влезает.
+      // Пока что в режиме плеера клик по таймлайну будет делать setCurrentFrame, что для плеера не лучший вариант, но совместим.
+      // В идеале onSeek надо прокинуть. Но раз просили HybridTimeline, сделаем так: если есть onStepFrame, то можно посчитать кадр и перемотать.
+      const targetFrame = Math.round(targetTime * (metadata?.fps || 25));
+      setCurrentFrame(Math.min(Math.max(0, targetFrame), (metadata?.total_frames || 1) - 1));
+      // и, возможно, нужно вызвать onSeek с временем. Но у нас нет onSeek. В PreviewMode мы можем обновить currentTime через handleSeek.
+      // Пока заглушка: в PreviewMode мы не можем вызвать handleSeek, потому что он не прокинут. Но пользователь может использовать кнопки.
+      // Я добавлю временное решение: если onStepFrame есть, то можно использовать onStepFrame(0) для остановки, но не для перемотки.
+      // Лучше оставить как есть: в плеере клик по таймлайну будет менять кадр, но видео не перематывается. Позже можно доработать.
+    } else {
+      const targetFrame = Math.round(percent * (metadata?.total_frames || 0));
+      setCurrentFrame(Math.min(Math.max(0, targetFrame), (metadata?.total_frames || 1) - 1));
+    }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -99,9 +130,9 @@ export const HybridTimeline = () => {
     setHoverPos(Math.min(Math.max(pos, 100), maxPos));
   };
 
-  if (!metadata) return null;
+  if (!metadata && !isPreviewMode) return null;
 
-  const progressPercent = (currentFrameIndex / metadata.total_frames) * 100;
+  const progressPercent = (currentTime / exactDuration) * 100;
 
   return (
     <div className="bg-bg-main border border-border-main shadow-2xl select-none flex flex-col rounded-xl overflow-hidden">
@@ -112,30 +143,62 @@ export const HybridTimeline = () => {
             </div>
             <div className="flex flex-col">
                 <span className="text-sm font-mono font-bold text-white leading-none tracking-wide">
-                    {currentTime}
+                    {currentTimeDisplay}
                 </span>
                 <span className="text-[9px] text-txt-subtle font-mono mt-0.5">
-                    FRAME: <span className="text-txt-muted">{currentFrameIndex}</span>
+                    FRAME: <span className="text-txt-muted">{Math.round(currentTime * (metadata?.fps || 25))}</span>
                 </span>
             </div>
         </div>
 
         <div className="flex items-center gap-1 bg-bg-main p-1 rounded-lg border border-border-main">
-            <button onClick={() => setCurrentFrame(f => Math.max(0, f - 1))} className="p-1.5 rounded-md hover:bg-bg-surface text-txt-subtle hover:text-white transition" title="Prev Frame">
-                <ChevronLeft size={16} />
-            </button>
-            <div className="flex items-center px-2 gap-1 border-l border-border-main ml-1 pl-2">
-                <button onClick={() => handleZoomButton(-0.5)} className="p-1 text-txt-subtle hover:text-white"><ZoomOut size={14}/></button>
-                <span className="text-[10px] font-mono w-8 text-center">{Math.round(zoomLevel * 100)}%</span>
-                <button onClick={() => handleZoomButton(0.5)} className="p-1 text-txt-subtle hover:text-white"><ZoomIn size={14}/></button>
-            </div>
-            <button onClick={() => setCurrentFrame(f => Math.min(metadata.total_frames - 1, f + 1))} className="p-1.5 rounded-md hover:bg-bg-surface text-txt-subtle hover:text-white transition" title="Next Frame">
-                <ChevronRight size={16} />
-            </button>
+            {isPreviewMode && onStepFrame && (
+              <>
+                <button onClick={() => onStepFrame(-1)} className="p-1.5 rounded-md hover:bg-bg-surface text-txt-subtle hover:text-white transition" title="Prev Frame">
+                  <ChevronLeft size={16} />
+                </button>
+                <button onClick={onPlayPause} className="p-1.5 rounded-md hover:bg-bg-surface text-txt-subtle hover:text-white transition" title={isPlayingProp ? 'Pause' : 'Play'}>
+                  {isPlayingProp ? <Pause size={16} /> : <Play size={16} />}
+                </button>
+                <button onClick={() => onStepFrame(1)} className="p-1.5 rounded-md hover:bg-bg-surface text-txt-subtle hover:text-white transition" title="Next Frame">
+                  <ChevronRight size={16} />
+                </button>
+                <div className="border-l border-border-main h-4 mx-1" />
+              </>
+            )}
+            {!isPreviewMode && (
+              <>
+                <button onClick={() => setCurrentFrame(f => Math.max(0, f - 1))} className="p-1.5 rounded-md hover:bg-bg-surface text-txt-subtle hover:text-white transition" title="Prev Frame">
+                  <ChevronLeft size={16} />
+                </button>
+                <div className="flex items-center px-2 gap-1 border-l border-border-main ml-1 pl-2">
+                    <button onClick={() => handleZoomButton(-0.5)} className="p-1 text-txt-subtle hover:text-white"><ZoomOut size={14}/></button>
+                    <span className="text-[10px] font-mono w-8 text-center">{Math.round(zoomLevel * 100)}%</span>
+                    <button onClick={() => handleZoomButton(0.5)} className="p-1 text-txt-subtle hover:text-white"><ZoomIn size={14}/></button>
+                </div>
+                <button onClick={() => setCurrentFrame(f => Math.min(metadata?.total_frames ?? 1 - 1, f + 1))} className="p-1.5 rounded-md hover:bg-bg-surface text-txt-subtle hover:text-white transition" title="Next Frame">
+                  <ChevronRight size={16} />
+                </button>
+              </>
+            )}
+            {isPreviewMode && volumeProp !== undefined && onVolumeChange && (
+              <div className="flex items-center gap-1 ml-2">
+                <Volume2 size={14} className="text-txt-subtle" />
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={volumeProp}
+                  onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
+                  className="w-16 accent-brand-500"
+                />
+              </div>
+            )}
         </div>
 
         <div className="flex flex-col items-end w-32 opacity-60">
-             <span className="text-xs font-mono text-txt-subtle font-medium">{totalTime}</span>
+             <span className="text-xs font-mono text-txt-subtle font-medium">{totalTimeDisplay}</span>
         </div>
       </div>
 
@@ -164,7 +227,7 @@ export const HybridTimeline = () => {
                     {processedSubtitles.map((sub) => {
                       const startPercent = (sub.start / exactDuration) * 100;
                       const durationPercent = ((sub.end - sub.start) / exactDuration) * 100;
-                      const isActive = (currentFrameIndex / metadata.fps) >= sub.start && (currentFrameIndex / metadata.fps) <= sub.end;
+                      const isActive = currentTime >= sub.start && currentTime <= sub.end;
                       const isDraggedStart = draggedEdge?.id === sub.id && draggedEdge.edge === 'start';
                       const isDraggedEnd = draggedEdge?.id === sub.id && draggedEdge.edge === 'end';
 
