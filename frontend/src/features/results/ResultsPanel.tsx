@@ -1,5 +1,5 @@
 import React, { useMemo, useRef } from 'react';
-import { Download, ScanFace, ArrowLeft, Upload, FileVideo, Play, Undo, Redo } from 'lucide-react';
+import { Download, ScanFace, ArrowLeft, Upload, FileVideo, Play, EyeOff, Undo, Redo } from 'lucide-react';
 import { GlassPanel } from '../../components/ui/GlassPanel';
 import { Button } from '../../components/ui/Button';
 import { ProgressHeader } from './components/ProgressHeader';
@@ -25,6 +25,7 @@ export const ResultsPanel = () => {
     setSubtitles,
     addLog,
     renderedVideoUrl,
+    isPreviewMode,
     setPreviewMode,
     undo,
     redo,
@@ -150,13 +151,13 @@ export const ResultsPanel = () => {
             {!isBlurMode ? (
                 <>
                     <Button
-                        variant="secondary"
+                        variant={isPreviewMode ? "danger" : "secondary"}
                         className="w-full py-3 h-11 text-xs font-semibold shadow-md bg-bg-surface hover:bg-bg-input-hover text-white border-border-strong"
                         disabled={isProcessing || !metadata || subtitles.length === 0}
-                        onClick={() => setPreviewMode(true)}
-                        icon={<Play size={14} />}
+                        onClick={() => setPreviewMode(!isPreviewMode)}
+                        icon={isPreviewMode ? <EyeOff size={14} /> : <Play size={14} />}
                     >
-                        PREVIEW PLAYER
+                        {isPreviewMode ? 'Close Preview' : 'Open Preview'}
                     </Button>
                     <div className="flex gap-2">
                         <Button

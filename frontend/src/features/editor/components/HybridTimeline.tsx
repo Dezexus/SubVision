@@ -14,6 +14,7 @@ interface HybridTimelineProps {
   isPlaying?: boolean;
   onPlayPause?: () => void;
   onStepFrame?: (frames: number) => void;
+  onSeek?: (time: number) => void;
   volume?: number;
   onVolumeChange?: (vol: number) => void;
   currentTimeOverride?: number;
@@ -24,6 +25,7 @@ export const HybridTimeline: React.FC<HybridTimelineProps> = ({
   isPlaying: isPlayingProp,
   onPlayPause,
   onStepFrame,
+  onSeek,
   volume: volumeProp,
   onVolumeChange,
   currentTimeOverride,
@@ -46,9 +48,8 @@ export const HybridTimeline: React.FC<HybridTimelineProps> = ({
   const [hoverPos, setHoverPos] = useState<number>(0);
   const hoveredSubIdRef = useRef<number | null>(null);
 
-  const isPreviewMode = isPlayingProp !== undefined; // если есть пропсы – мы в режиме предпросмотра
+  const isPreviewMode = isPlayingProp !== undefined;
 
-  // Если переданы внешние время и длительность, используем их, иначе берём из метаданных и currentFrameIndex
   const exactDuration = durationOverride ?? (metadata ? metadata.total_frames / metadata.fps : 1);
   const currentTime = currentTimeOverride ?? (metadata ? currentFrameIndex / metadata.fps : 0);
 
@@ -104,18 +105,8 @@ export const HybridTimeline: React.FC<HybridTimelineProps> = ({
     const percent = contentX / containerWidth;
     const targetTime = percent * exactDuration;
 
-    if (isPreviewMode && onPlayPause) {
-      // В режиме предпросмотра клик по таймлайну должен перематывать видео, а не менять currentFrameIndex
-      // Мы не можем вызвать onSeek напрямую, но можем передать управление через onStepFrame? Нет, нужен колбэк onSeek.
-      // Для простоты будем использовать setCurrentFrame, но это не повлияет на видео. Лучше добавить onSeek в пропсы, но уже не влезает.
-      // Пока что в режиме плеера клик по таймлайну будет делать setCurrentFrame, что для плеера не лучший вариант, но совместим.
-      // В идеале onSeek надо прокинуть. Но раз просили HybridTimeline, сделаем так: если есть onStepFrame, то можно посчитать кадр и перемотать.
-      const targetFrame = Math.round(targetTime * (metadata?.fps || 25));
-      setCurrentFrame(Math.min(Math.max(0, targetFrame), (metadata?.total_frames || 1) - 1));
-      // и, возможно, нужно вызвать onSeek с временем. Но у нас нет onSeek. В PreviewMode мы можем обновить currentTime через handleSeek.
-      // Пока заглушка: в PreviewMode мы не можем вызвать handleSeek, потому что он не прокинут. Но пользователь может использовать кнопки.
-      // Я добавлю временное решение: если onStepFrame есть, то можно использовать onStepFrame(0) для остановки, но не для перемотки.
-      // Лучше оставить как есть: в плеере клик по таймлайну будет менять кадр, но видео не перематывается. Позже можно доработать.
+    if (isPreviewMode && onSeek) {
+      onSeek(Math.max(0, Math.min(exactDuration, targetTime)));
     } else {
       const targetFrame = Math.round(percent * (metadata?.total_frames || 0));
       setCurrentFrame(Math.min(Math.max(0, targetFrame), (metadata?.total_frames || 1) - 1));

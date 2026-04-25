@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { X, MoveVertical, Trash2, Eye, EyeOff, Plus, ChevronUp, ChevronDown } from 'lucide-react';
+import { MoveVertical, Trash2, Eye, EyeOff } from 'lucide-react';
 import { useAppStore } from '../../../store/useAppStore';
 import { HybridTimeline } from './HybridTimeline';
 import { API_BASE } from '../../../services/api';
@@ -7,28 +7,16 @@ import { formatTimeDisplay } from '../../../utils/format';
 import { shallow } from 'zustand/shallow';
 import type { SubtitleItem } from '../../../types';
 
-const generateNewSubtitle = (start: number, end: number, maxId: number): SubtitleItem => ({
-  id: maxId + 1,
-  start,
-  end,
-  text: '',
-  conf: 1.0,
-  isEdited: true,
-});
-
 const THROTTLE_INTERVAL = 100;
 
 export const PreviewMode = () => {
   const metadata = useAppStore(s => s.metadata, shallow);
   const file = useAppStore(s => s.file);
-  const setPreviewMode = useAppStore(s => s.setPreviewMode);
   const updateSubtitle = useAppStore(s => s.updateSubtitle);
   const deleteSubtitle = useAppStore(s => s.deleteSubtitle);
   const saveHistory = useAppStore(s => s.saveHistory);
-  const addSubtitle = useAppStore(s => s.addSubtitle);
   const subtitles = useAppStore(s => s.subtitles, shallow);
-  const undo = useAppStore(s => s.undo);
-  const redo = useAppStore(s => s.redo);
+  const setCurrentFrame = useAppStore(s => s.setCurrentFrame);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -62,6 +50,34 @@ export const PreviewMode = () => {
     setActiveSub(null);
   }, [subtitles]);
 
+  const syncCurrentFrame = useCallback((time: number) => {
+    if (metadata) {
+      const frame = Math.round(time * metadata.fps);
+      setCurrentFrame(frame);
+    }
+  }, [metadata, setCurrentFrame]);
+
+  const handlePlayPause = useCallback(() => {
+    const video = videoRef.current;
+    if (video) {
+      if (video.paused) video.play();
+      else video.pause();
+    }
+  }, []);
+
+  useEffect(() => {
+    const videoEl = videoRef.current;
+    if (!videoEl) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        handlePlayPause();
+      }
+    };
+    videoEl.addEventListener('keydown', onKeyDown);
+    return () => videoEl.removeEventListener('keydown', onKeyDown);
+  }, [handlePlayPause]);
+
   useEffect(() => {
     if (isPlaying) {
       const loop = () => {
@@ -74,6 +90,7 @@ export const PreviewMode = () => {
             currentTimeRef.current = time;
             setCurrentTime(time);
             updateActiveSubtitle(time);
+            syncCurrentFrame(time);
           }
         }
         animationFrameRef.current = requestAnimationFrame(loop);
@@ -83,7 +100,7 @@ export const PreviewMode = () => {
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [isPlaying, updateActiveSubtitle]);
+  }, [isPlaying, updateActiveSubtitle, syncCurrentFrame]);
 
   useEffect(() => {
     if (metadata) {
@@ -99,14 +116,6 @@ export const PreviewMode = () => {
     }
   }, [file, metadata]);
 
-  const handlePlayPause = useCallback(() => {
-    const video = videoRef.current;
-    if (video) {
-      if (video.paused) video.play();
-      else video.pause();
-    }
-  }, []);
-
   const handleStepFrame = useCallback((frames: number) => {
     const video = videoRef.current;
     if (video && metadata && metadata.fps > 0) {
@@ -116,8 +125,19 @@ export const PreviewMode = () => {
       newTime = Math.max(0, Math.min(video.duration || durationRef.current, newTime));
       video.currentTime = newTime + 0.0001;
       setCurrentTime(newTime);
+      syncCurrentFrame(newTime);
     }
-  }, [metadata]);
+  }, [metadata, syncCurrentFrame]);
+
+  const handleSeek = useCallback((time: number) => {
+    const video = videoRef.current;
+    if (video) {
+      video.currentTime = time;
+      setCurrentTime(time);
+      updateActiveSubtitle(time);
+      syncCurrentFrame(time);
+    }
+  }, [updateActiveSubtitle, syncCurrentFrame]);
 
   const handleVolumeChange = useCallback((newVol: number) => {
     setVolume(Math.min(1, Math.max(0, newVol)));
@@ -132,8 +152,6 @@ export const PreviewMode = () => {
     setDuration(dur);
     durationRef.current = dur;
   }, []);
-
-  const handleClose = useCallback(() => setPreviewMode(false), [setPreviewMode]);
 
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -157,25 +175,10 @@ export const PreviewMode = () => {
     window.addEventListener('mouseup', handleMouseUp);
   }, [bottomOffset]);
 
-  // остальные обработчики Subtitle Overlay, навигация – аналогичны предыдущему PreviewMode, но без таймлайна
-  // ... (оставлены как есть)
-
   if (!metadata) return null;
-
-  const activeStartFrame = metadata ? Math.round(activeSub ? activeSub.start * metadata.fps : 0) : 0;
-  const activeEndFrame = metadata ? Math.round(activeSub ? activeSub.end * metadata.fps : 0) : 0;
 
   return (
     <div className="w-full h-full flex flex-col bg-bg-main border border-border-main rounded-xl overflow-hidden shadow-2xl">
-      <div className="p-3 border-b border-border-main flex justify-between items-center bg-bg-panel shrink-0">
-        <h2 className="text-white font-bold tracking-wide uppercase text-sm">Preview & Edit</h2>
-        <div className="flex items-center gap-2">
-          <button onClick={handleClose} className="p-1.5 text-txt-subtle hover:text-white hover:bg-red-500/20 border border-transparent rounded transition-colors">
-            <X size={18} />
-          </button>
-        </div>
-      </div>
-
       <div ref={containerRef} className="relative w-full flex-1 bg-black flex items-center justify-center group/video overflow-hidden">
         {videoUrl && (
           <video
@@ -197,8 +200,6 @@ export const PreviewMode = () => {
           >
             <div className="bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-t flex items-center gap-2 mb-0.5">
               <span>{formatTimeDisplay(activeSub.start)} – {formatTimeDisplay(activeSub.end)}</span>
-              <span className="opacity-50">|</span>
-              <span>Frames: {activeStartFrame} – {activeEndFrame}</span>
               <button onClick={() => setShowOverlay(false)} className="ml-1 p-0.5 hover:text-brand-400" title="Hide subtitle overlay">
                 <EyeOff size={12} />
               </button>
@@ -244,6 +245,7 @@ export const PreviewMode = () => {
         isPlaying={isPlaying}
         onPlayPause={handlePlayPause}
         onStepFrame={handleStepFrame}
+        onSeek={handleSeek}
         volume={volume}
         onVolumeChange={handleVolumeChange}
         currentTimeOverride={currentTime}
