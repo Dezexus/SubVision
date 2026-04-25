@@ -1,6 +1,3 @@
-/**
- * Component representing a single interactive subtitle row in the results list.
- */
 import React, { useState, useEffect } from 'react';
 import { Copy, Trash2, ArrowDownToLine } from 'lucide-react';
 import type { SubtitleItem } from '../../../types';
@@ -63,14 +60,19 @@ export const SubtitleCard = ({ item, index }: { item: SubtitleItem, index: numbe
         !isActive && !item.isEdited && !isLowConf ? "border-border-main" : ""
       )}
     >
-      <textarea
-        value={item.text}
-        onFocus={() => saveHistory()}
-        onChange={(e) => updateSubtitle({ ...item, text: e.target.value })}
-        className="w-full bg-transparent text-sm text-txt-main resize-none focus:outline-none focus:ring-1 focus:ring-brand-500 rounded px-1 pr-16 leading-snug min-h-[40px] scrollbar-hide"
-        rows={2}
-        spellCheck={false}
-      />
+      <div className="flex gap-2 items-start">
+        <span className="text-xs font-mono font-bold text-txt-subtle mt-1 w-6 text-right shrink-0 select-none">
+          {index + 1}
+        </span>
+        <textarea
+          value={item.text}
+          onFocus={() => saveHistory()}
+          onChange={(e) => updateSubtitle({ ...item, text: e.target.value })}
+          className="w-full bg-transparent text-sm text-txt-main resize-none focus:outline-none focus:ring-1 focus:ring-brand-500 rounded px-1 leading-snug min-h-[40px] scrollbar-hide"
+          rows={2}
+          spellCheck={false}
+        />
+      </div>
 
       <div className="flex items-center justify-between text-xs text-txt-subtle mt-1">
         <div className="flex items-center gap-3">
