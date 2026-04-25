@@ -1,9 +1,10 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { X, MoveVertical, Trash2, Eye, EyeOff, Plus, ChevronUp, ChevronDown } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { PlaybackControls } from './components/PlaybackControls';
 import { API_BASE } from '../../services/api';
 import { formatTimeDisplay } from '../../utils/format';
+import { shallow } from 'zustand/shallow';
 import type { SubtitleItem } from '../../types';
 
 const generateNewSubtitle = (start: number, end: number, maxId: number): SubtitleItem => ({
@@ -16,18 +17,18 @@ const generateNewSubtitle = (start: number, end: number, maxId: number): Subtitl
 });
 
 export const PreviewModal = () => {
-  const {
-    file,
-    metadata,
-    subtitles,
-    currentFrameIndex,
-    isPreviewModalOpen,
-    setPreviewModalOpen,
-    updateSubtitle,
-    deleteSubtitle,
-    saveHistory,
-    addSubtitle,
-  } = useAppStore();
+  const isPreviewModalOpen = useAppStore(s => s.isPreviewModalOpen);
+  const setPreviewModalOpen = useAppStore(s => s.setPreviewModalOpen);
+  const metadata = useAppStore(s => s.metadata, shallow);
+  const file = useAppStore(s => s.file);
+  const currentFrameIndex = useAppStore(s => s.currentFrameIndex);
+  const updateSubtitle = useAppStore(s => s.updateSubtitle);
+  const deleteSubtitle = useAppStore(s => s.deleteSubtitle);
+  const saveHistory = useAppStore(s => s.saveHistory);
+  const addSubtitle = useAppStore(s => s.addSubtitle);
+  const subtitles = useAppStore(s => s.subtitles, shallow);
+  const undo = useAppStore(s => s.undo);
+  const redo = useAppStore(s => s.redo);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -52,20 +53,15 @@ export const PreviewModal = () => {
   const handlePlayPause = useCallback(() => {
     const video = videoRef.current;
     if (video) {
-      if (video.paused) {
-        video.play();
-      } else {
-        video.pause();
-      }
+      if (video.paused) video.play();
+      else video.pause();
     }
   }, []);
 
   const handleStepFrame = useCallback((frames: number) => {
     const video = videoRef.current;
     if (video && metadata && metadata.fps > 0) {
-      if (!video.paused) {
-        video.pause();
-      }
+      if (!video.paused) video.pause();
       const currentFrame = Math.round(video.currentTime * metadata.fps);
       let newTime = (currentFrame + frames) / metadata.fps;
       newTime = Math.max(0, Math.min(video.duration || duration, newTime));
@@ -75,55 +71,32 @@ export const PreviewModal = () => {
   }, [metadata, duration]);
 
   const updateActiveSubtitle = useCallback((time: number) => {
-    const subs = useAppStore.getState().subtitles;
-    const len = subs.length;
-    if (len === 0) {
+    const subs = subtitles;
+    if (subs.length === 0) {
       setActiveSub(null);
       return;
     }
-
     let idx = activeSubIndexRef.current;
-    if (idx >= len) idx = len - 1;
+    if (idx >= subs.length) idx = subs.length - 1;
     if (idx < 0) idx = 0;
-
-    if (idx < len) {
-      const current = subs[idx];
-      if (time >= current.start && time <= current.end) {
-        setActiveSub(current);
-        activeSubIndexRef.current = idx;
+    if (subs[idx] && time >= subs[idx].start && time <= subs[idx].end) {
+      setActiveSub(subs[idx]);
+      activeSubIndexRef.current = idx;
+      return;
+    }
+    for (let i = 0; i < subs.length; i++) {
+      if (time >= subs[i].start && time <= subs[i].end) {
+        setActiveSub(subs[i]);
+        activeSubIndexRef.current = i;
         return;
       }
-      if (time < current.start) {
-        while (idx > 0 && subs[idx - 1].end > time) {
-          idx--;
-        }
-        idx = idx > 0 ? idx - 1 : 0;
-        while (idx > 0 && subs[idx].start > time) {
-          idx--;
-        }
-      } else {
-        while (idx < len - 1 && subs[idx + 1].start <= time) {
-          idx++;
-        }
-      }
     }
-
-    const candidate = subs[idx];
-    if (candidate && time >= candidate.start && time <= candidate.end) {
-      setActiveSub(candidate);
-      activeSubIndexRef.current = idx;
-    } else {
-      setActiveSub(null);
-      if (idx < len && time > subs[idx].end) {
-        activeSubIndexRef.current = idx;
-      }
-    }
-  }, []);
+    setActiveSub(null);
+  }, [subtitles]);
 
   const animate = useCallback(function loop() {
     const video = videoRef.current;
     if (!video) return;
-
     const newTime = video.currentTime;
     setCurrentTime(newTime);
     updateActiveSubtitle(newTime);
@@ -138,14 +111,10 @@ export const PreviewModal = () => {
     if (isPlaying) {
       animationFrameRef.current = requestAnimationFrame(animate);
     } else {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     }
     return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
   }, [isPlaying, animate]);
 
@@ -154,16 +123,11 @@ export const PreviewModal = () => {
       if (file) {
         const url = URL.createObjectURL(file);
         setVideoUrl(url);
-        return () => {
-          URL.revokeObjectURL(url);
-          setVideoUrl(null);
-        };
+        return () => URL.revokeObjectURL(url);
       } else {
         const url = `${API_BASE}/api/video/download/${metadata.filename}`;
         setVideoUrl(url);
-        return () => {
-          setVideoUrl(null);
-        };
+        return () => setVideoUrl(null);
       }
     } else {
       setVideoUrl(null);
@@ -173,45 +137,36 @@ export const PreviewModal = () => {
   useEffect(() => {
     if (!isPreviewModalOpen) {
       initializedRef.current = false;
-      if (videoRef.current) {
-        videoRef.current.pause();
-      }
+      if (videoRef.current) videoRef.current.pause();
       return;
     }
-
     if (isPreviewModalOpen && metadata && !initializedRef.current && videoRef.current) {
-      const initialTime = currentFrameIndex / metadata.fps;
-      videoRef.current.currentTime = initialTime;
-      setCurrentTime(initialTime);
+      videoRef.current.currentTime = currentFrameIndex / metadata.fps;
+      setCurrentTime(currentFrameIndex / metadata.fps);
       initializedRef.current = true;
     }
   }, [isPreviewModalOpen, metadata, currentFrameIndex]);
 
   useEffect(() => {
-    if (!isPlaying) {
-      updateActiveSubtitle(currentTime);
-    }
+    if (!isPlaying) updateActiveSubtitle(currentTime);
   }, [subtitles, currentTime, isPlaying, updateActiveSubtitle]);
 
   useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.volume = volume;
-    }
+    if (videoRef.current) videoRef.current.volume = volume;
   }, [volume]);
 
-  const handleSeek = (time: number) => {
+  const handleSeek = useCallback((time: number) => {
     const video = videoRef.current;
     if (video) {
       video.currentTime = time;
       setCurrentTime(time);
     }
-  };
+  }, []);
 
-  const handleDragStart = (e: React.MouseEvent) => {
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     dragStartRef.current = { y: e.clientY, initialOffset: bottomOffset };
-
     const handleMouseMove = (moveEvent: MouseEvent) => {
       if (!containerRef.current || !dragStartRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
@@ -221,48 +176,43 @@ export const PreviewModal = () => {
       newPercent = Math.max(2, Math.min(newPercent, 90));
       setBottomOffset(newPercent);
     };
-
     const handleMouseUp = () => {
       dragStartRef.current = null;
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-  };
+  }, [bottomOffset]);
 
-  const handlePrevSub = () => {
-    const subs = useAppStore.getState().subtitles;
+  const handlePrevSub = useCallback(() => {
+    const subs = subtitles;
     if (subs.length === 0) return;
     const index = subs.findIndex(s => s.start >= currentTime - 0.001);
     const prevIdx = index > 0 ? index - 1 : subs.length - 1;
     handleSeek(subs[prevIdx].start);
-  };
+  }, [subtitles, currentTime, handleSeek]);
 
-  const handleNextSub = () => {
-    const subs = useAppStore.getState().subtitles;
+  const handleNextSub = useCallback(() => {
+    const subs = subtitles;
     if (subs.length === 0) return;
     const index = subs.findIndex(s => s.start > currentTime);
     const nextIdx = index >= 0 ? index : 0;
     handleSeek(subs[nextIdx].start);
-  };
+  }, [subtitles, currentTime, handleSeek]);
 
-  const handleAddSubtitle = () => {
-    const subs = useAppStore.getState().subtitles;
-    const maxId = subs.reduce((max, s) => Math.max(max, s.id), 0);
+  const handleAddSubtitle = useCallback(() => {
+    const maxId = subtitles.reduce((max, s) => Math.max(max, s.id), 0);
     const start = currentTime;
     const end = Math.min(duration, start + 2);
     const newSub = generateNewSubtitle(start, end, maxId);
     addSubtitle(newSub);
     saveHistory();
-  };
+  }, [subtitles, currentTime, duration, addSubtitle, saveHistory]);
 
-  const handleDeleteCurrentSub = () => {
-    if (activeSub) {
-      deleteSubtitle(activeSub.id);
-    }
-  };
+  const handleDeleteCurrentSub = useCallback(() => {
+    if (activeSub) deleteSubtitle(activeSub.id);
+  }, [activeSub, deleteSubtitle]);
 
   const handleVolumeChange = useCallback((newVol: number) => {
     setVolume(Math.min(1, Math.max(0, newVol)));
@@ -273,19 +223,15 @@ export const PreviewModal = () => {
       const time = frame / metadata.fps;
       handleSeek(Math.max(0, Math.min(duration, time)));
     }
-  }, [metadata, duration]);
+  }, [metadata, duration, handleSeek]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        if (e.key === 'Escape') {
-          e.currentTarget.dispatchEvent(new Event('blur'));
-          return;
-        }
+        if (e.key === 'Escape') (e.target as HTMLElement).blur();
         return;
       }
       if (!isPreviewModalOpen) return;
-
       if (e.code === 'Space') {
         e.preventDefault();
         handlePlayPause();
@@ -311,20 +257,17 @@ export const PreviewModal = () => {
         else handleNextSub();
       } else if (e.key === 'Escape') {
         setPreviewModalOpen(false);
+      } else if (e.ctrlKey && e.key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
       }
     };
+    if (isPreviewModalOpen) window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPreviewModalOpen, handlePlayPause, handleStepFrame, activeSub, handleDeleteCurrentSub, handleAddSubtitle, handlePrevSub, handleNextSub, setPreviewModalOpen, undo, redo]);
 
-    if (isPreviewModalOpen) {
-      window.addEventListener('keydown', handleKeyDown);
-    }
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isPreviewModalOpen, handlePlayPause, handleStepFrame, activeSub, handlePrevSub, handleNextSub, handleAddSubtitle, handleDeleteCurrentSub, setPreviewModalOpen]);
-
-  if (!isPreviewModalOpen || !metadata) {
-    return null;
-  }
+  if (!isPreviewModalOpen || !metadata) return null;
 
   const activeStartFrame = metadata ? Math.round(activeSub ? activeSub.start * metadata.fps : 0) : 0;
   const activeEndFrame = metadata ? Math.round(activeSub ? activeSub.end * metadata.fps : 0) : 0;

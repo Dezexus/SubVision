@@ -1,9 +1,10 @@
-import React, { useRef, useState, useEffect, useLayoutEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useLayoutEffect, useCallback, useMemo, memo } from 'react';
 import { Play, Pause, Clock, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Volume2 } from 'lucide-react';
 import { useAppStore } from '../../../store/useAppStore';
 import { cn } from '../../../utils/cn';
 import { formatTimeDisplay } from '../../../utils/format';
 import type { SubtitleItem } from '../../../types';
+import { shallow } from 'zustand/shallow';
 
 interface PlaybackControlsProps {
   currentTime: number;
@@ -19,6 +20,137 @@ interface PlaybackControlsProps {
   onAddSubtitle: () => void;
 }
 
+const SubtitleBlock = memo(({ 
+  sub, 
+  duration, 
+  isActive, 
+  zoom, 
+  onCommitChanges 
+}: { 
+  sub: SubtitleItem; 
+  duration: number; 
+  isActive: boolean; 
+  zoom: number; 
+  onCommitChanges: (id: number, start: number, end: number) => void;
+}) => {
+  const blockRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{
+    type: 'start' | 'end' | 'move';
+    startX: number;
+    startTime: number;
+    endTime: number;
+  } | null>(null);
+  const [localStart, setLocalStart] = useState(sub.start);
+  const [localEnd, setLocalEnd] = useState(sub.end);
+  const [isDragging, setIsDragging] = useState(false);
+
+  useEffect(() => {
+    if (!isDragging) {
+      setLocalStart(sub.start);
+      setLocalEnd(sub.end);
+    }
+  }, [sub.start, sub.end, isDragging]);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent, edge?: 'start' | 'end') => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (edge) {
+      e.stopPropagation();
+    }
+    const initialStart = sub.start;
+    const initialEnd = sub.end;
+    dragRef.current = {
+      type: edge || 'move',
+      startX: e.clientX,
+      startTime: initialStart,
+      endTime: initialEnd,
+    };
+    setIsDragging(true);
+    document.body.style.cursor = edge ? 'col-resize' : 'grab';
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!dragRef.current || !blockRef.current?.parentElement) return;
+      const totalWidth = blockRef.current.parentElement.scrollWidth;
+      const deltaX = moveEvent.clientX - dragRef.current.startX;
+      const deltaTime = (deltaX / totalWidth) * duration;
+
+      if (dragRef.current.type === 'start') {
+        setLocalStart(Math.max(0, Math.min(dragRef.current.endTime - 0.1, dragRef.current.startTime + deltaTime)));
+      } else if (dragRef.current.type === 'end') {
+        setLocalEnd(Math.min(duration, Math.max(dragRef.current.startTime + 0.1, dragRef.current.endTime + deltaTime)));
+      } else {
+        let newStart = dragRef.current.startTime + deltaTime;
+        let newEnd = dragRef.current.endTime + deltaTime;
+        if (newStart < 0) {
+          newEnd -= newStart;
+          newStart = 0;
+        }
+        if (newEnd > duration) {
+          newStart -= newEnd - duration;
+          newEnd = duration;
+        }
+        setLocalStart(Math.max(0, Math.min(newStart, duration)));
+        setLocalEnd(Math.min(duration, Math.max(newEnd, 0)));
+      }
+    };
+
+    const handleMouseUp = () => {
+      if (dragRef.current) {
+        if (dragRef.current.type === 'start' && localStart !== dragRef.current.startTime) {
+          onCommitChanges(sub.id, localStart, sub.end);
+        } else if (dragRef.current.type === 'end' && localEnd !== dragRef.current.endTime) {
+          onCommitChanges(sub.id, sub.start, localEnd);
+        } else if (dragRef.current.type === 'move') {
+          onCommitChanges(sub.id, localStart, localEnd);
+        }
+      }
+      dragRef.current = null;
+      setIsDragging(false);
+      document.body.style.cursor = '';
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }, [sub, duration, localStart, localEnd, onCommitChanges]);
+
+  const startPercent = (localStart / duration) * 100;
+  const widthPercent = ((localEnd - localStart) / duration) * 100;
+  const isEdited = sub.isEdited;
+
+  return (
+    <div
+      ref={blockRef}
+      className={cn(
+        "absolute top-5 bottom-2 rounded border flex items-center overflow-hidden transition-colors shadow-sm group",
+        isActive
+          ? "bg-brand-500/80 border-brand-400 z-10"
+          : isEdited
+          ? "bg-blue-500/20 border-blue-500/40"
+          : "bg-bg-panel border-white/10 hover:bg-bg-panel/80 hover:border-white/20"
+      )}
+      style={{
+        left: `${startPercent}%`,
+        width: `${Math.max(widthPercent, 0.1)}%`,
+      }}
+      onMouseDown={(e) => handleMouseDown(e)}
+    >
+      <div
+        className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-white/30 z-10"
+        onMouseDown={(e) => handleMouseDown(e, 'start')}
+      />
+      <div
+        className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-white/30 z-10"
+        onMouseDown={(e) => handleMouseDown(e, 'end')}
+      />
+      <span className="text-xs font-medium text-white/90 truncate px-2 select-none pointer-events-none">
+        {sub.text}
+      </span>
+    </div>
+  );
+});
+
 export const PlaybackControls = ({
   currentTime,
   duration,
@@ -32,18 +164,11 @@ export const PlaybackControls = ({
   onSeekFrame,
   onAddSubtitle,
 }: PlaybackControlsProps) => {
-  const metadata = useAppStore((state) => state.metadata);
-  const saveHistory = useAppStore((state) => state.saveHistory);
-  const updateSubtitle = useAppStore((state) => state.updateSubtitle);
+  const metadata = useAppStore(state => state.metadata, shallow);
+  const saveHistory = useAppStore(state => state.saveHistory);
+  const updateSubtitle = useAppStore(state => state.updateSubtitle);
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
-  const [dragInfo, setDragInfo] = useState<{
-    subId: number;
-    type: 'start' | 'end' | 'move';
-    startX: number;
-    initialStart: number;
-    initialEnd: number;
-  } | null>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const zoomAnchorRef = useRef<{ ratio: number; screenX: number } | null>(null);
 
@@ -85,9 +210,9 @@ export const PlaybackControls = ({
     };
   }, [handleWheel]);
 
-  const handleZoomSlider = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleZoomSlider = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     applyZoom(parseFloat(e.target.value));
-  };
+  }, [applyZoom]);
 
   useLayoutEffect(() => {
     if (zoomAnchorRef.current && timelineScrollRef.current) {
@@ -114,93 +239,30 @@ export const PlaybackControls = ({
     }
   }, [currentTime, isPlaying, duration, zoom]);
 
-  const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (dragInfo) return;
+  const handleTimelineClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const totalWidth = e.currentTarget.scrollWidth;
     const percent = clickX / totalWidth;
     const targetTime = Math.max(0, Math.min(duration, percent * duration));
     onSeek(targetTime);
-  };
+  }, [duration, onSeek]);
 
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
   const currentFrame = metadata ? Math.round(currentTime * metadata.fps) : 0;
 
-  const handleMouseDownOnBlock = (e: React.MouseEvent, sub: SubtitleItem, edge?: 'start' | 'end') => {
-    e.stopPropagation();
-    e.preventDefault();
-    const initialSub = { ...sub };
-    if (!edge) {
-      saveHistory();
+  const handleCommitSubtitleChanges = useCallback((id: number, start: number, end: number) => {
+    saveHistory();
+    const sub = subtitles.find(s => s.id === id);
+    if (sub) {
+      updateSubtitle({ ...sub, start, end, isEdited: true });
     }
-    setDragInfo({
-      subId: sub.id,
-      type: edge || 'move',
-      startX: e.clientX,
-      initialStart: sub.start,
-      initialEnd: sub.end,
-    });
-    document.body.style.cursor = edge ? 'col-resize' : 'grab';
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      if (!dragInfoRef.current) return;
-      if (!timelineScrollRef.current) return;
-      const container = timelineScrollRef.current;
-      const totalWidth = container.scrollWidth;
-      const deltaX = moveEvent.clientX - dragInfoRef.current.startX;
-      const deltaTime = (deltaX / totalWidth) * duration;
+  }, [saveHistory, updateSubtitle, subtitles]);
 
-      const state = useAppStore.getState();
-      const sub = state.subtitles.find(s => s.id === dragInfoRef.current!.subId);
-      if (!sub) return;
-
-      let newStart = sub.start;
-      let newEnd = sub.end;
-
-      if (dragInfoRef.current.type === 'start') {
-        newStart = Math.max(0, Math.min(sub.end - 0.1, dragInfoRef.current.initialStart + deltaTime));
-        updateSubtitle({ ...sub, start: newStart });
-      } else if (dragInfoRef.current.type === 'end') {
-        newEnd = Math.min(duration, Math.max(sub.start + 0.1, dragInfoRef.current.initialEnd + deltaTime));
-        updateSubtitle({ ...sub, end: newEnd });
-      } else if (dragInfoRef.current.type === 'move') {
-        newStart = dragInfoRef.current.initialStart + deltaTime;
-        newEnd = dragInfoRef.current.initialEnd + deltaTime;
-        if (newStart < 0) {
-          newEnd -= newStart;
-          newStart = 0;
-        }
-        if (newEnd > duration) {
-          newStart -= newEnd - duration;
-          newEnd = duration;
-        }
-        updateSubtitle({ ...sub, start: Math.max(0, newStart), end: Math.min(duration, newEnd) });
-      }
-    };
-
-    const handleMouseUp = () => {
-      if (dragInfoRef.current) {
-        const state = useAppStore.getState();
-        const finalSub = state.subtitles.find(s => s.id === dragInfoRef.current!.subId);
-        if (finalSub && (
-          finalSub.start !== (dragInfoRef.current.initialStart + (dragInfoRef.current.type === 'move' ? (dragInfoRef.current.startX ? 0 : 0) : 0)) ||
-          finalSub.end !== (dragInfoRef.current.initialEnd + (dragInfoRef.current.type === 'move' ? 0 : 0))
-        )) {
-          saveHistory();
-        }
-      }
-      setDragInfo(null);
-      document.body.style.cursor = '';
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-  };
-
-  const dragInfoRef = useRef(dragInfo);
-  dragInfoRef.current = dragInfo;
+  const memoizedSubtitles = useMemo(() => subtitles.map(sub => ({
+    sub,
+    isActive: currentTime >= sub.start && currentTime <= sub.end,
+  })), [subtitles, currentTime]);
 
   if (!metadata) return null;
 
@@ -308,43 +370,16 @@ export const PlaybackControls = ({
           <div className="absolute top-0 w-full h-5 border-b border-border-main bg-black/20 pointer-events-none" />
           <div className="absolute top-5 left-0 right-0 bottom-2 bg-bg-track/30 rounded border border-white/5 mx-2" />
 
-          {subtitles.map((sub) => {
-            const startPercent = (sub.start / duration) * 100;
-            const durationPercent = ((sub.end - sub.start) / duration) * 100;
-            const isActive = currentTime >= sub.start && currentTime <= sub.end;
-            const isEdited = sub.isEdited;
-
-            return (
-              <div
-                key={sub.id}
-                className={cn(
-                  "absolute top-5 bottom-2 rounded border flex items-center overflow-hidden transition-colors shadow-sm group",
-                  isActive
-                    ? "bg-brand-500/80 border-brand-400 z-10"
-                    : isEdited
-                    ? "bg-blue-500/20 border-blue-500/40"
-                    : "bg-bg-panel border-white/10 hover:bg-bg-panel/80 hover:border-white/20"
-                )}
-                style={{
-                  left: `${startPercent}%`,
-                  width: `${durationPercent}%`,
-                }}
-                onMouseDown={(e) => handleMouseDownOnBlock(e, sub)}
-              >
-                <div
-                  className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-white/30 z-10"
-                  onMouseDown={(e) => handleMouseDownOnBlock(e, sub, 'start')}
-                />
-                <div
-                  className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-white/30 z-10"
-                  onMouseDown={(e) => handleMouseDownOnBlock(e, sub, 'end')}
-                />
-                <span className="text-xs font-medium text-white/90 truncate px-2 select-none pointer-events-none">
-                  {sub.text}
-                </span>
-              </div>
-            );
-          })}
+          {memoizedSubtitles.map(({ sub, isActive }) => (
+            <SubtitleBlock
+              key={sub.id}
+              sub={sub}
+              duration={duration}
+              isActive={isActive}
+              zoom={zoom}
+              onCommitChanges={handleCommitSubtitleChanges}
+            />
+          ))}
 
           <div
             className="absolute top-0 bottom-0 z-50 w-px pointer-events-none"
