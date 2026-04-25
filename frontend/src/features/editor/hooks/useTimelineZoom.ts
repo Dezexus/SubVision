@@ -1,6 +1,3 @@
-/**
- * Hook to handle timeline zooming logic including scroll anchoring.
- */
 import { useState, useRef, useLayoutEffect, useCallback, useEffect } from 'react';
 
 export const useTimelineZoom = (scrollContainerRef: React.RefObject<HTMLDivElement | null>) => {

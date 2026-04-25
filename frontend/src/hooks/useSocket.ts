@@ -39,8 +39,10 @@ export const useSocket = () => {
     const currentProcessing = useAppStore.getState().isProcessing;
     const currentStopped = useAppStore.getState().stoppedJobId;
 
-    if (!currentProcessing && currentStopped) {
-      return;
+    if (msg.type !== 'finish') {
+      if (!currentProcessing && currentStopped) {
+        return;
+      }
     }
 
     switch (msg.type) {

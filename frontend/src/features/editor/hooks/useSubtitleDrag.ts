@@ -10,6 +10,7 @@ export const useSubtitleDrag = (scrollContainerRef: React.RefObject<HTMLDivEleme
     startX: number;
     initialStart: number;
     initialEnd: number;
+    initialState: SubtitleItem;
   } | null>(null);
 
   const [draggedEdge, setDraggedEdge] = useState<{ id: number, edge: 'start' | 'end' } | null>(null);
@@ -47,6 +48,15 @@ export const useSubtitleDrag = (scrollContainerRef: React.RefObject<HTMLDivEleme
   }, [scrollContainerRef]);
 
   const handleEdgeMouseUp = useCallback(function onMouseUp() {
+    if (dragRef.current) {
+      const state = useAppStore.getState();
+      const finalSub = state.subtitles.find(s => s.id === dragRef.current!.subId);
+      if (finalSub &&
+          (finalSub.start !== dragRef.current.initialState.start ||
+           finalSub.end !== dragRef.current.initialState.end)) {
+        state.saveHistory();
+      }
+    }
     dragRef.current = null;
     setDraggedEdge(null);
     document.body.style.cursor = '';
@@ -60,7 +70,7 @@ export const useSubtitleDrag = (scrollContainerRef: React.RefObject<HTMLDivEleme
     e.stopPropagation();
     e.preventDefault();
 
-    useAppStore.getState().saveHistory();
+    const initialState = { ...sub };
 
     isDraggingRef.current = true;
     dragRef.current = {
@@ -68,7 +78,8 @@ export const useSubtitleDrag = (scrollContainerRef: React.RefObject<HTMLDivEleme
       edge,
       startX: e.clientX,
       initialStart: sub.start,
-      initialEnd: sub.end
+      initialEnd: sub.end,
+      initialState
     };
     setDraggedEdge({ id: sub.id, edge });
     document.body.style.cursor = 'col-resize';
