@@ -10,12 +10,14 @@ export interface VideoSlice {
   currentFrameIndex: number;
   isPreviewModalOpen: boolean;
   isPreviewMode: boolean;
+  previewVolume: number;
   allowedExtensions: string[];
   setFile: (file: File | null) => void;
   setMetadata: (meta: VideoMetadata | null) => void;
   setCurrentFrame: (index: number | ((prev: number) => number)) => void;
   setPreviewModalOpen: (isOpen: boolean) => void;
   setPreviewMode: (active: boolean) => void;
+  setPreviewVolume: (vol: number) => void;
   setAllowedExtensions: (extensions: string[]) => void;
   resetProject: () => void;
 }
@@ -26,6 +28,7 @@ export const createVideoSlice: StateCreator<AppState, [], [], VideoSlice> = (set
   currentFrameIndex: 0,
   isPreviewModalOpen: false,
   isPreviewMode: false,
+  previewVolume: 1,
   allowedExtensions: [],
   setFile: (file) => set({ file }),
   setMetadata: (metadata) => set({ metadata, currentFrameIndex: 0 }),
@@ -35,6 +38,7 @@ export const createVideoSlice: StateCreator<AppState, [], [], VideoSlice> = (set
   })),
   setPreviewModalOpen: (isOpen) => set({ isPreviewModalOpen: isOpen }),
   setPreviewMode: (active) => set({ isPreviewMode: active }),
+  setPreviewVolume: (vol) => set({ previewVolume: Math.min(1, Math.max(0, vol)) }),
   setAllowedExtensions: (extensions) => set({ allowedExtensions: extensions }),
   resetProject: () => {
     const state = get();
@@ -57,6 +61,7 @@ export const createVideoSlice: StateCreator<AppState, [], [], VideoSlice> = (set
       blurPreviewUrl: null,
       isPreviewModalOpen: false,
       isPreviewMode: false,
+      previewVolume: 1,
     });
   }
 });

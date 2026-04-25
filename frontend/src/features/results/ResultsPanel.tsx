@@ -94,7 +94,7 @@ export const ResultsPanel = () => {
   };
 
   return (
-    <GlassPanel className="w-full lg:w-1/4 min-w-[320px] flex flex-col h-full z-20 bg-bg-main">
+    <GlassPanel className="flex flex-col h-full bg-bg-main">
       <ProgressHeader />
 
       <div className="flex items-center justify-between p-2 border-b border-border-main bg-bg-panel">

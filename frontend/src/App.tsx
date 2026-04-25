@@ -66,7 +66,7 @@ function App() {
         </div>
 
         {isProjectActive && (
-          <div className="h-full z-20 flex-shrink-0 lg:w-[380px] min-w-[360px]">
+          <div className="h-full z-20 flex-shrink-0 w-[420px] min-w-[380px]">
             <ResultsPanel />
           </div>
         )}

@@ -16,6 +16,8 @@ export const PreviewMode = () => {
   const saveHistory = useAppStore(s => s.saveHistory);
   const subtitles = useAppStore(s => s.subtitles, shallow);
   const setCurrentFrame = useAppStore(s => s.setCurrentFrame);
+  const previewVolume = useAppStore(s => s.previewVolume);
+  const setPreviewVolume = useAppStore(s => s.setPreviewVolume);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -31,7 +33,6 @@ export const PreviewMode = () => {
   const [bottomOffset, setBottomOffset] = useState(20);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [activeSub, setActiveSub] = useState<SubtitleItem | null | undefined>(null);
-  const [volume, setVolume] = useState(1);
 
   const [localText, setLocalText] = useState('');
   const prevActiveSubIdRef = useRef<number | null>(null);
@@ -76,16 +77,18 @@ export const PreviewMode = () => {
   }, []);
 
   useEffect(() => {
-    const videoEl = videoRef.current;
-    if (!videoEl) return;
     const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        return;
+      }
       if (e.code === 'Space') {
         e.preventDefault();
         handlePlayPause();
       }
     };
-    videoEl.addEventListener('keydown', onKeyDown);
-    return () => videoEl.removeEventListener('keydown', onKeyDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
   }, [handlePlayPause]);
 
   useEffect(() => {
@@ -149,13 +152,9 @@ export const PreviewMode = () => {
     }
   }, [updateActiveSubtitle, syncCurrentFrame]);
 
-  const handleVolumeChange = useCallback((newVol: number) => {
-    setVolume(Math.min(1, Math.max(0, newVol)));
-  }, []);
-
   useEffect(() => {
-    if (videoRef.current) videoRef.current.volume = volume;
-  }, [volume]);
+    if (videoRef.current) videoRef.current.volume = previewVolume;
+  }, [previewVolume]);
 
   const handleLoadedMetadata = useCallback((e: React.SyntheticEvent<HTMLVideoElement>) => {
     const dur = e.currentTarget.duration;
@@ -255,8 +254,8 @@ export const PreviewMode = () => {
         onPlayPause={handlePlayPause}
         onStepFrame={handleStepFrame}
         onSeek={handleSeek}
-        volume={volume}
-        onVolumeChange={handleVolumeChange}
+        volume={previewVolume}
+        onVolumeChange={setPreviewVolume}
         currentTimeOverride={currentTime}
         durationOverride={duration}
       />
