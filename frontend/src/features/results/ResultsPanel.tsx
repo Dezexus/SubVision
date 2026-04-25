@@ -1,6 +1,3 @@
-/**
- * Sidebar panel displaying OCR progress, extracted subtitles, and export actions.
- */
 import React, { useMemo, useRef } from 'react';
 import { Download, ScanFace, ArrowLeft, Upload, FileVideo, Play, Undo, Redo } from 'lucide-react';
 import { GlassPanel } from '../../components/ui/GlassPanel';
@@ -28,7 +25,7 @@ export const ResultsPanel = () => {
     setSubtitles,
     addLog,
     renderedVideoUrl,
-    setPreviewModalOpen,
+    setPreviewMode,
     undo,
     redo,
     pastSubtitles,
@@ -156,7 +153,7 @@ export const ResultsPanel = () => {
                         variant="secondary"
                         className="w-full py-3 h-11 text-xs font-semibold shadow-md bg-bg-surface hover:bg-bg-input-hover text-white border-border-strong"
                         disabled={isProcessing || !metadata || subtitles.length === 0}
-                        onClick={() => setPreviewModalOpen(true)}
+                        onClick={() => setPreviewMode(true)}
                         icon={<Play size={14} />}
                     >
                         PREVIEW PLAYER

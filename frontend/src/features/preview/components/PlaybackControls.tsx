@@ -2,7 +2,6 @@ import React, { useRef, useState, useEffect, useLayoutEffect, useCallback, useMe
 import { Play, Pause, Clock, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Volume2 } from 'lucide-react';
 import { useAppStore } from '../../../store/useAppStore';
 import { cn } from '../../../utils/cn';
-import { formatTimeDisplay } from '../../../utils/format';
 import type { SubtitleItem } from '../../../types';
 import { shallow } from 'zustand/shallow';
 
@@ -20,15 +19,15 @@ interface PlaybackControlsProps {
   onAddSubtitle: () => void;
 }
 
-const SubtitleBlock = memo(({ 
-  sub, 
-  duration, 
-  isActive, 
-  onCommitChanges 
-}: { 
-  sub: SubtitleItem; 
-  duration: number; 
-  isActive: boolean; 
+const SubtitleBlock = memo(({
+  sub,
+  duration,
+  isActive,
+  onCommitChanges
+}: {
+  sub: SubtitleItem;
+  duration: number;
+  isActive: boolean;
   onCommitChanges: (id: number, start: number, end: number) => void;
 }) => {
   const blockRef = useRef<HTMLDivElement>(null);
@@ -158,7 +157,6 @@ export const PlaybackControls = ({
   const playheadRef = useRef<HTMLDivElement>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const zoomAnchorRef = useRef<{ ratio: number; screenX: number } | null>(null);
-  const animationFrameRef = useRef<number>();
 
   const applyZoom = useCallback((newZoomVal: number) => {
     setZoom((prev) => {
@@ -217,8 +215,6 @@ export const PlaybackControls = ({
     let rafId: number;
     const updatePlayhead = () => {
       if (playheadRef.current && timelineScrollRef.current && duration > 0) {
-        const container = timelineScrollRef.current;
-        const totalWidth = container.scrollWidth;
         const video = document.querySelector('video');
         if (video) {
           const time = video.currentTime;

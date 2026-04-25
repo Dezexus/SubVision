@@ -1,15 +1,16 @@
-/**
- * Main editor layout orchestration with a rigid static height skeleton.
- */
 import React, { useEffect } from 'react';
 import { VideoCanvas } from './components/VideoCanvas';
 import { FilterPreview } from './components/FilterPreview';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { HybridTimeline } from './components/HybridTimeline';
+import { PreviewMode } from './components/PreviewMode';
 import { useAppStore } from '../../store/useAppStore';
 
 export const EditorPanel = () => {
-  const { file, metadata, setCurrentFrame } = useAppStore();
+  const file = useAppStore((state) => state.file);
+  const metadata = useAppStore((state) => state.metadata);
+  const isPreviewMode = useAppStore((state) => state.isPreviewMode);
+  const setCurrentFrame = useAppStore((state) => state.setCurrentFrame);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -17,7 +18,6 @@ export const EditorPanel = () => {
         const tag = e.target.tagName.toLowerCase();
         if (tag === 'input' || tag === 'textarea') return;
       }
-
       if (e.code === 'ArrowLeft') {
         e.preventDefault();
         setCurrentFrame(f => Math.max(0, f - 1));
@@ -26,7 +26,6 @@ export const EditorPanel = () => {
         setCurrentFrame(f => Math.min(metadata.total_frames - 1, f + 1));
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [metadata, setCurrentFrame]);
@@ -39,16 +38,22 @@ export const EditorPanel = () => {
     );
   }
 
+  if (isPreviewMode) {
+    return (
+      <div className="flex-1 h-full relative overflow-hidden">
+        <PreviewMode />
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 h-full relative overflow-hidden flex flex-col gap-4">
       <div className="flex-1 relative flex items-center justify-center overflow-hidden mx-4 mt-4 min-h-0">
          <VideoCanvas />
       </div>
-
       <div className="shrink-0 h-[126px] px-4 w-full">
          <FilterPreview />
       </div>
-
       <div className="shrink-0 px-4 pb-4">
          <HybridTimeline />
       </div>
