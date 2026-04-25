@@ -1,9 +1,7 @@
 """
-Centralized module for algorithmic, heuristic, and system constants.
+Centralized algorithmic, heuristic, and system constants.
 """
 import numpy as np
-
-DEFAULT_FPS: float = 25.0
 
 MOTION_BLUR_KSIZE: tuple[int, int] = (5, 5)
 MOTION_DIFF_THRESH: float = 15.0

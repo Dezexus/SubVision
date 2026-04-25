@@ -11,7 +11,6 @@ import numpy as np
 from core.geometry import calculate_blur_roi
 from core.blur_effects import apply_blur_to_frame, generate_text_mask
 from core.video_io import get_video_dar, get_video_metadata, iter_frames_ffmpeg
-from core.constants import DEFAULT_FPS
 
 logger = logging.getLogger(__name__)
 
