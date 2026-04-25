@@ -1,44 +1,11 @@
 """
-Module providing motion and change detection algorithms for smart skipping.
+Motion and change detection algorithms for smart frame skipping.
 """
 from typing import Any
 import cv2
 import numpy as np
 from core.gpu_utils import ensure_gpu, ensure_cpu, has_cuda
 from core.constants import MOTION_BLUR_KSIZE, MOTION_DIFF_THRESH, MOTION_PIXEL_COUNT_THRESH
-
-
-def _has_paddle() -> bool:
-    try:
-        import paddle
-        return True
-    except ImportError:
-        return False
-
-
-def detect_change_paddle(img1: Any, img2: Any) -> bool:
-    if not _has_paddle() or img1 is None or img2 is None:
-        return True
-    if img1.shape != img2.shape:
-        return True
-    try:
-        import paddle
-        import paddle.nn.functional as F
-
-        f1 = img1.astype('float32')
-        f2 = img2.astype('float32')
-        g1 = paddle.mean(f1, axis=2, keepdim=True)
-        g2 = paddle.mean(f2, axis=2, keepdim=True)
-        g1 = g1.transpose([2, 0, 1]).unsqueeze(0)
-        g2 = g2.transpose([2, 0, 1]).unsqueeze(0)
-        b1 = F.avg_pool2d(g1, kernel_size=MOTION_BLUR_KSIZE[0], stride=1, padding=2)
-        b2 = F.avg_pool2d(g2, kernel_size=MOTION_BLUR_KSIZE[0], stride=1, padding=2)
-        diff = paddle.abs(b1 - b2)
-        mask = diff > MOTION_DIFF_THRESH
-        count = paddle.sum(mask.astype('int32'))
-        return count.item() > MOTION_PIXEL_COUNT_THRESH
-    except Exception:
-        return True
 
 
 def detect_change_absolute(img1: Any, img2: Any) -> bool:
