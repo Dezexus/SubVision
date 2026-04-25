@@ -2,12 +2,14 @@
 Router module handling API requests by delegating tasks to the ARQ message broker.
 """
 import logging
+import uuid
 from fastapi import APIRouter, HTTPException, UploadFile, File, Request
 from fastapi.responses import StreamingResponse
 from io import BytesIO
 import cv2
 import redis
 from arq.jobs import Job
+from pydantic import BaseModel
 
 from api.schemas import ProcessConfig, RenderConfig, BlurPreviewConfig, BlurSettings
 from api.dependencies import get_video_url
@@ -18,6 +20,10 @@ from core.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+class StopRequest(BaseModel):
+    job_id: str
 
 
 @router.get("/presets")
@@ -45,7 +51,7 @@ async def get_process_defaults():
 async def start_process(config: ProcessConfig, request: Request):
     try:
         pool = request.app.state.arq_pool
-        job_id = f"ocr_{config.client_id}"
+        job_id = f"ocr_{config.client_id}_{uuid.uuid4().hex[:8]}"
         await pool.enqueue_job("process_ocr_task", config.model_dump(), _job_id=job_id)
         return {"status": "queued", "job_id": job_id}
     except Exception as e:
@@ -53,23 +59,23 @@ async def start_process(config: ProcessConfig, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/stop/{client_id}")
-async def stop_process(client_id: str, request: Request):
+@router.post("/stop")
+async def stop_process(req: StopRequest, request: Request):
     pool = request.app.state.arq_pool
-    ocr_job = Job(f"ocr_{client_id}", pool)
-    blur_job = Job(f"blur_{client_id}", pool)
-
-    ocr_stopped = await ocr_job.abort()
-    blur_stopped = await blur_job.abort()
+    job = Job(req.job_id, pool)
+    try:
+        stopped = await job.abort()
+    except Exception as e:
+        logger.warning(f"Abort attempt failed: {e}")
+        stopped = False
 
     try:
         r = redis.Redis.from_url(settings.redis_url)
-        r.setex(f"job:ocr_{client_id}:cancel", 3600, "1")
-        r.setex(f"job:blur_{client_id}:cancel", 3600, "1")
+        r.setex(f"job:{req.job_id}:cancel", 3600, "1")
     except Exception as e:
         logger.warning(f"Could not set cancel flag in Redis: {e}")
 
-    return {"status": "stopped", "ocr_stopped": ocr_stopped, "render_stopped": blur_stopped}
+    return {"status": "stopped", "job_id": req.job_id, "success": stopped}
 
 
 @router.post("/import_srt")
@@ -116,7 +122,7 @@ async def preview_blur_frame(config: BlurPreviewConfig):
 async def render_blur_video(config: RenderConfig, request: Request):
     try:
         pool = request.app.state.arq_pool
-        job_id = f"blur_{config.client_id}"
+        job_id = f"blur_{config.client_id}_{uuid.uuid4().hex[:8]}"
         await pool.enqueue_job("render_blur_task", config.model_dump(), _job_id=job_id)
         return {"status": "queued", "job_id": job_id}
     except Exception as e:

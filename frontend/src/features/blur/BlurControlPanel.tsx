@@ -25,7 +25,8 @@ export const BlurControlPanel = () => {
     addLog,
     roi,
     currentFrameIndex,
-    setBlurPreviewUrl
+    setBlurPreviewUrl,
+    setActiveBlurJobId,
   } = useAppStore();
 
   const userAdjustedY = useRef(false);
@@ -71,12 +72,13 @@ export const BlurControlPanel = () => {
     addLog('--- Starting Smart Render ---');
 
     try {
-      await api.renderBlurVideo({
+      const { job_id } = await api.renderBlurVideo({
         filename: metadata.filename,
         client_id: clientId,
         subtitles: subtitles,
         blur_settings: blurSettings
       });
+      setActiveBlurJobId(job_id);
     } catch (e) {
       console.error(e);
       addLog('Error: Render failed to start.');

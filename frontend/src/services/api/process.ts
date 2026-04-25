@@ -42,12 +42,14 @@ export const processApi = {
   },
 
   startProcessing: async (config: ProcessConfig) => {
-    const response = await axios.post(`${API_URL}/process/start`, config);
+    const response = await axios.post<{ status: string; job_id: string }>(
+      `${API_URL}/process/start`, config
+    );
     return response.data;
   },
 
-  stopProcessing: async (clientId: string) => {
-    await axios.post(`${API_URL}/process/stop/${clientId}`);
+  stopProcessing: async (jobId: string) => {
+    await axios.post(`${API_URL}/process/stop`, { job_id: jobId });
   },
 
   importSrt: async (file: File): Promise<SubtitleItem[]> => {
@@ -60,7 +62,9 @@ export const processApi = {
   },
 
   renderBlurVideo: async (config: RenderConfig) => {
-    const response = await axios.post(`${API_URL}/process/render_blur`, config);
+    const response = await axios.post<{ status: string; job_id: string }>(
+      `${API_URL}/process/render_blur`, config
+    );
     return response.data;
   }
 };

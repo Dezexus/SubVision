@@ -24,7 +24,8 @@ export const SettingsPanel = () => {
     setDefaultConfig,
     setPreset,
     resetProject,
-    setStoppedJobId,
+    setActiveOcrJobId,
+    stopProcessing,
   } = useAppStore();
 
   useEffect(() => {
@@ -48,12 +49,11 @@ export const SettingsPanel = () => {
   const handleStart = async () => {
     if (!metadata || !defaultConfig) return;
     setProcessing(true);
-    setStoppedJobId(null);
     addLog('--- Starting Process ---');
     try {
-      await api.startProcessing({
+      const { job_id } = await api.startProcessing({
         filename: metadata.filename,
-        client_id: clientId,
+        client_id: clientId!,
         roi: roi,
         preset: preset || defaultConfig.preset!,
         languages: config.languages || defaultConfig.languages!,
@@ -62,20 +62,10 @@ export const SettingsPanel = () => {
         scale_factor: config.scale_factor ?? defaultConfig.scale_factor!,
         smart_skip: config.smart_skip ?? defaultConfig.smart_skip!
       });
+      setActiveOcrJobId(job_id);
     } catch {
       addLog('Error: Failed to start processing.');
       setProcessing(false);
-    }
-  };
-
-  const handleStop = async () => {
-    try {
-      setStoppedJobId(`ocr_${clientId}`);
-      setProcessing(false);
-      await api.stopProcessing(clientId);
-      addLog('--- Processing stopped by user ---');
-    } catch (e) {
-      console.error("Failed to send stop signal", e);
     }
   };
 
@@ -120,7 +110,7 @@ export const SettingsPanel = () => {
               </Button>
             ) : (
               <Button
-                onClick={handleStop}
+                onClick={stopProcessing}
                 variant="danger"
                 className="w-full py-3.5 text-base font-semibold shadow-lg"
                 icon={<Square size={20} fill="currentColor" />}

@@ -28,9 +28,13 @@ export interface ProcessSlice {
   logs: string[];
   clientId: string | null;
   renderedVideoUrl: string | null;
+  activeOcrJobId: string | null;
+  activeBlurJobId: string | null;
   initializeClientId: () => Promise<void>;
   setProcessing: (isProcessing: boolean) => void;
   setStoppedJobId: (id: string | null) => void;
+  setActiveOcrJobId: (id: string | null) => void;
+  setActiveBlurJobId: (id: string | null) => void;
   addLog: (msg: string) => void;
   updateProgress: (current: number, total: number, eta: string) => void;
   addSubtitle: (sub: SubtitleItem) => void;
@@ -42,6 +46,7 @@ export interface ProcessSlice {
   saveHistory: () => void;
   undo: () => void;
   redo: () => void;
+  stopProcessing: () => Promise<void>;
 }
 
 export const createProcessSlice: StateCreator<AppState, [], [], ProcessSlice> = (set, get) => ({
@@ -54,6 +59,8 @@ export const createProcessSlice: StateCreator<AppState, [], [], ProcessSlice> = 
   logs: [],
   clientId: null,
   renderedVideoUrl: null,
+  activeOcrJobId: null,
+  activeBlurJobId: null,
 
   initializeClientId: async () => {
     const id = await getOrCreateClientId();
@@ -62,6 +69,9 @@ export const createProcessSlice: StateCreator<AppState, [], [], ProcessSlice> = 
 
   setProcessing: (isProcessing) => set({ isProcessing }),
   setStoppedJobId: (id) => set({ stoppedJobId: id }),
+  setActiveOcrJobId: (id) => set({ activeOcrJobId: id }),
+  setActiveBlurJobId: (id) => set({ activeBlurJobId: id }),
+
   addLog: (msg) => set((state) => ({ logs: [...state.logs, msg] })),
   updateProgress: (current, total, eta) => set({ progress: { current, total, eta } }),
   addSubtitle: (sub) => set((state) => ({ subtitles: [...state.subtitles, sub] })),
@@ -135,4 +145,18 @@ export const createProcessSlice: StateCreator<AppState, [], [], ProcessSlice> = 
   }),
 
   setRenderedVideoUrl: (url) => set({ renderedVideoUrl: url }),
+
+  stopProcessing: async () => {
+    const { activeOcrJobId, addLog } = get();
+    if (!activeOcrJobId) return;
+    try {
+      set({ stoppedJobId: activeOcrJobId, isProcessing: false });
+      await api.stopProcessing(activeOcrJobId);
+      addLog('--- Processing stopped by user ---');
+    } catch (e) {
+      console.error("Failed to send stop signal", e);
+    } finally {
+      set({ activeOcrJobId: null });
+    }
+  }
 });
