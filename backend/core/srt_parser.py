@@ -37,7 +37,7 @@ def parse_srt(content: str) -> list[dict]:
             "end": time_to_seconds(end_str),
             "text": clean_text,
             "conf": 1.0,
-            "isEdited": True
+            "isEdited": False
         })
 
     return subtitles
