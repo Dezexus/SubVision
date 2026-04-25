@@ -1,9 +1,8 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { MoveVertical, Trash2, Eye, EyeOff } from 'lucide-react';
+import { MoveVertical, Trash2, Eye, EyeOff, X } from 'lucide-react';
 import { useAppStore } from '../../../store/useAppStore';
 import { HybridTimeline } from './HybridTimeline';
 import { API_BASE } from '../../../services/api';
-import { formatTimeDisplay } from '../../../utils/format';
 import { shallow } from 'zustand/shallow';
 import type { SubtitleItem } from '../../../types';
 
@@ -34,6 +33,18 @@ export const PreviewMode = () => {
   const [activeSub, setActiveSub] = useState<SubtitleItem | null | undefined>(null);
   const [volume, setVolume] = useState(1);
   const [showOverlay, setShowOverlay] = useState(true);
+
+  const [localText, setLocalText] = useState('');
+  const prevActiveSubIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (activeSub && activeSub.id !== prevActiveSubIdRef.current) {
+      setLocalText(activeSub.text);
+      prevActiveSubIdRef.current = activeSub.id;
+    } else if (!activeSub) {
+      prevActiveSubIdRef.current = null;
+    }
+  }, [activeSub]);
 
   const updateActiveSubtitle = useCallback((time: number) => {
     const subs = subtitles;
@@ -153,6 +164,14 @@ export const PreviewMode = () => {
     durationRef.current = dur;
   }, []);
 
+  const handleTextChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const newText = e.target.value;
+    setLocalText(newText);
+    if (activeSub) {
+      updateSubtitle({ ...activeSub, text: newText });
+    }
+  }, [activeSub, updateSubtitle]);
+
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -198,12 +217,14 @@ export const PreviewMode = () => {
             className="absolute w-11/12 max-w-5xl left-1/2 -translate-x-1/2 flex flex-col items-center group/sub"
             style={{ bottom: `${bottomOffset}%` }}
           >
-            <div className="bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-t flex items-center gap-2 mb-0.5">
-              <span>{formatTimeDisplay(activeSub.start)} – {formatTimeDisplay(activeSub.end)}</span>
-              <button onClick={() => setShowOverlay(false)} className="ml-1 p-0.5 hover:text-brand-400" title="Hide subtitle overlay">
-                <EyeOff size={12} />
-              </button>
-            </div>
+            <button
+              onClick={() => setShowOverlay(false)}
+              className="absolute -top-8 right-0 p-1 bg-black/60 hover:bg-black/90 text-white/80 rounded-full"
+              title="Hide subtitle overlay"
+            >
+              <X size={14} />
+            </button>
+
             <div
               className="w-20 h-2.5 mb-1 bg-white/20 hover:bg-brand-500 rounded-full cursor-ns-resize backdrop-blur-sm transition-colors shadow-sm flex items-center justify-center opacity-0 group-hover/video:opacity-100"
               onMouseDown={handleDragStart}
@@ -212,14 +233,17 @@ export const PreviewMode = () => {
               <MoveVertical size={12} className="text-white/80 opacity-0 group-hover/sub:opacity-100" />
             </div>
             <div className="relative inline-grid max-w-full group/textarea">
-              <span className="col-start-1 row-start-1 invisible whitespace-pre px-16 py-2.5 text-lg md:text-xl min-w-[280px] overflow-hidden" aria-hidden="true">
-                {activeSub.text || ' '}
+              <span
+                className="col-start-1 row-start-1 invisible whitespace-pre px-16 py-2.5 text-lg md:text-xl min-w-[280px] overflow-hidden"
+                aria-hidden="true"
+              >
+                {localText || ' '}
               </span>
               <input
                 type="text"
-                value={activeSub.text}
-                onFocus={() => saveHistory()}
-                onChange={(e) => updateSubtitle({ ...activeSub, text: e.target.value })}
+                value={localText}
+                onFocus={saveHistory}
+                onChange={handleTextChange}
                 onKeyDown={(e) => e.stopPropagation()}
                 className="col-start-1 row-start-1 w-full bg-black/70 text-white text-center text-lg md:text-xl py-2.5 px-12 rounded-2xl border-2 border-transparent hover:border-white/20 focus:border-brand-500 focus:bg-black/90 focus:outline-none transition-colors shadow-lg backdrop-blur-sm"
               />
