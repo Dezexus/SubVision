@@ -24,13 +24,11 @@ const SubtitleBlock = memo(({
   sub, 
   duration, 
   isActive, 
-  zoom, 
   onCommitChanges 
 }: { 
   sub: SubtitleItem; 
   duration: number; 
   isActive: boolean; 
-  zoom: number; 
   onCommitChanges: (id: number, start: number, end: number) => void;
 }) => {
   const blockRef = useRef<HTMLDivElement>(null);
@@ -54,16 +52,11 @@ const SubtitleBlock = memo(({
   const handleMouseDown = useCallback((e: React.MouseEvent, edge?: 'start' | 'end') => {
     e.stopPropagation();
     e.preventDefault();
-    if (edge) {
-      e.stopPropagation();
-    }
-    const initialStart = sub.start;
-    const initialEnd = sub.end;
     dragRef.current = {
       type: edge || 'move',
       startX: e.clientX,
-      startTime: initialStart,
-      endTime: initialEnd,
+      startTime: sub.start,
+      endTime: sub.end,
     };
     setIsDragging(true);
     document.body.style.cursor = edge ? 'col-resize' : 'grab';
@@ -96,13 +89,7 @@ const SubtitleBlock = memo(({
 
     const handleMouseUp = () => {
       if (dragRef.current) {
-        if (dragRef.current.type === 'start' && localStart !== dragRef.current.startTime) {
-          onCommitChanges(sub.id, localStart, sub.end);
-        } else if (dragRef.current.type === 'end' && localEnd !== dragRef.current.endTime) {
-          onCommitChanges(sub.id, sub.start, localEnd);
-        } else if (dragRef.current.type === 'move') {
-          onCommitChanges(sub.id, localStart, localEnd);
-        }
+        onCommitChanges(sub.id, localStart, sub.start !== localStart || sub.end !== localEnd ? localEnd : sub.end);
       }
       dragRef.current = null;
       setIsDragging(false);
@@ -167,10 +154,11 @@ export const PlaybackControls = ({
   const metadata = useAppStore(state => state.metadata, shallow);
   const saveHistory = useAppStore(state => state.saveHistory);
   const updateSubtitle = useAppStore(state => state.updateSubtitle);
-  const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
+  const playheadRef = useRef<HTMLDivElement>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const zoomAnchorRef = useRef<{ ratio: number; screenX: number } | null>(null);
+  const animationFrameRef = useRef<number>();
 
   const applyZoom = useCallback((newZoomVal: number) => {
     setZoom((prev) => {
@@ -225,19 +213,24 @@ export const PlaybackControls = ({
   }, [zoom]);
 
   useEffect(() => {
-    if (isPlaying && timelineScrollRef.current && duration > 0) {
-      const container = timelineScrollRef.current;
-      const containerWidth = container.clientWidth;
-      const totalWidth = containerWidth * zoom;
-      const playheadX = (currentTime / duration) * totalWidth;
-      const scrollLeft = container.scrollLeft;
-      if (playheadX > scrollLeft + containerWidth * 0.85) {
-        container.scrollLeft = playheadX - containerWidth * 0.15;
-      } else if (playheadX < scrollLeft) {
-        container.scrollLeft = playheadX - containerWidth * 0.15;
+    if (!isPlaying) return;
+    let rafId: number;
+    const updatePlayhead = () => {
+      if (playheadRef.current && timelineScrollRef.current && duration > 0) {
+        const container = timelineScrollRef.current;
+        const totalWidth = container.scrollWidth;
+        const video = document.querySelector('video');
+        if (video) {
+          const time = video.currentTime;
+          const percent = (time / duration) * 100;
+          playheadRef.current.style.left = `${percent}%`;
+        }
       }
-    }
-  }, [currentTime, isPlaying, duration, zoom]);
+      rafId = requestAnimationFrame(updatePlayhead);
+    };
+    rafId = requestAnimationFrame(updatePlayhead);
+    return () => cancelAnimationFrame(rafId);
+  }, [isPlaying, duration]);
 
   const handleTimelineClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -248,8 +241,10 @@ export const PlaybackControls = ({
     onSeek(targetTime);
   }, [duration, onSeek]);
 
-  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
-  const currentFrame = metadata ? Math.round(currentTime * metadata.fps) : 0;
+  const memoizedSubtitles = useMemo(() => subtitles.map(sub => ({
+    sub,
+    isActive: currentTime >= sub.start && currentTime <= sub.end,
+  })), [subtitles, currentTime]);
 
   const handleCommitSubtitleChanges = useCallback((id: number, start: number, end: number) => {
     saveHistory();
@@ -259,42 +254,11 @@ export const PlaybackControls = ({
     }
   }, [saveHistory, updateSubtitle, subtitles]);
 
-  const memoizedSubtitles = useMemo(() => subtitles.map(sub => ({
-    sub,
-    isActive: currentTime >= sub.start && currentTime <= sub.end,
-  })), [subtitles, currentTime]);
-
   if (!metadata) return null;
 
   return (
     <div className="flex flex-col w-full bg-bg-panel border-t border-border-main text-txt-main select-none">
       <div className="h-16 px-6 flex items-center border-b border-border-subtle bg-bg-main shadow-sm z-10">
-        <div className="flex-1 flex items-center gap-3 font-mono text-sm">
-          <span className="text-white font-bold tracking-wide text-lg">
-            {formatTimeDisplay(currentTime)}
-          </span>
-          <span className="text-txt-subtle text-lg">/</span>
-          <span className="text-txt-muted text-lg">
-            {formatTimeDisplay(duration)}
-          </span>
-          <div className="flex items-center gap-2 ml-4">
-            <span className="text-[10px] text-txt-subtle">Frame</span>
-            <input
-              type="number"
-              value={currentFrame}
-              onChange={(e) => {
-                const val = parseInt(e.target.value, 10);
-                if (!isNaN(val) && val >= 0 && val <= (metadata?.total_frames || 0)) {
-                  onSeekFrame(val);
-                }
-              }}
-              className="w-16 bg-bg-surface border border-border-main text-txt-main text-xs px-2 py-1 rounded focus:outline-none focus:border-brand-500"
-              min={0}
-              max={metadata.total_frames}
-            />
-          </div>
-        </div>
-
         <div className="flex-1 flex justify-center items-center gap-6">
           <button
             onClick={() => onStepFrame(-1)}
@@ -376,14 +340,14 @@ export const PlaybackControls = ({
               sub={sub}
               duration={duration}
               isActive={isActive}
-              zoom={zoom}
               onCommitChanges={handleCommitSubtitleChanges}
             />
           ))}
 
           <div
+            ref={playheadRef}
             className="absolute top-0 bottom-0 z-50 w-px pointer-events-none"
-            style={{ left: `${progressPercent}%` }}
+            style={{ left: `${(currentTime / duration) * 100}%` }}
           >
             <div className="absolute top-0 -left-[5px] w-0 h-0 border-l-[6px] border-r-[6px] border-t-[8px] border-l-transparent border-r-transparent border-t-red-500" />
             <div className="absolute top-0 h-full w-px bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]" />

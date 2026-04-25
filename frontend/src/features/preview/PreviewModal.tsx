@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { X, MoveVertical, Trash2, Eye, EyeOff, Plus, ChevronUp, ChevronDown } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { PlaybackControls } from './components/PlaybackControls';
@@ -15,6 +15,8 @@ const generateNewSubtitle = (start: number, end: number, maxId: number): Subtitl
   conf: 1.0,
   isEdited: true,
 });
+
+const THROTTLE_INTERVAL = 100; // ms
 
 export const PreviewModal = () => {
   const isPreviewModalOpen = useAppStore(s => s.isPreviewModalOpen);
@@ -36,6 +38,11 @@ export const PreviewModal = () => {
   const animationFrameRef = useRef<number>();
   const initializedRef = useRef<boolean>(false);
   const activeSubIndexRef = useRef<number>(-1);
+  const lastThrottleTimeRef = useRef<number>(0);
+  const currentTimeRef = useRef<number>(0);
+  const durationRef = useRef<number>(0);
+  const timestampDisplayRef = useRef<HTMLSpanElement>(null);
+  const frameInputRef = useRef<HTMLInputElement>(null);
 
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -64,11 +71,11 @@ export const PreviewModal = () => {
       if (!video.paused) video.pause();
       const currentFrame = Math.round(video.currentTime * metadata.fps);
       let newTime = (currentFrame + frames) / metadata.fps;
-      newTime = Math.max(0, Math.min(video.duration || duration, newTime));
+      newTime = Math.max(0, Math.min(video.duration || durationRef.current, newTime));
       video.currentTime = newTime + 0.0001;
       setCurrentTime(newTime);
     }
-  }, [metadata, duration]);
+  }, [metadata]);
 
   const updateActiveSubtitle = useCallback((time: number) => {
     const subs = subtitles;
@@ -97,14 +104,28 @@ export const PreviewModal = () => {
   const animate = useCallback(function loop() {
     const video = videoRef.current;
     if (!video) return;
+    const now = performance.now();
     const newTime = video.currentTime;
-    setCurrentTime(newTime);
-    updateActiveSubtitle(newTime);
+    currentTimeRef.current = newTime;
+    if (now - lastThrottleTimeRef.current >= THROTTLE_INTERVAL) {
+      lastThrottleTimeRef.current = now;
+      setCurrentTime(newTime);
+      updateActiveSubtitle(newTime);
+    }
+    if (timestampDisplayRef.current) {
+      timestampDisplayRef.current.textContent = formatTimeDisplay(newTime);
+    }
+    if (frameInputRef.current && metadata) {
+      const frame = Math.round(newTime * metadata.fps);
+      frameInputRef.current.value = frame.toString();
+    }
     animationFrameRef.current = requestAnimationFrame(loop);
-  }, [updateActiveSubtitle]);
+  }, [updateActiveSubtitle, metadata]);
 
   const handleLoadedMetadata = useCallback((e: React.SyntheticEvent<HTMLVideoElement>) => {
-    setDuration(e.currentTarget.duration);
+    const dur = e.currentTarget.duration;
+    setDuration(dur);
+    durationRef.current = dur;
   }, []);
 
   useEffect(() => {
@@ -160,8 +181,9 @@ export const PreviewModal = () => {
     if (video) {
       video.currentTime = time;
       setCurrentTime(time);
+      updateActiveSubtitle(time);
     }
-  }, []);
+  }, [updateActiveSubtitle]);
 
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -204,11 +226,11 @@ export const PreviewModal = () => {
   const handleAddSubtitle = useCallback(() => {
     const maxId = subtitles.reduce((max, s) => Math.max(max, s.id), 0);
     const start = currentTime;
-    const end = Math.min(duration, start + 2);
+    const end = Math.min(durationRef.current, start + 2);
     const newSub = generateNewSubtitle(start, end, maxId);
     addSubtitle(newSub);
     saveHistory();
-  }, [subtitles, currentTime, duration, addSubtitle, saveHistory]);
+  }, [subtitles, currentTime, addSubtitle, saveHistory]);
 
   const handleDeleteCurrentSub = useCallback(() => {
     if (activeSub) deleteSubtitle(activeSub.id);
@@ -221,9 +243,9 @@ export const PreviewModal = () => {
   const handleSeekFrame = useCallback((frame: number) => {
     if (metadata && metadata.fps > 0) {
       const time = frame / metadata.fps;
-      handleSeek(Math.max(0, Math.min(duration, time)));
+      handleSeek(Math.max(0, Math.min(durationRef.current, time)));
     }
-  }, [metadata, duration, handleSeek]);
+  }, [metadata, handleSeek]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -371,6 +393,39 @@ export const PreviewModal = () => {
               <Eye size={18} />
             </button>
           )}
+        </div>
+
+        <div className="h-16 px-6 flex items-center border-b border-border-subtle bg-bg-main shrink-0">
+          <div className="flex-1 flex items-center gap-3 font-mono text-sm">
+            <span ref={timestampDisplayRef} className="text-white font-bold tracking-wide text-lg">
+              {formatTimeDisplay(currentTime)}
+            </span>
+            <span className="text-txt-subtle text-lg">/</span>
+            <span className="text-txt-muted text-lg">
+              {formatTimeDisplay(duration)}
+            </span>
+            <div className="flex items-center gap-2 ml-4">
+              <span className="text-[10px] text-txt-subtle">Frame</span>
+              <input
+                ref={frameInputRef}
+                type="number"
+                defaultValue={Math.round(currentTime * metadata.fps)}
+                onBlur={(e) => {
+                  const val = parseInt(e.target.value, 10);
+                  if (!isNaN(val)) handleSeekFrame(val);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const val = parseInt((e.target as HTMLInputElement).value, 10);
+                    if (!isNaN(val)) handleSeekFrame(val);
+                  }
+                }}
+                className="w-16 bg-bg-surface border border-border-main text-txt-main text-xs px-2 py-1 rounded focus:outline-none focus:border-brand-500"
+                min={0}
+                max={metadata.total_frames}
+              />
+            </div>
+          </div>
         </div>
 
         <PlaybackControls
