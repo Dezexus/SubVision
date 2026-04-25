@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { MoveVertical, Trash2, Eye, EyeOff, X } from 'lucide-react';
+import { MoveVertical, Trash2 } from 'lucide-react';
 import { useAppStore } from '../../../store/useAppStore';
 import { HybridTimeline } from './HybridTimeline';
 import { API_BASE } from '../../../services/api';
@@ -32,7 +32,6 @@ export const PreviewMode = () => {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [activeSub, setActiveSub] = useState<SubtitleItem | null | undefined>(null);
   const [volume, setVolume] = useState(1);
-  const [showOverlay, setShowOverlay] = useState(true);
 
   const [localText, setLocalText] = useState('');
   const prevActiveSubIdRef = useRef<number | null>(null);
@@ -212,19 +211,11 @@ export const PreviewMode = () => {
           />
         )}
 
-        {activeSub && showOverlay && (
+        {activeSub && (
           <div
             className="absolute w-11/12 max-w-5xl left-1/2 -translate-x-1/2 flex flex-col items-center group/sub"
             style={{ bottom: `${bottomOffset}%` }}
           >
-            <button
-              onClick={() => setShowOverlay(false)}
-              className="absolute -top-8 right-0 p-1 bg-black/60 hover:bg-black/90 text-white/80 rounded-full"
-              title="Hide subtitle overlay"
-            >
-              <X size={14} />
-            </button>
-
             <div
               className="w-20 h-2.5 mb-1 bg-white/20 hover:bg-brand-500 rounded-full cursor-ns-resize backdrop-blur-sm transition-colors shadow-sm flex items-center justify-center opacity-0 group-hover/video:opacity-100"
               onMouseDown={handleDragStart}
@@ -256,12 +247,6 @@ export const PreviewMode = () => {
               </button>
             </div>
           </div>
-        )}
-
-        {!showOverlay && activeSub && (
-          <button onClick={() => setShowOverlay(true)} className="absolute top-4 right-4 z-50 p-2 bg-black/60 hover:bg-black/90 text-white/80 rounded-full" title="Show subtitle overlay">
-            <Eye size={18} />
-          </button>
         )}
       </div>
 
