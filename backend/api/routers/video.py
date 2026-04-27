@@ -138,7 +138,8 @@ async def download_file(filename: str):
     return FileResponse(
         path=file_path,
         filename=safe_filename,
-        media_type='application/octet-stream'
+        media_type='video/mp4',
+        headers={"Content-Disposition": f'attachment; filename="{safe_filename}"'}
     )
 
 @router.get("/frame/{filename}/{frame_index}")

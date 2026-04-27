@@ -29,10 +29,6 @@ def _get_redis_pool():
     return _redis_pool
 
 
-def _redis_client():
-    return redis.Redis(connection_pool=_get_redis_pool())
-
-
 async def startup(ctx: Dict[str, Any]) -> None:
     logging.info("Worker starting up...")
 
@@ -68,8 +64,11 @@ async def on_job_end_handler(ctx: Dict[str, Any], job_id: str, result: Any, exc:
 
 
 class ProgressReporter:
-    def __init__(self, client_id: str) -> None:
+    """Sends progress updates via a reusable Redis connection."""
+
+    def __init__(self, client_id: str, redis_client: redis.Redis) -> None:
         self._client_id = client_id
+        self._redis = redis_client
         self._last_progress = None
         self._throttle_interval = 0.2
         self._throttle_ts = 0.0
@@ -79,11 +78,7 @@ class ProgressReporter:
         self._total = total
 
     def _send(self, payload: dict) -> None:
-        r = _redis_client()
-        try:
-            r.publish(f"ws_{self._client_id}", json.dumps(payload))
-        finally:
-            r.close()
+        self._redis.publish(f"ws_{self._client_id}", json.dumps(payload))
 
     def log(self, message: str) -> None:
         self._send({"type": "log", "message": message})
@@ -103,16 +98,13 @@ class ProgressReporter:
         self._send(payload)
 
 
-def _make_cancel_check(job_id: str):
+def _make_cancel_check(job_id: str, redis_client: redis.Redis):
     def check() -> bool:
-        r = _redis_client()
         try:
-            flag = r.get(f"job:{job_id}:cancel")
+            flag = redis_client.get(f"job:{job_id}:cancel")
             return bool(flag)
         except Exception:
             return False
-        finally:
-            r.close()
     return check
 
 
@@ -122,7 +114,9 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
     safe_filename = os.path.basename(filename)
     job_id = ctx.get('job_id', 'unknown')
 
-    reporter = ProgressReporter(client_id)
+    r = redis.Redis(connection_pool=_get_redis_pool())
+    reporter = ProgressReporter(client_id, r)
+    cancel_check = _make_cancel_check(job_id, r)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         local_video_path = os.path.join(tmpdir, safe_filename)
@@ -131,9 +125,8 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
 
         dl_ok = await storage_manager.download_file(safe_filename, local_video_path)
         if not dl_ok:
+            r.close()
             raise FileNotFoundError(f"Source video file '{safe_filename}' not found in storage.")
-
-        cancel_check = _make_cancel_check(job_id)
 
         success = await asyncio.to_thread(
             run_ocr_pipeline, local_video_path, config, reporter, cancel_check
@@ -143,7 +136,9 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
             reporter.done()
             await publish_ws(ctx, client_id, {"type": "finish", "success": True})
         else:
+            r.close()
             raise RuntimeError("OCR pipeline execution failed or was interrupted.")
+    r.close()
 
 
 async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
@@ -153,7 +148,9 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
     output_filename = f"blurred_{safe_filename}"
     job_id = ctx.get('job_id', 'unknown')
 
-    reporter = ProgressReporter(client_id)
+    r = redis.Redis(connection_pool=_get_redis_pool())
+    reporter = ProgressReporter(client_id, r)
+    cancel_check = _make_cancel_check(job_id, r)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         local_video_path = os.path.join(tmpdir, safe_filename)
@@ -163,6 +160,7 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
 
         dl_ok = await storage_manager.download_file(safe_filename, local_video_path)
         if not dl_ok:
+            r.close()
             raise FileNotFoundError(f"Source video file '{safe_filename}' not found in storage.")
 
         dar = await asyncio.to_thread(get_video_dar, local_video_path)
@@ -174,8 +172,6 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
             eta_sec = int((t - c) * (elapsed / max(c, 1)))
             eta_str = f"{eta_sec // 60:02d}:{eta_sec % 60:02d}"
             reporter.progress(c, t, eta_str)
-
-        cancel_check = _make_cancel_check(job_id)
 
         temp_video_path, total_frames = await asyncio.to_thread(
             BlurManager.apply_blur_task_sync,
@@ -192,6 +188,7 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
 
         up_ok = await storage_manager.upload_file(final_output_path, output_filename)
         if not up_ok:
+            r.close()
             raise RuntimeError("Failed to upload the final rendered video to storage.")
 
         await publish_ws(ctx, client_id, {
@@ -199,6 +196,7 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
             "success": True,
             "download_url": f"/api/video/download/{output_filename}"
         })
+    r.close()
 
 
 class WorkerSettings:

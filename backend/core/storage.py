@@ -62,20 +62,34 @@ class StorageManager:
     async def complete_local_upload(self, upload_id: str, filename: str, total_chunks: int) -> bool:
         temp_dir = os.path.join(settings.cache_dir, ".temp", upload_id)
         final_path = os.path.join(settings.cache_dir, filename)
+
         def _assemble():
+            for i in range(1, total_chunks + 1):
+                chunk_path = os.path.join(temp_dir, f"{i}.chunk")
+                if not os.path.exists(chunk_path):
+                    raise FileNotFoundError(f"Missing chunk {i}")
             with open(final_path, "wb") as final_file:
                 for i in range(1, total_chunks + 1):
                     chunk_path = os.path.join(temp_dir, f"{i}.chunk")
-                    if os.path.exists(chunk_path):
-                        with open(chunk_path, "rb") as chunk_file:
-                            final_file.write(chunk_file.read())
-                        os.remove(chunk_path)
+                    with open(chunk_path, "rb") as chunk_file:
+                        final_file.write(chunk_file.read())
+                    os.remove(chunk_path)
             os.rmdir(temp_dir)
+
         try:
             await asyncio.to_thread(_assemble)
             return True
         except Exception as e:
             logger.error(f"Local assembly failed: {e}")
+            try:
+                for i in range(1, total_chunks + 1):
+                    chunk = os.path.join(temp_dir, f"{i}.chunk")
+                    if os.path.exists(chunk):
+                        os.remove(chunk)
+                if os.path.exists(temp_dir):
+                    os.rmdir(temp_dir)
+            except Exception as cleanup_err:
+                logger.error(f"Cleanup after assembly error failed: {cleanup_err}")
             return False
 
     async def create_multipart_upload(self, s3_key: str, content_type: str) -> Optional[str]:

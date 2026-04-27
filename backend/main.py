@@ -95,22 +95,18 @@ async def health_check():
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
     redis_client = aioredis.from_url(settings.redis_url)
-    valid = await redis_client.get(f"ws_valid:{client_id}")
+    valid = await redis_client.getex(f"ws_valid:{client_id}", ex=3600)
     if not valid:
         await websocket.close(code=4001, reason="Invalid or expired client ID")
         await redis_client.aclose()
         return
-    await redis_client.expire(f"ws_valid:{client_id}", 3600)
-    await redis_client.aclose()
 
     await connection_manager.connect(websocket, client_id)
 
-    redis_client = None
     pubsub = None
     reader_task = None
 
     try:
-        redis_client = aioredis.from_url(settings.redis_url)
         pubsub = redis_client.pubsub()
         await pubsub.subscribe(f"ws_{client_id}")
 
