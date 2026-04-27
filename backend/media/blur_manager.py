@@ -15,6 +15,26 @@ from core.video_io import get_video_dar, get_video_metadata, iter_frames_ffmpeg
 logger = logging.getLogger(__name__)
 
 
+def _extract_raw_frame(video_path: str, frame_index: int, total_frames: int, fps: float) -> Optional[np.ndarray]:
+    """
+    Extract a single raw frame from video without SAR correction.
+    """
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        return None
+    try:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+        success, frame = cap.read()
+        if not success and fps > 0:
+            cap.set(cv2.CAP_PROP_POS_MSEC, (frame_index / fps) * 1000.0)
+            success, frame = cap.read()
+        if success:
+            return frame
+    finally:
+        cap.release()
+    return None
+
+
 class BlurManager:
     @staticmethod
     def generate_preview(video_path: str, frame_index: int, settings: Dict[str, Any], text: str) -> Optional[np.ndarray]:
@@ -48,29 +68,33 @@ class BlurManager:
 
         font_size_px = int(blur_settings.get('font_size', 21))
 
-        sample_frame = None
-        for sub in subtitles:
-            sub_id = sub.get('id', -1)
-            start_f = max(0, int(sub['start'] * fps))
-            end_f = min(total_frames - 1, int(sub['end'] * fps))
-            mid_f = (start_f + end_f) // 2
-            for f_idx, _, frame in iter_frames_ffmpeg(video_path, step=1, fps=fps, total=total_frames, width=width, height=height, use_hwaccel=False):
-                if f_idx == mid_f:
-                    sample_frame = frame
-                    break
-            if sample_frame is not None:
-                break
-
         subtitle_masks: Dict[int, np.ndarray] = {}
-        if blur_settings.get('mode', 'hybrid') == 'hybrid' and sample_frame is not None:
+        if blur_settings.get('mode', 'hybrid') == 'hybrid':
             for sub in subtitles:
                 sub_id = sub.get('id', -1)
                 text = sub.get('text', '').strip()
                 if not text:
                     continue
                 roi = calculate_blur_roi(text, width, height, blur_settings)
-                mask = generate_text_mask(sample_frame, roi, font_size_px)
-                subtitle_masks[sub_id] = mask
+
+                start_f = max(0, int(sub['start'] * fps))
+                end_f = min(total_frames - 1, int(sub['end'] * fps))
+                mid_f = (start_f + end_f) // 2
+
+                frame_indices = {start_f, mid_f, end_f}
+                masks = []
+                for idx in sorted(frame_indices):
+                    frame = _extract_raw_frame(video_path, idx, total_frames, fps)
+                    if frame is not None:
+                        mask = generate_text_mask(frame, roi, font_size_px)
+                        if mask is not None:
+                            masks.append(mask)
+
+                if masks:
+                    combined = masks[0].copy()
+                    for m in masks[1:]:
+                        combined = np.maximum(combined, m)
+                    subtitle_masks[sub_id] = combined
 
         frame_blur_map: Dict[int, Tuple[Tuple[int, int, int, int], int]] = {}
         for sub in subtitles:
