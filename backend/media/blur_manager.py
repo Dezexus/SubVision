@@ -96,7 +96,7 @@ class BlurManager:
                         combined = np.maximum(combined, m)
                     subtitle_masks[sub_id] = combined
 
-        frame_blur_map: Dict[int, Tuple[Tuple[int, int, int, int], int]] = {}
+        frame_blur_map: Dict[int, List[Tuple[Tuple[int, int, int, int], int]]] = {}
         for sub in subtitles:
             text = sub.get('text', '').strip()
             if not text:
@@ -104,8 +104,11 @@ class BlurManager:
             roi = calculate_blur_roi(text, width, height, blur_settings)
             start_f = max(0, int(sub['start'] * fps) - 1)
             end_f = min(total_frames + 5, int(sub['end'] * fps) + 1)
+            sub_id = sub.get('id', -1)
             for f_idx in range(start_f, end_f):
-                frame_blur_map[f_idx] = (roi, sub.get('id', -1))
+                if f_idx not in frame_blur_map:
+                    frame_blur_map[f_idx] = []
+                frame_blur_map[f_idx].append((roi, sub_id))
 
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         writer = cv2.VideoWriter(temp_video_path, fourcc, fps, (width, height))
@@ -117,9 +120,9 @@ class BlurManager:
                     raise InterruptedError("Stopped by user")
 
                 if f_idx in frame_blur_map:
-                    roi, sub_id = frame_blur_map[f_idx]
-                    precalc_mask = subtitle_masks.get(sub_id)
-                    frame = apply_blur_to_frame(frame, roi, blur_settings, precalculated_mask=precalc_mask)
+                    for roi, sub_id in frame_blur_map[f_idx]:
+                        precalc_mask = subtitle_masks.get(sub_id)
+                        frame = apply_blur_to_frame(frame, roi, blur_settings, precalculated_mask=precalc_mask)
 
                 writer.write(frame)
 
