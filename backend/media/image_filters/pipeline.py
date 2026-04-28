@@ -6,6 +6,7 @@ import numpy as np
 import cv2
 from core.filters import apply_scaling, apply_sharpening, denoise_frame
 from core.motion import detect_change_absolute
+from core.gpu_utils import has_cuda, ensure_gpu
 
 
 class ImagePipeline:
@@ -15,6 +16,7 @@ class ImagePipeline:
         self.roi = roi
         self.config = config
         self.last_raw_roi: Any = None
+        self.last_raw_roi_gpu: Any = None
         self.skipped_count = 0
 
     def process(self, frame: np.ndarray) -> tuple[np.ndarray | None, bool]:
@@ -34,13 +36,18 @@ class ImagePipeline:
         skipped = False
 
         if smart_skip and self.last_raw_roi is not None:
-            has_changed = detect_change_absolute(frame_roi, self.last_raw_roi)
+            compare_target = self.last_raw_roi_gpu if self.last_raw_roi_gpu is not None else self.last_raw_roi
+            has_changed = detect_change_absolute(frame_roi, compare_target)
             if not has_changed:
                 self.skipped_count += 1
                 skipped = True
 
         if not skipped:
             self.last_raw_roi = frame_roi.copy()
+            if has_cuda():
+                self.last_raw_roi_gpu = ensure_gpu(self.last_raw_roi)
+            else:
+                self.last_raw_roi_gpu = None
 
         if skipped:
             return None, True

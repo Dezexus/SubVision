@@ -15,21 +15,13 @@ class SubtitleEvent:
     """
 
     def __init__(self, text: str, start: float, end: float, conf: float) -> None:
-        """
-        Initializes a new subtitle event.
-        """
         self.text: str = text
         self.start: float = start
         self.end: float = end
         self.max_conf: float = conf
-        self.gap_frames: int = 0
 
     def extend(self, text: str, end: float, conf: float) -> None:
-        """
-        Extends the current event with data from a new frame.
-        """
         self.end = end
-        self.gap_frames = 0
         if conf > self.max_conf or (conf == self.max_conf and len(text) > len(self.text)):
             self.text = text
             self.max_conf = conf
@@ -40,43 +32,39 @@ class SubtitleAggregator:
     into discrete, logical subtitle blocks.
     """
 
-    def __init__(self, min_conf: float, gap_tolerance: int = 5, fps: float = 25.0) -> None:
-        """
-        Initializes the aggregator.
-        """
+    def __init__(self, min_conf: float, max_gap_seconds: float = 0.2, fps: float = 25.0) -> None:
         self.srt_data: list[SubtitleItem] = []
         self.active_event: SubtitleEvent | None = None
         self.min_conf: float = min_conf
-        self.gap_tolerance: int = gap_tolerance
+        self.max_gap_seconds = max_gap_seconds
         self.on_new_subtitle: Callable[[SubtitleItem], None] | None = None
-        self.frame_duration = 1.0 / fps if fps > 0 else 0.04
+        self.fps = fps
 
     def add_result(self, text: str, conf: float, timestamp: float) -> None:
         """
         Processes a new OCR result from a frame.
         """
-        is_valid = bool(text and conf >= self.min_conf)
-        frame_end_time = timestamp + self.frame_duration
-
-        if is_valid:
+        if text and conf >= self.min_conf:
             if self.active_event:
                 if is_similar(self.active_event.text, text, SUBTITLE_SIMILARITY_THRESH):
-                    self.active_event.extend(text, frame_end_time, conf)
+                    self.active_event.extend(text, timestamp, conf)
                 else:
                     self._commit_event()
-                    self.active_event = SubtitleEvent(text, timestamp, frame_end_time, conf)
+                    self.active_event = SubtitleEvent(text, timestamp, timestamp, conf)
             else:
-                self.active_event = SubtitleEvent(text, timestamp, frame_end_time, conf)
+                self.active_event = SubtitleEvent(text, timestamp, timestamp, conf)
         else:
-            if self.active_event:
-                self.active_event.gap_frames += 1
-                if self.active_event.gap_frames > self.gap_tolerance:
-                    self._commit_event()
+            if self.active_event and timestamp - self.active_event.end > self.max_gap_seconds:
+                self._commit_event()
+
+    def handle_skipped(self, timestamp: float) -> None:
+        """
+        Extend active subtitle end time when frames are skipped without OCR.
+        """
+        if self.active_event:
+            self.active_event.end = timestamp
 
     def _commit_event(self) -> None:
-        """
-        Finalizes the currently active subtitle event and adds it to the list.
-        """
         if self.active_event:
             item: SubtitleItem = {
                 "id": len(self.srt_data) + 1,
@@ -91,8 +79,5 @@ class SubtitleAggregator:
             self.active_event = None
 
     def finalize(self) -> list[SubtitleItem]:
-        """
-        Commits any pending active event and returns the complete list.
-        """
         self._commit_event()
         return self.srt_data

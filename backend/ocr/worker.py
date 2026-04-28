@@ -65,6 +65,7 @@ def run_ocr_pipeline(
                 reporter.progress(frame_idx, total_frames, f"{eta_sec // 60:02d}:{eta_sec % 60:02d}")
 
             if skipped:
+                aggregator.handle_skipped(timestamp)
                 continue
 
             if final_img is not None:
