@@ -1,9 +1,7 @@
 """
 Applies video blurring and obscuring effects.
 """
-import os
 import logging
-import time
 from typing import Optional, Tuple, List, Dict, Any, Callable
 import cv2
 import numpy as np
@@ -11,14 +9,13 @@ import numpy as np
 from core.geometry import calculate_blur_roi
 from core.blur_effects import apply_blur_to_frame, generate_text_mask
 from core.video_io import get_video_dar, get_video_metadata, iter_frames_ffmpeg
+from media.transcoder import FFmpegTranscoder
 
 logger = logging.getLogger(__name__)
 
 
 def _extract_raw_frame(video_path: str, frame_index: int, total_frames: int, fps: float) -> Optional[np.ndarray]:
-    """
-    Extract a single raw frame from video without SAR correction.
-    """
+    """Extract a single raw frame from video without SAR correction."""
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         return None
@@ -55,11 +52,10 @@ class BlurManager:
             blur_settings: Dict[str, Any],
             output_path: str,
             progress_callback: Callable[[int, int], None],
-            cancel_check: Callable[[], bool]
-    ) -> Tuple[str, int]:
-        base_name, ext = os.path.splitext(output_path)
-        temp_video_path = f"{base_name}_temp{ext}"
-
+            cancel_check: Callable[[], bool],
+            dar: Optional[float] = None,
+    ) -> int:
+        """Apply blur to subtitles and directly encode final video with audio."""
         meta = get_video_metadata(video_path)
         width = meta["width"]
         height = meta["height"]
@@ -76,11 +72,9 @@ class BlurManager:
                 if not text:
                     continue
                 roi = calculate_blur_roi(text, width, height, blur_settings)
-
                 start_f = max(0, int(sub['start'] * fps))
                 end_f = min(total_frames - 1, int(sub['end'] * fps))
                 mid_f = (start_f + end_f) // 2
-
                 frame_indices = {start_f, mid_f, end_f}
                 masks = []
                 for idx in sorted(frame_indices):
@@ -89,7 +83,6 @@ class BlurManager:
                         mask = generate_text_mask(frame, roi, font_size_px)
                         if mask is not None:
                             masks.append(mask)
-
                 if masks:
                     combined = masks[0].copy()
                     for m in masks[1:]:
@@ -110,12 +103,21 @@ class BlurManager:
                     frame_blur_map[f_idx] = []
                 frame_blur_map[f_idx].append((roi, sub_id))
 
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        writer = cv2.VideoWriter(temp_video_path, fourcc, fps, (width, height))
+        proc, stdin_pipe = FFmpegTranscoder.encode_with_audio_pipe(
+            original_video_path=video_path,
+            output_path=output_path,
+            fps=fps,
+            width=width,
+            height=height,
+            dar=dar,
+        )
 
         frame_idx = 0
         try:
-            for f_idx, _, frame in iter_frames_ffmpeg(video_path, step=1, fps=fps, total=total_frames, width=width, height=height, use_hwaccel=True):
+            for f_idx, _, frame in iter_frames_ffmpeg(
+                video_path, step=1, fps=fps, total=total_frames,
+                width=width, height=height, use_hwaccel=True,
+            ):
                 if cancel_check():
                     raise InterruptedError("Stopped by user")
 
@@ -124,7 +126,7 @@ class BlurManager:
                         precalc_mask = subtitle_masks.get(sub_id)
                         frame = apply_blur_to_frame(frame, roi, blur_settings, precalculated_mask=precalc_mask)
 
-                writer.write(frame)
+                stdin_pipe.write(frame.tobytes())
 
                 if frame_idx > 0 and frame_idx % 25 == 0:
                     progress_callback(frame_idx, total_frames)
@@ -133,6 +135,11 @@ class BlurManager:
 
             progress_callback(total_frames, total_frames)
         finally:
-            writer.release()
+            stdin_pipe.close()
+            proc.wait()
+            if proc.returncode != 0:
+                stderr_output = proc.stderr.read().decode(errors='replace')
+                logger.error("FFmpeg encoding failed: %s", stderr_output)
+                raise RuntimeError(f"FFmpeg exited with code {proc.returncode}")
 
-        return temp_video_path, total_frames
+        return total_frames

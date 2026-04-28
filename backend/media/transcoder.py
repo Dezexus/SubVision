@@ -1,67 +1,67 @@
 """
-Module handling asynchronous FFmpeg subprocess execution and video transcoding.
+Module for ffmpeg encoding with GPU acceleration selection.
 """
-import asyncio
-import os
 import logging
-from typing import List, Optional
+import subprocess
+from typing import Optional, Tuple, IO
 
 logger = logging.getLogger(__name__)
 
 
 class FFmpegTranscoder:
-    """
-    Provides methods to execute FFmpeg commands safely utilizing asyncio cancellation.
-    """
+    """Provides methods for single-pass encoding with audio muxing."""
+
+    _nvenc_available: Optional[bool] = None
 
     @staticmethod
-    async def run_cmd(cmd: List[str]) -> None:
-        process = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
-        )
-        try:
-            await process.wait()
-        except asyncio.CancelledError:
-            process.terminate()
+    def check_nvenc() -> bool:
+        """Detect if h264_nvenc encoder is available, with caching."""
+        if FFmpegTranscoder._nvenc_available is None:
             try:
-                await asyncio.wait_for(process.wait(), timeout=2.0)
-            except asyncio.TimeoutError:
-                process.kill()
-            raise
-
-        if process.returncode != 0:
-            raise RuntimeError(f"Command failed with code {process.returncode}")
+                result = subprocess.run(
+                    ["ffmpeg", "-encoders"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                FFmpegTranscoder._nvenc_available = "h264_nvenc" in result.stdout
+            except Exception:
+                FFmpegTranscoder._nvenc_available = False
+        return FFmpegTranscoder._nvenc_available
 
     @staticmethod
-    async def transcode_with_audio(temp_video: str, original_video: str, output_path: str, dar: Optional[float] = None) -> str:
-        logger.info("Transcoding to H.264 using NVENC and attempting audio copy...")
+    def encode_with_audio_pipe(
+        original_video_path: str,
+        output_path: str,
+        fps: float,
+        width: int,
+        height: int,
+        dar: Optional[float] = None,
+    ) -> Tuple[subprocess.Popen, IO[bytes]]:
+        """Launch ffmpeg to encode rawvideo from stdin and mux audio from original file."""
+        use_nvenc = FFmpegTranscoder.check_nvenc()
+        if use_nvenc:
+            video_codec = ["-c:v", "h264_nvenc", "-preset", "p4", "-cq", "23"]
+        else:
+            video_codec = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23"]
+        audio_codec = ["-c:a", "copy"]
 
-        base_cmd = [
+        cmd = [
             "ffmpeg", "-y",
-            "-i", temp_video,
-            "-i", original_video,
+            "-f", "rawvideo", "-vcodec", "rawvideo",
+            "-s", f"{width}x{height}",
+            "-pix_fmt", "bgr24",
+            "-r", str(fps),
+            "-i", "-",
+            "-i", original_video_path,
             "-map", "0:v:0",
             "-map", "1:a:0?",
-            "-shortest"
         ]
-
         if dar is not None:
-            base_cmd.extend(["-aspect", f"{dar:.6f}"])
+            cmd.extend(["-aspect", f"{dar:.6f}"])
+        cmd += video_codec
+        cmd += audio_codec
+        cmd.append(output_path)
 
-        nvenc_params = ["-c:v", "h264_nvenc", "-preset", "p4", "-cq", "23", "-pix_fmt", "yuv420p"]
-        x264_params = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p"]
-
-        try:
-            await FFmpegTranscoder.run_cmd(base_cmd + nvenc_params + ["-c:a", "copy", output_path])
-        except RuntimeError:
-            try:
-                logger.warning("NVENC audio copy failed, falling back to AAC with NVENC...")
-                await FFmpegTranscoder.run_cmd(base_cmd + nvenc_params + ["-c:a", "aac", output_path])
-            except RuntimeError:
-                logger.warning("NVENC encoding failed, falling back to software libx264...")
-                await FFmpegTranscoder.run_cmd(base_cmd + x264_params + ["-c:a", "aac", output_path])
-
-        if os.path.exists(temp_video):
-            os.remove(temp_video)
-
-        return output_path
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+        return proc, proc.stdin

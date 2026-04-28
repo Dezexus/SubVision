@@ -15,7 +15,6 @@ from core.config import settings
 from core.storage import storage_manager
 from core.video_io import get_video_dar
 from media.blur_manager import BlurManager
-from media.transcoder import FFmpegTranscoder
 from ocr.worker import run_ocr_pipeline
 
 
@@ -173,16 +172,13 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
             eta_str = f"{eta_sec // 60:02d}:{eta_sec % 60:02d}"
             reporter.progress(c, t, eta_str)
 
-        temp_video_path, total_frames = await asyncio.to_thread(
+        total_frames = await asyncio.to_thread(
             BlurManager.apply_blur_task_sync,
             local_video_path, config['subtitles'], config['blur_settings'],
-            final_output_path, prog_cb, cancel_check
+            final_output_path, prog_cb, cancel_check, dar=dar
         )
         reporter.set_total(total_frames)
         reporter.done()
-
-        reporter.log("Transcoding audio and video...")
-        await FFmpegTranscoder.transcode_with_audio(temp_video_path, local_video_path, final_output_path, dar=dar)
 
         reporter.log("Uploading result...")
 
