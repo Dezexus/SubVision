@@ -32,6 +32,16 @@ def _extract_raw_frame(video_path: str, frame_index: int, total_frames: int, fps
     return None
 
 
+def _roi_contrast_score(frame: np.ndarray, roi: Tuple[int, int, int, int]) -> float:
+    """Compute a simple contrast score for a region of interest based on luminance variance."""
+    bx, by, bw, bh = roi
+    if bw <= 0 or bh <= 0:
+        return 0.0
+    roi_area = frame[by:by+bh, bx:bx+bw]
+    gray = cv2.cvtColor(roi_area, cv2.COLOR_BGR2GRAY)
+    return float(np.var(gray))
+
+
 class BlurManager:
     @staticmethod
     def generate_preview(video_path: str, frame_index: int, settings: Dict[str, Any], text: str) -> Optional[np.ndarray]:
@@ -65,6 +75,8 @@ class BlurManager:
         font_size_px = int(blur_settings.get('font_size', 21))
 
         subtitle_masks: Dict[int, np.ndarray] = {}
+        mask_cache: Dict[Tuple, Optional[np.ndarray]] = {}
+
         if blur_settings.get('mode', 'hybrid') == 'hybrid':
             for sub in subtitles:
                 sub_id = sub.get('id', -1)
@@ -72,22 +84,34 @@ class BlurManager:
                 if not text:
                     continue
                 roi = calculate_blur_roi(text, width, height, blur_settings)
-                start_f = max(0, int(sub['start'] * fps))
-                end_f = min(total_frames - 1, int(sub['end'] * fps))
-                mid_f = (start_f + end_f) // 2
-                frame_indices = {start_f, mid_f, end_f}
-                masks = []
-                for idx in sorted(frame_indices):
-                    frame = _extract_raw_frame(video_path, idx, total_frames, fps)
-                    if frame is not None:
-                        mask = generate_text_mask(frame, roi, font_size_px)
-                        if mask is not None:
-                            masks.append(mask)
-                if masks:
-                    combined = masks[0].copy()
-                    for m in masks[1:]:
-                        combined = np.maximum(combined, m)
-                    subtitle_masks[sub_id] = combined
+                cache_key = (text, roi[0], roi[1], roi[2], roi[3], font_size_px)
+
+                if cache_key in mask_cache:
+                    mask = mask_cache[cache_key]
+                else:
+                    start_f = max(0, int(sub['start'] * fps))
+                    end_f = min(total_frames - 1, int(sub['end'] * fps))
+                    mid_f = (start_f + end_f) // 2
+                    frame_indices = [start_f, mid_f, end_f]
+
+                    best_frame = None
+                    best_score = -1.0
+                    for idx in sorted(set(frame_indices)):
+                        frame = _extract_raw_frame(video_path, idx, total_frames, fps)
+                        if frame is not None:
+                            score = _roi_contrast_score(frame, roi)
+                            if score > best_score:
+                                best_score = score
+                                best_frame = frame
+
+                    if best_frame is not None:
+                        mask = generate_text_mask(best_frame, roi, font_size_px)
+                    else:
+                        mask = None
+                    mask_cache[cache_key] = mask
+
+                if mask is not None:
+                    subtitle_masks[sub_id] = mask
 
         frame_blur_map: Dict[int, List[Tuple[Tuple[int, int, int, int], int]]] = {}
         for sub in subtitles:
