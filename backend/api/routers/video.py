@@ -4,7 +4,7 @@ import logging
 import cv2
 import asyncio
 from typing import List, Dict, Any
-from fastapi import APIRouter, HTTPException, status, Form, UploadFile, File
+from fastapi import APIRouter, HTTPException, status, Form, UploadFile, File, Request
 from fastapi.responses import StreamingResponse, FileResponse
 from io import BytesIO
 from pydantic import BaseModel
@@ -15,6 +15,8 @@ from api.dependencies import get_video_path
 from core.storage import storage_manager
 from core.config import settings
 from core.utils import validate_filename
+from arq.jobs import Job
+import redis.asyncio as aioredis
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -99,8 +101,29 @@ async def complete_upload(req: UploadCompleteRequest) -> VideoMetadata:
     )
 
 @router.delete("/delete/{filename}")
-async def delete_video(filename: str):
+async def delete_video(filename: str, request: Request):
     safe_filename = validate_filename(filename)
+
+    redis_conn = await aioredis.from_url(settings.redis_url)
+    pending_jobs_key = f"pending_jobs:{safe_filename}"
+    job_ids = await redis_conn.smembers(pending_jobs_key)
+
+    pool = request.app.state.arq_pool
+    for jid_bytes in job_ids:
+        jid = jid_bytes.decode() if isinstance(jid_bytes, bytes) else jid_bytes
+        try:
+            job = Job(jid, pool)
+            await job.abort()
+        except Exception as e:
+            logger.warning(f"Could not abort job {jid}: {e}")
+        try:
+            await redis_conn.setex(f"job:{jid}:cancel", 3600, "1")
+        except Exception:
+            pass
+
+    await redis_conn.delete(pending_jobs_key)
+    await redis_conn.aclose()
+
     success = await storage_manager.delete_file(safe_filename)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to delete file.")

@@ -1,10 +1,11 @@
 import logging
 import uuid
+import os
 from fastapi import APIRouter, HTTPException, UploadFile, File, Request
 from fastapi.responses import StreamingResponse
 from io import BytesIO
 import cv2
-import redis
+import redis.asyncio as aioredis
 from arq.jobs import Job
 from pydantic import BaseModel
 
@@ -44,6 +45,10 @@ async def start_process(config: ProcessConfig, request: Request):
         pool = request.app.state.arq_pool
         job_id = f"ocr_{config.client_id}_{uuid.uuid4().hex[:8]}"
         await pool.enqueue_job("process_ocr_task", config.model_dump(), _job_id=job_id)
+        safe_filename = os.path.basename(config.filename)
+        redis_conn = await aioredis.from_url(settings.redis_url)
+        await redis_conn.sadd(f"pending_jobs:{safe_filename}", job_id)
+        await redis_conn.aclose()
         return {"status": "queued", "job_id": job_id}
     except Exception as e:
         logger.error(f"Failed to enqueue OCR task: {e}", exc_info=True)
@@ -60,8 +65,9 @@ async def stop_process(req: StopRequest, request: Request):
         stopped = False
 
     try:
-        r = redis.Redis.from_url(settings.redis_url)
-        r.setex(f"job:{req.job_id}:cancel", 3600, "1")
+        redis_conn = await aioredis.from_url(settings.redis_url)
+        await redis_conn.setex(f"job:{req.job_id}:cancel", 3600, "1")
+        await redis_conn.aclose()
     except Exception as e:
         logger.warning(f"Could not set cancel flag in Redis: {e}")
 
@@ -111,6 +117,10 @@ async def render_blur_video(config: RenderConfig, request: Request):
         pool = request.app.state.arq_pool
         job_id = f"blur_{config.client_id}_{uuid.uuid4().hex[:8]}"
         await pool.enqueue_job("render_blur_task", config.model_dump(), _job_id=job_id)
+        safe_filename = os.path.basename(config.filename)
+        redis_conn = await aioredis.from_url(settings.redis_url)
+        await redis_conn.sadd(f"pending_jobs:{safe_filename}", job_id)
+        await redis_conn.aclose()
         return {"status": "queued", "job_id": job_id}
     except Exception as e:
         logger.error(f"Failed to enqueue render task: {e}", exc_info=True)
