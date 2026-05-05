@@ -16,7 +16,6 @@ from core.storage import storage_manager
 from core.config import settings
 from core.utils import validate_filename
 from arq.jobs import Job
-import redis.asyncio as aioredis
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -104,7 +103,7 @@ async def complete_upload(req: UploadCompleteRequest) -> VideoMetadata:
 async def delete_video(filename: str, request: Request):
     safe_filename = validate_filename(filename)
 
-    redis_conn = await aioredis.from_url(settings.redis_url)
+    redis_conn = request.app.state.redis
     pending_jobs_key = f"pending_jobs:{safe_filename}"
     job_ids = await redis_conn.smembers(pending_jobs_key)
 
@@ -122,7 +121,6 @@ async def delete_video(filename: str, request: Request):
             pass
 
     await redis_conn.delete(pending_jobs_key)
-    await redis_conn.aclose()
 
     success = await storage_manager.delete_file(safe_filename)
     if not success:

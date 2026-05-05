@@ -3,6 +3,7 @@ import { SettingsPanel } from './features/settings/SettingsPanel';
 import { EditorPanel } from './features/editor/EditorPanel';
 import { ResultsPanel } from './features/results/ResultsPanel';
 import { ToastContainer } from './components/ui/ToastContainer';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { useVideoStore } from './store/videoStore';
 import { useProcessingStore } from './store/processingStore';
 import { useProcessingSocket } from './hooks/useProcessingSocket';
@@ -52,15 +53,21 @@ function App() {
       <div className="flex h-full p-4 gap-4">
         {isProjectActive && (
           <div className="h-full z-20 flex-shrink-0">
-            <SettingsPanel />
+            <ErrorBoundary>
+              <SettingsPanel />
+            </ErrorBoundary>
           </div>
         )}
         <div className="flex-1 h-full z-10 min-w-0">
-          <EditorPanel />
+          <ErrorBoundary>
+            <EditorPanel />
+          </ErrorBoundary>
         </div>
         {isProjectActive && (
           <div className="h-full z-20 flex-shrink-0 w-[420px] min-w-[380px]">
-            <ResultsPanel />
+            <ErrorBoundary>
+              <ResultsPanel />
+            </ErrorBoundary>
           </div>
         )}
       </div>

@@ -5,7 +5,7 @@ import time
 import shutil
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
@@ -44,6 +44,8 @@ async def lifespan(app: FastAPI):
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     app.state.arq_pool = await create_pool(redis_settings)
 
+    app.state.redis = aioredis.from_url(settings.redis_url)
+
     cleanup_task = asyncio.create_task(cleanup_loop())
 
     yield
@@ -55,6 +57,7 @@ async def lifespan(app: FastAPI):
         pass
 
     await app.state.arq_pool.close()
+    await app.state.redis.aclose()
 
 
 app = FastAPI(title="SubVision API", version="1.0.0", lifespan=lifespan)
@@ -90,12 +93,11 @@ async def health_check():
 
 
 @app.websocket("/ws/{client_id}")
-async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
-    redis_client = aioredis.from_url(settings.redis_url)
+async def websocket_endpoint(websocket: WebSocket, client_id: str, request: Request) -> None:
+    redis_client = request.app.state.redis
     valid = await redis_client.getex(f"ws_valid:{client_id}", ex=3600)
     if not valid:
         await websocket.close(code=4001, reason="Invalid or expired client ID")
-        await redis_client.aclose()
         return
 
     await connection_manager.connect(websocket, client_id)
@@ -142,13 +144,5 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
         if pubsub:
             try:
                 await pubsub.unsubscribe(f"ws_{client_id}")
-            except Exception:
-                pass
-        if redis_client:
-            try:
-                if hasattr(redis_client, "aclose"):
-                    await redis_client.aclose()
-                else:
-                    await redis_client.close()
             except Exception:
                 pass

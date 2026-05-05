@@ -6,6 +6,11 @@ class Settings(BaseSettings):
     cache_dir: str = "uploads"
     redis_url: str = "redis://redis:6379/0"
 
+    upload_chunk_size: int = 10 * 1024 * 1024
+    max_upload_size: int = 10 * 1024 * 1024 * 1024
+    frame_cache_size: int = 50
+    blur_cache_size: int = 30
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 settings = Settings()
