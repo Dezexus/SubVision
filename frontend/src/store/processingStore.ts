@@ -26,6 +26,7 @@ export interface ProcessingActions {
   setStoppedJobId: (id: string | null) => void;
   setActiveOcrJobId: (id: string | null) => void;
   setActiveBlurJobId: (id: string | null) => void;
+  restoreFromStorage: () => void;
   addLog: (msg: string) => void;
   updateProgress: (current: number, total: number, eta: string) => void;
   addSubtitle: (sub: SubtitleItem) => void;
@@ -54,8 +55,33 @@ export const useProcessingStore = create<ProcessingState & ProcessingActions>((s
 
   setProcessing: (isProcessing) => set({ isProcessing }),
   setStoppedJobId: (id) => set({ stoppedJobId: id }),
-  setActiveOcrJobId: (id) => set({ activeOcrJobId: id }),
-  setActiveBlurJobId: (id) => set({ activeBlurJobId: id }),
+
+  setActiveOcrJobId: (id) => {
+    if (id) {
+      sessionStorage.setItem('activeOcrJobId', id);
+    } else {
+      sessionStorage.removeItem('activeOcrJobId');
+    }
+    set({ activeOcrJobId: id });
+  },
+
+  setActiveBlurJobId: (id) => {
+    if (id) {
+      sessionStorage.setItem('activeBlurJobId', id);
+    } else {
+      sessionStorage.removeItem('activeBlurJobId');
+    }
+    set({ activeBlurJobId: id });
+  },
+
+  restoreFromStorage: () => {
+    const ocr = sessionStorage.getItem('activeOcrJobId');
+    const blur = sessionStorage.getItem('activeBlurJobId');
+    set({
+      activeOcrJobId: ocr || null,
+      activeBlurJobId: blur || null,
+    });
+  },
 
   addLog: (msg) => set((state) => ({ logs: [...state.logs, msg] })),
   updateProgress: (current, total, eta) => set({ progress: { current, total, eta } }),
@@ -140,6 +166,8 @@ export const useProcessingStore = create<ProcessingState & ProcessingActions>((s
         api.deleteVideo(match[1]).catch(() => {});
       }
     }
+    sessionStorage.removeItem('activeOcrJobId');
+    sessionStorage.removeItem('activeBlurJobId');
     set({
       isProcessing: false,
       stoppedJobId: null,

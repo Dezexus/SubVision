@@ -101,7 +101,8 @@ async def render_blur_pipeline(
             local_video_path,
             final_output_path,
             dar=dar,
-            encoder=task_config.blur_settings.encoder
+            encoder=task_config.blur_settings.encoder,
+            cancel=cancellation
         )
 
         await reporter.log("Uploading result...")

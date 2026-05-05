@@ -19,6 +19,8 @@ export const SettingsPanel = () => {
   const clientId = useVideoStore((s) => s.clientId);
   const roi = useVideoStore((s) => s.roi);
   const isProcessing = useProcessingStore((s) => s.isProcessing);
+  const activeOcrJobId = useProcessingStore((s) => s.activeOcrJobId);
+  const activeBlurJobId = useProcessingStore((s) => s.activeBlurJobId);
   const isBlurMode = useBlurStore((s) => s.isBlurMode);
   const resetProject = useVideoStore((s) => s.resetProject);
 
@@ -65,6 +67,8 @@ export const SettingsPanel = () => {
     stopOcr();
   };
 
+  const hasActiveJob = !!activeOcrJobId || !!activeBlurJobId;
+
   return (
     <GlassPanel className="w-[360px] flex flex-col h-full z-20 bg-bg-main">
       <div className="p-5 border-b border-border-main flex justify-between items-center bg-bg-panel">
@@ -100,7 +104,7 @@ export const SettingsPanel = () => {
               variant="success"
               className="w-full py-3.5 text-base font-semibold shadow-lg"
               icon={<Play size={20} fill="currentColor" />}
-              disabled={!metadata}
+              disabled={!metadata || hasActiveJob}
             >
               START PROCESSING
             </Button>

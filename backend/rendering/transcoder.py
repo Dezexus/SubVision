@@ -2,24 +2,40 @@ import asyncio
 import os
 import logging
 from typing import List, Optional
+from rendering.interfaces import CancellationToken
 
 logger = logging.getLogger(__name__)
 
 class FFmpegTranscoder:
     @staticmethod
-    async def run_cmd(cmd: List[str]) -> None:
+    async def run_cmd(cmd: List[str], cancel: Optional[CancellationToken] = None) -> None:
         process = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
         )
         try:
-            await process.wait()
+            while True:
+                if cancel and await cancel.is_cancelled():
+                    process.terminate()
+                    try:
+                        await asyncio.wait_for(process.wait(), timeout=2.0)
+                    except asyncio.TimeoutError:
+                        process.kill()
+                        await process.wait()
+                    raise asyncio.CancelledError("Transcoding cancelled")
+                try:
+                    await asyncio.wait_for(process.wait(), timeout=0.5)
+                    break
+                except asyncio.TimeoutError:
+                    continue
         except asyncio.CancelledError:
-            process.terminate()
-            try:
-                await asyncio.wait_for(process.wait(), timeout=2.0)
-            except asyncio.TimeoutError:
+            if process.returncode is None:
                 process.kill()
+                await process.wait()
             raise
+        finally:
+            if process.returncode is None:
+                process.kill()
+                await process.wait()
 
         if process.returncode != 0:
             raise RuntimeError(f"Command failed with code {process.returncode}")
@@ -30,7 +46,8 @@ class FFmpegTranscoder:
         original_video: str,
         output_path: str,
         dar: Optional[float] = None,
-        encoder: str = "auto"
+        encoder: str = "auto",
+        cancel: Optional[CancellationToken] = None
     ) -> str:
         logger.info("Transcoding to H.264...")
 
@@ -51,7 +68,7 @@ class FFmpegTranscoder:
 
         async def try_encode(video_params, audio_codec):
             cmd = base_cmd + video_params + ["-c:a", audio_codec, output_path]
-            await FFmpegTranscoder.run_cmd(cmd)
+            await FFmpegTranscoder.run_cmd(cmd, cancel=cancel)
 
         if encoder == "nvenc":
             await try_encode(nvenc_params, "copy")

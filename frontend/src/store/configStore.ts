@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 export interface ConfigState {
   config: Record<string, any>;
@@ -9,19 +10,26 @@ export interface ConfigState {
   setDefaultConfig: (defaults: Record<string, any>) => void;
 }
 
-export const useConfigStore = create<ConfigState>((set) => ({
-  config: {},
-  preset: '',
-  defaultConfig: null,
+export const useConfigStore = create<ConfigState>()(
+  persist(
+    (set) => ({
+      config: {},
+      preset: '',
+      defaultConfig: null,
 
-  setConfig: (updates) =>
-    set((state) => ({ config: { ...state.config, ...updates } })),
+      setConfig: (updates) =>
+        set((state) => ({ config: { ...state.config, ...updates } })),
 
-  setPreset: (preset) => set({ preset }),
+      setPreset: (preset) => set({ preset }),
 
-  setDefaultConfig: (defaults) =>
-    set((state) => ({
-      defaultConfig: defaults,
-      config: Object.keys(state.config).length === 0 ? { ...defaults } : { ...state.config },
-    })),
-}));
+      setDefaultConfig: (defaults) =>
+        set((state) => ({
+          defaultConfig: defaults,
+          config: Object.keys(state.config).length === 0 ? { ...defaults } : { ...state.config },
+        })),
+    }),
+    {
+      name: 'subvision-config',
+    }
+  )
+);

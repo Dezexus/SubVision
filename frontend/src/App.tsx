@@ -15,10 +15,17 @@ function App() {
   const metadata = useVideoStore((s) => s.metadata);
   const undo = useProcessingStore((s) => s.undo);
   const redo = useProcessingStore((s) => s.redo);
+  const restoreFromStorage = useProcessingStore((s) => s.restoreFromStorage);
 
   useEffect(() => {
     initializeClientId();
   }, [initializeClientId]);
+
+  useEffect(() => {
+    if (clientId) {
+      restoreFromStorage();
+    }
+  }, [clientId, restoreFromStorage]);
 
   useProcessingSocket(clientId);
 
