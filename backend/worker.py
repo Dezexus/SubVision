@@ -100,8 +100,13 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
 
         dl_ok = await storage_manager.download_file(safe_filename, local_video_path)
         if not dl_ok:
+            await publish_ws(ctx, client_id, job_id, {
+                "type": "finish",
+                "success": False,
+                "error": "Source video file is no longer available. It may have been deleted."
+            })
             r.close()
-            raise FileNotFoundError(f"Source video file '{safe_filename}' not found in storage.")
+            return
 
         success = await asyncio.to_thread(
             run_ocr_pipeline,
@@ -164,6 +169,21 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
     cancellation = RedisCancellationToken(job_id, redis_conn)
 
     task_config = RenderTaskConfig(**config)
+
+    safe_filename = os.path.basename(task_config.filename)
+    local_video_path = os.path.join(tempfile.gettempdir(), safe_filename)
+
+    dl_ok = await storage.download(safe_filename, local_video_path)
+    if not dl_ok:
+        await reporter.log("Error: source video missing")
+        await redis_conn.publish(f"ws_{client_id}", json.dumps({
+            "type": "finish",
+            "success": False,
+            "error": "Source video file is no longer available. It may have been deleted.",
+            "job_id": job_id
+        }))
+        return
+
     output_filename = await render_blur_pipeline(task_config, storage, reporter, cancellation)
 
     finish_payload = {
