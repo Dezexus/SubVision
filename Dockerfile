@@ -13,6 +13,7 @@ FROM python:3.10-slim-bookworm AS api
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/usr/local/bin:$PATH"
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nginx \
     supervisor \
@@ -23,6 +24,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libdav1d6 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+RUN addgroup --gid 1000 appuser && \
+    adduser --uid 1000 --gid 1000 --disabled-password --gecos "" appuser
+
 WORKDIR /app
 COPY backend/requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
@@ -32,9 +37,14 @@ COPY backend ./backend
 COPY --from=frontend-builder /frontend/dist ./frontend_dist
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-RUN mkdir -p /app/backend/uploads
+
+RUN mkdir -p /app/backend/uploads && \
+    chown -R appuser:appuser /app && \
+    mkdir -p /var/log/nginx /var/run/nginx && \
+    chown -R appuser:appuser /var/log/nginx /var/run/nginx
+
 EXPOSE 7860
-CMD ["/usr/bin/supervisord","-c","/etc/supervisor/conf.d/supervisord.conf"]
+CMD ["sh", "-c", "chown -R appuser:appuser /app/backend/uploads 2>/dev/null; exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf"]
 
 
 FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04 AS worker
