@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
-import { useAppStore } from '../../../store/useAppStore';
+import { useProcessingStore } from '../../../store/processingStore';
+import { useVideoStore } from '../../../store/videoStore';
 import type { SubtitleItem } from '../../../types';
 
 export const useSubtitleDrag = (scrollContainerRef: React.RefObject<HTMLDivElement | null>) => {
@@ -17,8 +18,8 @@ export const useSubtitleDrag = (scrollContainerRef: React.RefObject<HTMLDivEleme
 
   const handleEdgeMouseMove = useCallback((e: MouseEvent) => {
     if (!dragRef.current || !scrollContainerRef.current) return;
-    const state = useAppStore.getState();
-    const currentMetadata = state.metadata;
+    const currentMetadata = useVideoStore.getState().metadata;
+    const currentSubtitles = useProcessingStore.getState().subtitles;
     if (!currentMetadata) return;
 
     const { subId, edge, startX, initialStart, initialEnd } = dragRef.current;
@@ -27,7 +28,7 @@ export const useSubtitleDrag = (scrollContainerRef: React.RefObject<HTMLDivEleme
     const containerWidth = scrollContainerRef.current.scrollWidth;
     const deltaTime = (deltaX / containerWidth) * calculatedDuration;
 
-    const currentSub = state.subtitles.find(s => s.id === subId);
+    const currentSub = currentSubtitles.find(s => s.id === subId);
     if (!currentSub) return;
 
     const rawNewTime = edge === 'start' ? initialStart + deltaTime : initialEnd + deltaTime;
@@ -44,17 +45,17 @@ export const useSubtitleDrag = (scrollContainerRef: React.RefObject<HTMLDivEleme
         targetFrame = Math.max(Math.min(currentMetadata.total_frames, targetFrame), minEndFrame);
         updatedSub.end = targetFrame / fps;
     }
-    state.updateSubtitle(updatedSub);
+    useProcessingStore.getState().updateSubtitle(updatedSub);
   }, [scrollContainerRef]);
 
   const handleEdgeMouseUp = useCallback(function onMouseUp() {
     if (dragRef.current) {
-      const state = useAppStore.getState();
-      const finalSub = state.subtitles.find(s => s.id === dragRef.current!.subId);
+      const finalSubtitles = useProcessingStore.getState().subtitles;
+      const finalSub = finalSubtitles.find(s => s.id === dragRef.current!.subId);
       if (finalSub &&
           (finalSub.start !== dragRef.current.initialState.start ||
            finalSub.end !== dragRef.current.initialState.end)) {
-        state.saveHistory();
+        useProcessingStore.getState().saveHistory();
       }
     }
     dragRef.current = null;

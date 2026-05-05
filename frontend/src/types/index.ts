@@ -1,6 +1,3 @@
-/**
- * Global application types and interfaces.
- */
 export interface VideoMetadata {
   filename: string;
   original_filename: string;
@@ -53,6 +50,8 @@ export interface BlurSettings {
   sigma: number;
   feather: number;
   width_multiplier: number;
+  height_multiplier?: number;
+  encoder: string;
 }
 
 export interface RenderConfig {
@@ -78,8 +77,8 @@ export interface ToastMessage {
 }
 
 export type WebSocketMessage =
-  | { type: 'log'; message: string }
-  | { type: 'progress'; current: number; total: number; eta: string }
-  | { type: 'subtitle_new'; item: SubtitleItem }
-  | { type: 'subtitle_update'; item: SubtitleItem }
-  | { type: 'finish'; success: boolean; download_url?: string; error?: string };
+  | { type: 'log'; message: string; job_id?: string }
+  | { type: 'progress'; current: number; total: number; eta: string; job_id?: string }
+  | { type: 'subtitle_new'; item: SubtitleItem; job_id?: string }
+  | { type: 'subtitle_update'; item: SubtitleItem; job_id?: string }
+  | { type: 'finish'; success: boolean; download_url?: string; error?: string; job_id?: string };

@@ -17,7 +17,6 @@ export const videoApi = {
       total_chunks: totalChunks
     });
     const { upload_id, urls, storage_filename } = initRes.data;
-    const parts: { PartNumber: number; ETag: string }[] = [];
 
     for (let i = 0; i < totalChunks; i++) {
       const start = i * chunkSize;
@@ -25,12 +24,9 @@ export const videoApi = {
       const chunk = file.slice(start, end);
 
       if (urls && urls.length > 0) {
-        const uploadUrl = urls[i];
-        const chunkRes = await axios.put(uploadUrl, chunk, {
+        await axios.put(urls[i], chunk, {
           headers: { 'Content-Type': file.type || 'application/octet-stream' }
         });
-        const etag = chunkRes.headers['etag'] || chunkRes.headers['Etag'] || '';
-        parts.push({ PartNumber: i + 1, ETag: etag.replace(/"/g, '') });
       } else {
         const formData = new FormData();
         formData.append('file', chunk);
@@ -49,11 +45,6 @@ export const videoApi = {
       upload_id: upload_id,
       total_chunks: totalChunks
     };
-    if (urls && urls.length > 0) {
-      completePayload.parts = parts;
-    } else {
-      completePayload.parts = null;
-    }
 
     const completeRes = await axios.post(`${API_URL}/video/upload/complete`, completePayload);
     return completeRes.data as VideoMetadata;

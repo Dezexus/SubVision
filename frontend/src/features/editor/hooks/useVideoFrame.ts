@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { api } from '../../../services/api';
 import type { VideoMetadata } from '../../../types';
-import { useAppStore } from '../../../store/useAppStore';
+import { useUIStore } from '../../../store/uiStore';
 
 const MAX_FRAME_CACHE = 50;
 const frameCache = new Map<string, string>();
@@ -19,6 +19,7 @@ export const useVideoFrame = (metadata: VideoMetadata | null, currentFrameIndex:
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const videoExpiredRef = useRef(false);
+  const addToast = useUIStore((s) => s.addToast);
 
   useEffect(() => {
     clearFrameCache();
@@ -93,7 +94,7 @@ export const useVideoFrame = (metadata: VideoMetadata | null, currentFrameIndex:
         const typedErr = err as { response?: { status?: number; data?: { detail?: string } }; message?: string };
         if (typedErr.response && typedErr.response.status === 404) {
           videoExpiredRef.current = true;
-          useAppStore.getState().addToast("Video file has expired or been deleted. Please re-upload.", "error");
+          addToast("Video file has expired or been deleted. Please re-upload.", "error");
           setError("Video unavailable");
         } else {
           const msg = typedErr.response?.data?.detail || typedErr.message || 'Failed to load frame';
@@ -110,7 +111,7 @@ export const useVideoFrame = (metadata: VideoMetadata | null, currentFrameIndex:
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       if (abortControllerRef.current) abortControllerRef.current.abort();
     };
-  }, [currentFrameIndex, metadata]);
+  }, [currentFrameIndex, metadata, addToast]);
 
   return { imgSrc, isLoading, error };
 };

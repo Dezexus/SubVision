@@ -1,16 +1,10 @@
-"""
-Singleton manager for handling WebSocket connections.
-"""
 import logging
 from typing import Dict
 from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
 
-
 class ConnectionManager:
-    """Manages active WebSocket connections to route messages to specific clients."""
-
     def __init__(self) -> None:
         self.active_connections: Dict[str, WebSocket] = {}
 
@@ -28,6 +22,5 @@ class ConnectionManager:
                 await self.active_connections[client_id].send_json(message)
             except Exception as e:
                 logger.warning(f"Failed to send message to {client_id}: {e}")
-
 
 connection_manager = ConnectionManager()

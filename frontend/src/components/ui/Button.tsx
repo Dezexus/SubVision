@@ -1,6 +1,3 @@
-/**
- * A reusable, styled button component with multiple variants and loading states using semantic theme colors.
- */
 import React from 'react';
 import { cn } from '../../utils/cn';
 import { Loader2 } from 'lucide-react';

@@ -3,23 +3,23 @@ import { SettingsPanel } from './features/settings/SettingsPanel';
 import { EditorPanel } from './features/editor/EditorPanel';
 import { ResultsPanel } from './features/results/ResultsPanel';
 import { ToastContainer } from './components/ui/ToastContainer';
-import { useAppStore } from './store/useAppStore';
-import { useSocket } from './hooks/useSocket';
+import { useVideoStore } from './store/videoStore';
+import { useProcessingStore } from './store/processingStore';
+import { useProcessingSocket } from './hooks/useProcessingSocket';
 
 function App() {
-  const initializeClientId = useAppStore((state) => state.initializeClientId);
-  const clientId = useAppStore((state) => state.clientId);
-  
+  const initializeClientId = useVideoStore((s) => s.initializeClientId);
+  const clientId = useVideoStore((s) => s.clientId);
+  const file = useVideoStore((s) => s.file);
+  const metadata = useVideoStore((s) => s.metadata);
+  const undo = useProcessingStore((s) => s.undo);
+  const redo = useProcessingStore((s) => s.redo);
+
   useEffect(() => {
     initializeClientId();
   }, [initializeClientId]);
 
-  useSocket();
-
-  const file = useAppStore((state) => state.file);
-  const metadata = useAppStore((state) => state.metadata);
-  const undo = useAppStore((state) => state.undo);
-  const redo = useAppStore((state) => state.redo);
+  useProcessingSocket(clientId);
 
   const isProjectActive = !!file || !!metadata;
 
@@ -29,13 +29,10 @@ function App() {
         const tag = e.target.tagName.toLowerCase();
         if (tag === 'input' || tag === 'textarea') return;
       }
-
       if (e.ctrlKey || e.metaKey) {
         if (e.key.toLowerCase() === 'z') {
-          if (e.shiftKey) {
-            e.preventDefault();
-            redo();
-          } else {
+          if (e.shiftKey) redo();
+          else {
             e.preventDefault();
             undo();
           }
@@ -45,7 +42,6 @@ function App() {
         }
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo]);
@@ -53,25 +49,21 @@ function App() {
   return (
     <div className="w-full h-screen bg-bg-main flex flex-col text-txt-main overflow-hidden">
       <div className="h-1 w-full bg-brand-500 flex-shrink-0" />
-
       <div className="flex h-full p-4 gap-4">
         {isProjectActive && (
           <div className="h-full z-20 flex-shrink-0">
             <SettingsPanel />
           </div>
         )}
-
         <div className="flex-1 h-full z-10 min-w-0">
           <EditorPanel />
         </div>
-
         {isProjectActive && (
           <div className="h-full z-20 flex-shrink-0 w-[420px] min-w-[380px]">
             <ResultsPanel />
           </div>
         )}
       </div>
-
       <ToastContainer />
     </div>
   );

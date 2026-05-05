@@ -1,31 +1,30 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { MoveVertical, Trash2 } from 'lucide-react';
-import { useAppStore } from '../../../store/useAppStore';
+import { useVideoStore } from '../../../store/videoStore';
+import { useProcessingStore } from '../../../store/processingStore';
 import { HybridTimeline } from './HybridTimeline';
 import { API_BASE } from '../../../services/api';
-import { shallow } from 'zustand/shallow';
 import type { SubtitleItem } from '../../../types';
 
 const THROTTLE_INTERVAL = 100;
 
 export const PreviewMode = () => {
-  const metadata = useAppStore(s => s.metadata, shallow);
-  const file = useAppStore(s => s.file);
-  const updateSubtitle = useAppStore(s => s.updateSubtitle);
-  const deleteSubtitle = useAppStore(s => s.deleteSubtitle);
-  const saveHistory = useAppStore(s => s.saveHistory);
-  const subtitles = useAppStore(s => s.subtitles, shallow);
-  const setCurrentFrame = useAppStore(s => s.setCurrentFrame);
-  const previewVolume = useAppStore(s => s.previewVolume);
-  const setPreviewVolume = useAppStore(s => s.setPreviewVolume);
+  const metadata = useVideoStore((s) => s.metadata);
+  const file = useVideoStore((s) => s.file);
+  const setCurrentFrame = useVideoStore((s) => s.setCurrentFrame);
+  const previewVolume = useVideoStore((s) => s.previewVolume);
+  const setPreviewVolume = useVideoStore((s) => s.setPreviewVolume);
+
+  const subtitles = useProcessingStore((s) => s.subtitles);
+  const updateSubtitle = useProcessingStore((s) => s.updateSubtitle);
+  const deleteSubtitle = useProcessingStore((s) => s.deleteSubtitle);
+  const saveHistory = useProcessingStore((s) => s.saveHistory);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef<{ y: number; initialOffset: number } | null>(null);
   const animationFrameRef = useRef<number>();
   const lastThrottleTimeRef = useRef<number>(0);
-  const currentTimeRef = useRef<number>(0);
-  const durationRef = useRef<number>(0);
 
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -33,7 +32,6 @@ export const PreviewMode = () => {
   const [bottomOffset, setBottomOffset] = useState(20);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [activeSub, setActiveSub] = useState<SubtitleItem | null | undefined>(null);
-
   const [localText, setLocalText] = useState('');
   const prevActiveSubIdRef = useRef<number | null>(null);
 
@@ -46,27 +44,32 @@ export const PreviewMode = () => {
     }
   }, [activeSub]);
 
-  const updateActiveSubtitle = useCallback((time: number) => {
-    const subs = subtitles;
-    if (subs.length === 0) {
-      setActiveSub(null);
-      return;
-    }
-    for (let i = 0; i < subs.length; i++) {
-      if (time >= subs[i].start && time <= subs[i].end) {
-        setActiveSub(subs[i]);
+  const updateActiveSubtitle = useCallback(
+    (time: number) => {
+      if (subtitles.length === 0) {
+        setActiveSub(null);
         return;
       }
-    }
-    setActiveSub(null);
-  }, [subtitles]);
+      for (let i = 0; i < subtitles.length; i++) {
+        if (time >= subtitles[i].start && time <= subtitles[i].end) {
+          setActiveSub(subtitles[i]);
+          return;
+        }
+      }
+      setActiveSub(null);
+    },
+    [subtitles]
+  );
 
-  const syncCurrentFrame = useCallback((time: number) => {
-    if (metadata) {
-      const frame = Math.round(time * metadata.fps);
-      setCurrentFrame(frame);
-    }
-  }, [metadata, setCurrentFrame]);
+  const syncCurrentFrame = useCallback(
+    (time: number) => {
+      if (metadata) {
+        const frame = Math.round(time * metadata.fps);
+        setCurrentFrame(frame);
+      }
+    },
+    [metadata, setCurrentFrame]
+  );
 
   const handlePlayPause = useCallback(() => {
     const video = videoRef.current;
@@ -100,7 +103,6 @@ export const PreviewMode = () => {
           if (now - lastThrottleTimeRef.current >= THROTTLE_INTERVAL) {
             lastThrottleTimeRef.current = now;
             const time = video.currentTime;
-            currentTimeRef.current = time;
             setCurrentTime(time);
             updateActiveSubtitle(time);
             syncCurrentFrame(time);
@@ -129,28 +131,34 @@ export const PreviewMode = () => {
     }
   }, [file, metadata]);
 
-  const handleStepFrame = useCallback((frames: number) => {
-    const video = videoRef.current;
-    if (video && metadata && metadata.fps > 0) {
-      if (!video.paused) video.pause();
-      const currentFrame = Math.round(video.currentTime * metadata.fps);
-      let newTime = (currentFrame + frames) / metadata.fps;
-      newTime = Math.max(0, Math.min(video.duration || durationRef.current, newTime));
-      video.currentTime = newTime + 0.0001;
-      setCurrentTime(newTime);
-      syncCurrentFrame(newTime);
-    }
-  }, [metadata, syncCurrentFrame]);
+  const handleStepFrame = useCallback(
+    (frames: number) => {
+      const video = videoRef.current;
+      if (video && metadata && metadata.fps > 0) {
+        if (!video.paused) video.pause();
+        const currentFrame = Math.round(video.currentTime * metadata.fps);
+        let newTime = (currentFrame + frames) / metadata.fps;
+        newTime = Math.max(0, Math.min(video.duration || 0, newTime));
+        video.currentTime = newTime + 0.0001;
+        setCurrentTime(newTime);
+        syncCurrentFrame(newTime);
+      }
+    },
+    [metadata, syncCurrentFrame]
+  );
 
-  const handleSeek = useCallback((time: number) => {
-    const video = videoRef.current;
-    if (video) {
-      video.currentTime = time;
-      setCurrentTime(time);
-      updateActiveSubtitle(time);
-      syncCurrentFrame(time);
-    }
-  }, [updateActiveSubtitle, syncCurrentFrame]);
+  const handleSeek = useCallback(
+    (time: number) => {
+      const video = videoRef.current;
+      if (video) {
+        video.currentTime = time;
+        setCurrentTime(time);
+        updateActiveSubtitle(time);
+        syncCurrentFrame(time);
+      }
+    },
+    [updateActiveSubtitle, syncCurrentFrame]
+  );
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.volume = previewVolume;
@@ -159,44 +167,52 @@ export const PreviewMode = () => {
   const handleLoadedMetadata = useCallback((e: React.SyntheticEvent<HTMLVideoElement>) => {
     const dur = e.currentTarget.duration;
     setDuration(dur);
-    durationRef.current = dur;
   }, []);
 
-  const handleTextChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const newText = e.target.value;
-    setLocalText(newText);
-    if (activeSub) {
-      updateSubtitle({ ...activeSub, text: newText });
-    }
-  }, [activeSub, updateSubtitle]);
+  const handleTextChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const newText = e.target.value;
+      setLocalText(newText);
+      if (activeSub) {
+        updateSubtitle({ ...activeSub, text: newText });
+      }
+    },
+    [activeSub, updateSubtitle]
+  );
 
-  const handleDragStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragStartRef.current = { y: e.clientY, initialOffset: bottomOffset };
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      if (!containerRef.current || !dragStartRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const deltaY = moveEvent.clientY - dragStartRef.current.y;
-      const deltaPercent = (deltaY / rect.height) * 100;
-      let newPercent = dragStartRef.current.initialOffset - deltaPercent;
-      newPercent = Math.max(2, Math.min(newPercent, 90));
-      setBottomOffset(newPercent);
-    };
-    const handleMouseUp = () => {
-      dragStartRef.current = null;
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-  }, [bottomOffset]);
+  const handleDragStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragStartRef.current = { y: e.clientY, initialOffset: bottomOffset };
+      const handleMouseMove = (moveEvent: MouseEvent) => {
+        if (!containerRef.current || !dragStartRef.current) return;
+        const rect = containerRef.current.getBoundingClientRect();
+        const deltaY = moveEvent.clientY - dragStartRef.current.y;
+        const deltaPercent = (deltaY / rect.height) * 100;
+        let newPercent = dragStartRef.current.initialOffset - deltaPercent;
+        newPercent = Math.max(2, Math.min(newPercent, 90));
+        setBottomOffset(newPercent);
+      };
+      const handleMouseUp = () => {
+        dragStartRef.current = null;
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+      };
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    },
+    [bottomOffset]
+  );
 
   if (!metadata) return null;
 
   return (
     <div className="w-full h-full flex flex-col bg-bg-main border border-border-main rounded-xl overflow-hidden shadow-2xl">
-      <div ref={containerRef} className="relative w-full flex-1 bg-black flex items-center justify-center group/video overflow-hidden">
+      <div
+        ref={containerRef}
+        className="relative w-full flex-1 bg-black flex items-center justify-center group/video overflow-hidden"
+      >
         {videoUrl && (
           <video
             ref={videoRef}
@@ -209,7 +225,6 @@ export const PreviewMode = () => {
             className="w-full h-full object-contain"
           />
         )}
-
         {activeSub && (
           <div
             className="absolute w-11/12 max-w-5xl left-1/2 -translate-x-1/2 flex flex-col items-center group/sub"
@@ -238,7 +253,10 @@ export const PreviewMode = () => {
                 className="col-start-1 row-start-1 w-full bg-black/70 text-white text-center text-lg md:text-xl py-2.5 px-12 rounded-2xl border-2 border-transparent hover:border-white/20 focus:border-brand-500 focus:bg-black/90 focus:outline-none transition-colors shadow-lg backdrop-blur-sm"
               />
               <button
-                onClick={(e) => { e.stopPropagation(); deleteSubtitle(activeSub.id); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deleteSubtitle(activeSub.id);
+                }}
                 className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-white/50 hover:text-white hover:bg-red-500/80 rounded-full opacity-0 group-hover/textarea:opacity-100 transition-all"
                 title="Delete Subtitle"
               >
@@ -248,7 +266,6 @@ export const PreviewMode = () => {
           </div>
         )}
       </div>
-
       <HybridTimeline
         isPlaying={isPlaying}
         onPlayPause={handlePlayPause}

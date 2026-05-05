@@ -1,15 +1,17 @@
-/**
- * Component for selecting video processing presets dynamically fetched from backend.
- */
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Zap, Shield, Eye, Settings } from 'lucide-react';
-import { useAppStore } from '../../../store/useAppStore';
 import { cn } from '../../../utils/cn';
 import { api } from '../../../services/api';
 import type { Preset } from '../../../types';
 
-export const PresetSelector = () => {
-  const { preset, setPreset, updateConfig, availablePresets, setAvailablePresets } = useAppStore();
+interface Props {
+  preset: string;
+  setPreset: (id: string) => void;
+  setConfig: (updates: any) => void;
+}
+
+export const PresetSelector = ({ preset, setPreset, setConfig }: Props) => {
+  const [availablePresets, setAvailablePresets] = useState<Preset[]>([]);
 
   useEffect(() => {
     const fetchPresets = async () => {
@@ -20,19 +22,16 @@ export const PresetSelector = () => {
         console.error(error);
       }
     };
-
-    if (availablePresets.length === 0) {
-      fetchPresets();
-    }
-  }, [availablePresets.length, setAvailablePresets]);
+    fetchPresets();
+  }, []);
 
   const handleSelect = (p: Preset) => {
     setPreset(p.id);
-    updateConfig({
+    setConfig({
       step: p.config.step,
       conf_threshold: p.config.min_conf,
       scale_factor: p.config.scale_factor,
-      smart_skip: p.config.smart_skip
+      smart_skip: p.config.smart_skip,
     });
   };
 
@@ -70,8 +69,8 @@ export const PresetSelector = () => {
                 {getIcon(p.id)}
               </div>
               <span className={cn(
-                  "text-[11px] font-semibold tracking-wide uppercase",
-                  isActive ? "text-brand-400" : "text-txt-main"
+                "text-[11px] font-semibold tracking-wide uppercase",
+                isActive ? "text-brand-400" : "text-txt-main"
               )}>
                 {p.label}
               </span>

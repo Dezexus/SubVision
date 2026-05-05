@@ -1,19 +1,16 @@
-/**
- * Component showing the processing status, ETA, and progress bar for the active task.
- */
 import React from 'react';
 import { Clock, Activity } from 'lucide-react';
-import { useAppStore } from '../../../store/useAppStore';
+import { useProcessingStore } from '../../../store/processingStore';
+import { useVideoStore } from '../../../store/videoStore';
 import { cn } from '../../../utils/cn';
 
 export const ProgressHeader = () => {
-  const { progress, isProcessing, metadata } = useAppStore();
+  const progress = useProcessingStore((s) => s.progress);
+  const isProcessing = useProcessingStore((s) => s.isProcessing);
+  const metadata = useVideoStore((s) => s.metadata);
 
   const totalFrames = progress.total > 0 ? progress.total : (metadata?.total_frames || 0);
-
-  const percentage = totalFrames > 0
-    ? Math.round((progress.current / totalFrames) * 100)
-    : 0;
+  const percentage = totalFrames > 0 ? Math.round((progress.current / totalFrames) * 100) : 0;
 
   return (
     <div className="p-4 border-b border-border-main bg-bg-panel">
@@ -34,7 +31,6 @@ export const ProgressHeader = () => {
           </div>
         )}
       </div>
-
       <div className="relative w-full h-1.5 bg-bg-track rounded-full overflow-hidden border border-border-main">
         <div
           className={cn(
@@ -44,7 +40,6 @@ export const ProgressHeader = () => {
           style={{ width: `${percentage}%` }}
         />
       </div>
-
       <div className="flex justify-between mt-1.5 text-[10px] font-mono text-txt-subtle uppercase tracking-wider">
         <span>Frame: <span className="text-txt-muted">{progress.current}</span> / {totalFrames}</span>
         <span className="font-bold text-txt-main">{percentage}%</span>

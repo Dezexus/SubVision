@@ -1,19 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { Copy, Trash2, ArrowDownToLine } from 'lucide-react';
 import type { SubtitleItem } from '../../../types';
-import { useAppStore } from '../../../store/useAppStore';
+import { useProcessingStore } from '../../../store/processingStore';
+import { useVideoStore } from '../../../store/videoStore';
+import { useUIStore } from '../../../store/uiStore';
 import { cn } from '../../../utils/cn';
 import { formatTimeDisplay } from '../../../utils/format';
 
 export const SubtitleCard = ({ item, index }: { item: SubtitleItem, index: number }) => {
-  const { updateSubtitle, deleteSubtitle, mergeSubtitles, setCurrentFrame, metadata, subtitles, addToast, saveHistory } = useAppStore();
+  const updateSubtitle = useProcessingStore((s) => s.updateSubtitle);
+  const deleteSubtitle = useProcessingStore((s) => s.deleteSubtitle);
+  const mergeSubtitles = useProcessingStore((s) => s.mergeSubtitles);
+  const saveHistory = useProcessingStore((s) => s.saveHistory);
+  const subtitles = useProcessingStore((s) => s.subtitles);
+  const metadata = useVideoStore((s) => s.metadata);
+  const currentFrameIndex = useVideoStore((s) => s.currentFrameIndex);
+  const setCurrentFrame = useVideoStore((s) => s.setCurrentFrame);
+  const addToast = useUIStore((s) => s.addToast);
+
   const [isHovered, setIsHovered] = useState(false);
 
-  const isActive = useAppStore(state => {
-    if (!state.metadata) return false;
-    const time = state.currentFrameIndex / state.metadata.fps;
-    return time >= item.start && time <= item.end;
-  });
+  const isActive = metadata
+    ? (currentFrameIndex / metadata.fps) >= item.start && (currentFrameIndex / metadata.fps) <= item.end
+    : false;
 
   const isHighConf = item.conf > 0.85;
   const isLowConf = item.conf < 0.6;
@@ -25,13 +34,11 @@ export const SubtitleCard = ({ item, index }: { item: SubtitleItem, index: numbe
         const tag = e.target.tagName.toLowerCase();
         if (tag === 'input' || tag === 'textarea') return;
       }
-
       if (isHovered && (e.key === 'Delete' || e.key === 'Backspace')) {
         e.preventDefault();
         deleteSubtitle(item.id);
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isHovered, item.id, deleteSubtitle]);
@@ -68,20 +75,12 @@ export const SubtitleCard = ({ item, index }: { item: SubtitleItem, index: numbe
         rows={2}
         spellCheck={false}
       />
-
       <div className="flex items-center justify-between text-xs text-txt-subtle mt-1">
         <div className="flex items-center gap-3">
-          <span className="font-mono text-[10px] font-bold text-txt-dim">
-            #{index + 1}
-          </span>
-          <span
-            onClick={handleJump}
-            className="font-mono cursor-pointer hover:text-brand-500 transition-colors"
-            title="Jump to time"
-          >
+          <span className="font-mono text-[10px] font-bold text-txt-dim">#{index + 1}</span>
+          <span onClick={handleJump} className="font-mono cursor-pointer hover:text-brand-500 transition-colors" title="Jump to time">
             {formatTimeDisplay(item.start)}
           </span>
-
           <span className={cn(
             "text-[9px] font-bold px-1.5 py-0.5 rounded",
             isHighConf ? "bg-green-500/10 text-green-400" :
@@ -90,38 +89,27 @@ export const SubtitleCard = ({ item, index }: { item: SubtitleItem, index: numbe
             {Math.round(item.conf * 100)}%
           </span>
         </div>
-
         <div className="flex items-center gap-2">
-            {hasNext && (
-                <button
-                    onClick={() => mergeSubtitles(index)}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-bg-surface hover:bg-brand-500 text-txt-muted hover:text-white transition-colors text-[10px] font-bold"
-                    title="Merge with Next Line"
-                >
-                    <ArrowDownToLine size={12} />
-                    MERGE
-                </button>
-            )}
-
-            {item.isEdited && (
-                 <span className="text-[9px] bg-blue-500/10 text-brand-400 px-1 rounded border border-brand-500/20">EDITED</span>
-            )}
+          {hasNext && (
+            <button
+              onClick={() => mergeSubtitles(index)}
+              className="flex items-center gap-1 px-2 py-0.5 rounded bg-bg-surface hover:bg-brand-500 text-txt-muted hover:text-white transition-colors text-[10px] font-bold"
+              title="Merge with Next Line"
+            >
+              <ArrowDownToLine size={12} />
+              MERGE
+            </button>
+          )}
+          {item.isEdited && (
+            <span className="text-[9px] bg-blue-500/10 text-brand-400 px-1 rounded border border-brand-500/20">EDITED</span>
+          )}
         </div>
       </div>
-
       <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-bg-panel/80 backdrop-blur-sm rounded-bl-lg pl-2 pb-1">
-        <button
-          onClick={handleCopy}
-          className="p-1.5 text-txt-subtle hover:text-white hover:bg-white/10 rounded"
-          title="Copy Text"
-        >
+        <button onClick={handleCopy} className="p-1.5 text-txt-subtle hover:text-white hover:bg-white/10 rounded" title="Copy Text">
           <Copy size={14} />
         </button>
-        <button
-          onClick={() => deleteSubtitle(item.id)}
-          className="p-1.5 text-txt-subtle hover:text-red-400 hover:bg-red-500/10 rounded"
-          title="Delete Line"
-        >
+        <button onClick={() => deleteSubtitle(item.id)} className="p-1.5 text-txt-subtle hover:text-red-400 hover:bg-red-500/10 rounded" title="Delete Line">
           <Trash2 size={14} />
         </button>
       </div>

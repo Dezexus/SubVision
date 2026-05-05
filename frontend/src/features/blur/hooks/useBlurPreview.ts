@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import axios from 'axios';
 import { api } from '../../../services/api';
 import type { VideoMetadata, BlurSettings, SubtitleItem } from '../../../types';
 
@@ -80,9 +81,10 @@ export const useBlurPreview = (
           URL.revokeObjectURL(url);
         }
       } catch (e) {
-        if (!(e instanceof DOMException && e.name === 'AbortError')) {
-          console.error(e);
+        if (axios.isCancel(e)) {
+          return;
         }
+        console.error(e);
       } finally {
         if (isActive) {
           setIsPreviewUpdating(false);

@@ -1,6 +1,3 @@
-"""
-Router module handling API requests by delegating tasks to the ARQ message broker.
-"""
 import logging
 import uuid
 from fastapi import APIRouter, HTTPException, UploadFile, File, Request
@@ -12,40 +9,34 @@ from arq.jobs import Job
 from pydantic import BaseModel
 
 from api.schemas import ProcessConfig, RenderConfig, BlurPreviewConfig, BlurSettings
-from api.dependencies import get_video_url
-from media.blur_manager import BlurManager
-from core.srt_parser import parse_srt
-from core.presets import get_all_presets, get_supported_languages
+from api.dependencies import get_video_path
+from rendering.blur_preview import generate_blur_preview
+from processing.subtitle_parser import parse_srt
+from processing.presets import get_all_presets, get_supported_languages
 from core.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-
 class StopRequest(BaseModel):
     job_id: str
-
 
 @router.get("/presets")
 async def get_presets():
     return get_all_presets()
 
-
 @router.get("/languages")
 async def get_languages():
     return get_supported_languages()
-
 
 @router.get("/blur-defaults")
 async def get_blur_defaults():
     return BlurSettings().model_dump()
 
-
 @router.get("/process-defaults")
 async def get_process_defaults():
     dummy = ProcessConfig(filename="", client_id="", roi=[0,0,0,0])
     return dummy.model_dump(exclude={"filename", "client_id", "roi"})
-
 
 @router.post("/start")
 async def start_process(config: ProcessConfig, request: Request):
@@ -57,7 +48,6 @@ async def start_process(config: ProcessConfig, request: Request):
     except Exception as e:
         logger.error(f"Failed to enqueue OCR task: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @router.post("/stop")
 async def stop_process(req: StopRequest, request: Request):
@@ -77,7 +67,6 @@ async def stop_process(req: StopRequest, request: Request):
 
     return {"status": "stopped", "job_id": req.job_id, "success": stopped}
 
-
 @router.post("/import_srt")
 async def import_srt(file: UploadFile = File(...)):
     try:
@@ -95,14 +84,13 @@ async def import_srt(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to parse SRT: {str(e)}")
 
-
 @router.post("/preview_blur")
 async def preview_blur_frame(config: BlurPreviewConfig):
-    video_url = await get_video_url(config.filename)
+    video_path = get_video_path(config.filename)
 
     try:
-        preview_image = BlurManager.generate_preview(
-            video_path=video_url,
+        preview_image = generate_blur_preview(
+            video_path=video_path,
             frame_index=config.frame_index,
             settings=config.blur_settings.model_dump(),
             text=config.subtitle_text
@@ -116,7 +104,6 @@ async def preview_blur_frame(config: BlurPreviewConfig):
     except Exception as e:
         logger.error(f"Preview generation failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @router.post("/render_blur")
 async def render_blur_video(config: RenderConfig, request: Request):

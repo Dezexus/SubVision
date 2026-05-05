@@ -1,14 +1,11 @@
-/**
- * Container and individual toast components for global notifications.
- */
 import React, { useEffect } from 'react';
 import { CheckCircle, AlertCircle, Info, X } from 'lucide-react';
-import { useAppStore } from '../../store/useAppStore';
+import { useUIStore } from '../../store/uiStore';
 import { cn } from '../../utils/cn';
 import type { ToastMessage } from '../../types';
 
 const Toast = ({ toast }: { toast: ToastMessage }) => {
-  const removeToast = useAppStore((state) => state.removeToast);
+  const removeToast = useUIStore((state) => state.removeToast);
 
   useEffect(() => {
     const timer = setTimeout(() => removeToast(toast.id), 3000);
@@ -44,7 +41,7 @@ const Toast = ({ toast }: { toast: ToastMessage }) => {
 };
 
 export const ToastContainer = () => {
-  const toasts = useAppStore((state) => state.toasts);
+  const toasts = useUIStore((state) => state.toasts);
 
   return (
     <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none">

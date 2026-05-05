@@ -1,21 +1,17 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Upload, AlertCircle, Loader2, Video, FileText, Wand2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '../../../utils/cn';
-import { useVideoUpload } from '../hooks/useVideoUpload';
-import { useAppStore } from '../../../store/useAppStore';
+import { useUploadVideo } from '../../../commands/useUploadVideo';
+import { useVideoStore } from '../../../store/videoStore';
 import { api } from '../../../services/api';
 
 export const WelcomeScreen = () => {
-  const { allowedExtensions, setAllowedExtensions } = useAppStore();
-  const {
-    isDragging,
-    isUploading,
-    uploadProgress,
-    errorMsg,
-    dragHandlers,
-    onFileInputChange
-  } = useVideoUpload();
+  const allowedExtensions = useVideoStore((s) => s.allowedExtensions);
+  const setAllowedExtensions = useVideoStore((s) => s.setAllowedExtensions);
+  const { execute, isLoading, progress } = useUploadVideo();
+  const [isDragging, setIsDragging] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchExtensions = async () => {
@@ -29,11 +25,41 @@ export const WelcomeScreen = () => {
     if (allowedExtensions.length === 0) {
       fetchExtensions();
     }
-  }, [allowedExtensions.length, setAllowedExtensions]);
+  }, [allowedExtensions, setAllowedExtensions]);
 
   const exts = allowedExtensions.length > 0 ? allowedExtensions : ['.mp4', '.mkv', '.avi', '.mov', '.webm'];
   const acceptString = `video/*,${exts.join(',')}`;
-  const displayExts = exts.map(e => e.replace('.', '').toUpperCase()).join(', ');
+  const displayExts = exts.map((e) => e.replace('.', '').toUpperCase()).join(', ');
+
+  const handleFile = useCallback(async (file: File) => {
+    setErrorMsg(null);
+    try {
+      await execute(file);
+    } catch (err: any) {
+      setErrorMsg(err.message);
+    }
+  }, [execute]);
+
+  const onDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files?.[0]) {
+      handleFile(e.dataTransfer.files[0]);
+    }
+  }, [handleFile]);
+
+  const onDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  const onDragLeave = useCallback(() => setIsDragging(false), []);
+
+  const onFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.[0]) {
+      handleFile(e.target.files[0]);
+    }
+  }, [handleFile]);
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -51,7 +77,9 @@ export const WelcomeScreen = () => {
   return (
     <div
       className="w-full h-full flex flex-col items-center justify-center p-8 bg-bg-deep relative"
-      {...dragHandlers}
+      onDrop={onDrop}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
     >
       <motion.div
         variants={containerVariants}
@@ -83,38 +111,36 @@ export const WelcomeScreen = () => {
             accept={acceptString}
             className="hidden"
             id="central-upload"
-            disabled={isUploading}
+            disabled={isLoading}
             onChange={onFileInputChange}
           />
-
           <label htmlFor="central-upload" className={cn(
-              "flex flex-col items-center gap-5 w-full h-full justify-center absolute inset-0 cursor-pointer",
-              isUploading && "cursor-wait"
+            "flex flex-col items-center gap-5 w-full h-full justify-center absolute inset-0 cursor-pointer",
+            isLoading && "cursor-wait"
           )}>
             <div className={cn(
               "w-16 h-16 rounded-full flex items-center justify-center transition-transform duration-200",
-               isUploading
+              isLoading
                 ? "bg-bg-panel"
                 : "bg-bg-input group-hover:bg-brand-500 group-hover:text-white text-txt-muted shadow-sm group-hover:shadow-md group-hover:-translate-y-1"
             )}>
-              {isUploading ? (
-                  <Loader2 size={28} className="animate-spin text-brand-500" />
+              {isLoading ? (
+                <Loader2 size={28} className="animate-spin text-brand-500" />
               ) : (
-                  <Upload size={28} />
+                <Upload size={28} />
               )}
             </div>
-
             <div className="text-center space-y-1.5 px-4 relative z-10">
               <h2 className="text-lg font-medium text-txt-main">
-                {isUploading ? (uploadProgress === 100 ? 'Processing...' : `Uploading ${uploadProgress}%...`) : 'Select or drop video'}
+                {isLoading ? (progress === 100 ? 'Processing...' : `Uploading ${progress}%...`) : 'Select or drop video'}
               </h2>
-              <p className={cn("text-xs", isUploading ? "text-amber-500 animate-pulse font-medium" : "text-txt-subtle")}>
-                {isUploading ? 'Analyzing file structure...' : displayExts}
+              <p className={cn("text-xs", isLoading ? "text-amber-500 animate-pulse font-medium" : "text-txt-subtle")}>
+                {isLoading ? 'Analyzing file structure...' : displayExts}
               </p>
               {errorMsg && (
                 <div className="flex items-center justify-center gap-1.5 text-red-400 text-xs mt-3 font-medium bg-red-500/10 py-1 px-3 rounded border border-red-500/20">
-                    <AlertCircle size={14} />
-                    {errorMsg}
+                  <AlertCircle size={14} />
+                  {errorMsg}
                 </div>
               )}
             </div>
@@ -133,7 +159,6 @@ export const WelcomeScreen = () => {
             </div>
           ))}
         </motion.div>
-
       </motion.div>
     </div>
   );

@@ -4,13 +4,13 @@ import { FilterPreview } from './components/FilterPreview';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { HybridTimeline } from './components/HybridTimeline';
 import { PreviewMode } from './components/PreviewMode';
-import { useAppStore } from '../../store/useAppStore';
+import { useVideoStore } from '../../store/videoStore';
 
 export const EditorPanel = () => {
-  const file = useAppStore((state) => state.file);
-  const metadata = useAppStore((state) => state.metadata);
-  const isPreviewMode = useAppStore((state) => state.isPreviewMode);
-  const setCurrentFrame = useAppStore((state) => state.setCurrentFrame);
+  const file = useVideoStore((s) => s.file);
+  const metadata = useVideoStore((s) => s.metadata);
+  const isPreviewMode = useVideoStore((s) => s.isPreviewMode);
+  const setCurrentFrame = useVideoStore((s) => s.setCurrentFrame);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -20,10 +20,10 @@ export const EditorPanel = () => {
       }
       if (e.code === 'ArrowLeft') {
         e.preventDefault();
-        setCurrentFrame(f => Math.max(0, f - 1));
+        setCurrentFrame((f) => Math.max(0, f - 1));
       } else if (e.code === 'ArrowRight' && metadata) {
         e.preventDefault();
-        setCurrentFrame(f => Math.min(metadata.total_frames - 1, f + 1));
+        setCurrentFrame((f) => Math.min(metadata.total_frames - 1, f + 1));
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -33,7 +33,7 @@ export const EditorPanel = () => {
   if (!file && !metadata) {
     return (
       <div className="w-full h-full border border-border-main rounded-xl bg-bg-deep overflow-hidden shadow-2xl flex items-center justify-center">
-         <WelcomeScreen />
+        <WelcomeScreen />
       </div>
     );
   }
@@ -49,13 +49,13 @@ export const EditorPanel = () => {
   return (
     <div className="flex-1 h-full relative overflow-hidden flex flex-col gap-4">
       <div className="flex-1 relative flex items-center justify-center overflow-hidden mx-4 mt-4 min-h-0">
-         <VideoCanvas />
+        <VideoCanvas />
       </div>
       <div className="shrink-0 h-[126px] px-4 w-full">
-         <FilterPreview />
+        <FilterPreview />
       </div>
       <div className="shrink-0 px-4 pb-4">
-         <HybridTimeline />
+        <HybridTimeline />
       </div>
     </div>
   );

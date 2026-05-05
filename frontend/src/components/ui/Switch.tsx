@@ -1,6 +1,3 @@
-/**
- * A toggle switch component bound to semantic tailwind theme colors.
- */
 import React from 'react';
 import { cn } from '../../utils/cn';
 

@@ -1,6 +1,3 @@
-"""
-Centralized algorithmic, heuristic, and system constants.
-"""
 import numpy as np
 
 MOTION_BLUR_KSIZE: tuple[int, int] = (5, 5)

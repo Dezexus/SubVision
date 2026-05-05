@@ -1,43 +1,37 @@
 import React, { useEffect, useRef } from 'react';
-import {
-  Video, RotateCcw, Wand2,
-  ScanLine, BoxSelect, Droplet, Loader2
-} from 'lucide-react';
-import { useAppStore } from '../../store/useAppStore';
+import { Video, RotateCcw, Wand2, ScanLine, BoxSelect, Droplet, Loader2 } from 'lucide-react';
+import { useVideoStore } from '../../store/videoStore';
+import { useProcessingStore } from '../../store/processingStore';
+import { useBlurStore } from '../../store/blurStore';
 import { Slider } from '../../components/ui/Slider';
 import { Button } from '../../components/ui/Button';
 import { api } from '../../services/api';
 import { cn } from '../../utils/cn';
 import { useBlurPreview } from './hooks/useBlurPreview';
+import { useStartBlurRender } from '../../commands/useStartBlurRender';
 
 export const BlurControlPanel = () => {
-  const {
-    metadata,
-    blurSettings,
-    defaultBlurSettings,
-    setBlurSettings,
-    setDefaultBlurSettings,
-    subtitles,
-    clientId,
-    isProcessing,
-    setProcessing,
-    updateProgress,
-    addLog,
-    roi,
-    currentFrameIndex,
-    setBlurPreviewUrl,
-    setActiveBlurJobId,
-  } = useAppStore();
+  const metadata = useVideoStore((s) => s.metadata);
+  const clientId = useVideoStore((s) => s.clientId);
+  const currentFrameIndex = useVideoStore((s) => s.currentFrameIndex);
+  const roi = useVideoStore((s) => s.roi);
+
+  const isProcessing = useProcessingStore((s) => s.isProcessing);
+  const setProcessing = useProcessingStore((s) => s.setProcessing);
+  const updateProgress = useProcessingStore((s) => s.updateProgress);
+  const addLog = useProcessingStore((s) => s.addLog);
+  const subtitles = useProcessingStore((s) => s.subtitles);
+  const setActiveBlurJobId = useProcessingStore((s) => s.setActiveBlurJobId);
+
+  const blurSettings = useBlurStore((s) => s.blurSettings);
+  const defaultBlurSettings = useBlurStore((s) => s.defaultBlurSettings);
+  const setBlurSettings = useBlurStore((s) => s.setBlurSettings);
+  const setDefaultBlurSettings = useBlurStore((s) => s.setDefaultBlurSettings);
+  const setBlurPreviewUrl = useBlurStore((s) => s.setBlurPreviewUrl);
 
   const userAdjustedY = useRef(false);
-
-  const { isPreviewUpdating } = useBlurPreview(
-    metadata,
-    blurSettings,
-    subtitles,
-    currentFrameIndex,
-    setBlurPreviewUrl
-  );
+  const { isPreviewUpdating } = useBlurPreview(metadata, blurSettings, subtitles, currentFrameIndex, setBlurPreviewUrl);
+  const { execute: startBlurRender } = useStartBlurRender();
 
   const videoHeight = metadata?.height || 1080;
 
@@ -51,7 +45,6 @@ export const BlurControlPanel = () => {
         console.error(error);
       }
     };
-
     if (!defaultBlurSettings) {
       fetchDefaults();
     }
@@ -65,22 +58,19 @@ export const BlurControlPanel = () => {
   }, [roi, metadata, videoHeight, setBlurSettings]);
 
   const handleRender = async () => {
-    if (!metadata) return;
-
+    if (!metadata || !clientId) return;
     setProcessing(true);
     updateProgress(0, metadata.total_frames, "Starting...");
     addLog('--- Starting Smart Render ---');
-
     try {
-      const { job_id } = await api.renderBlurVideo({
+      const { job_id } = await startBlurRender({
         filename: metadata.filename,
         client_id: clientId,
         subtitles: subtitles,
-        blur_settings: blurSettings
+        blur_settings: blurSettings,
       });
       setActiveBlurJobId(job_id);
     } catch (e) {
-      console.error(e);
       addLog('Error: Render failed to start.');
       setProcessing(false);
     }
@@ -102,124 +92,124 @@ export const BlurControlPanel = () => {
   return (
     <div className="flex flex-col h-full bg-bg-main">
       <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
-
         <div className="flex justify-between items-center mb-1">
-            {isPreviewUpdating ? (
-                <div className="flex items-center gap-1.5 text-[10px] text-brand-500 font-mono animate-pulse">
-                    <Loader2 size={10} className="animate-spin" />
-                    UPDATING PREVIEW
-                </div>
-            ) : <div />}
-            <button
-                onClick={handleReset}
-                className="flex items-center gap-1.5 text-[10px] font-bold text-txt-subtle hover:text-txt-main transition-colors"
-                title="Reset all blur settings to defaults"
-            >
-                <RotateCcw size={10} />
-                RESET ALL
-            </button>
+          {isPreviewUpdating ? (
+            <div className="flex items-center gap-1.5 text-[10px] text-brand-500 font-mono animate-pulse">
+              <Loader2 size={10} className="animate-spin" />
+              UPDATING PREVIEW
+            </div>
+          ) : <div />}
+          <button
+            onClick={handleReset}
+            className="flex items-center gap-1.5 text-[10px] font-bold text-txt-subtle hover:text-txt-main transition-colors"
+            title="Reset all blur settings to defaults"
+          >
+            <RotateCcw size={10} />
+            RESET ALL
+          </button>
         </div>
-
         <div className="bg-bg-panel border border-border-main rounded-lg p-3 space-y-3 shadow-sm">
-            <div className="flex items-center gap-2 text-[11px] font-bold text-txt-subtle uppercase tracking-wider mb-2">
-                 <Wand2 size={14} className="text-brand-500" /> Algorithm
-            </div>
-            <div className="flex bg-bg-track p-1 rounded-md border border-border-main gap-1">
-                <button
-                    onClick={() => setBlurSettings({ mode: 'blur' })}
-                    className={cn(
-                      "flex-1 text-[10px] py-1.5 font-bold rounded transition",
-                      blurSettings.mode === 'blur' ? "bg-bg-surface text-white shadow-sm" : "text-txt-subtle hover:text-txt-muted"
-                    )}
-                >
-                    BOX BLUR
-                </button>
-                <button
-                    onClick={() => setBlurSettings({ mode: 'hybrid' })}
-                    className={cn(
-                      "flex-1 text-[10px] py-1.5 font-bold rounded transition",
-                      blurSettings.mode === 'hybrid' ? "bg-brand-500 text-white shadow-sm" : "text-txt-subtle hover:text-txt-muted"
-                    )}
-                >
-                    HYBRID INPAINT
-                </button>
-            </div>
+          <div className="flex items-center gap-2 text-[11px] font-bold text-txt-subtle uppercase tracking-wider mb-2">
+            <Wand2 size={14} className="text-brand-500" /> Algorithm
+          </div>
+          <div className="flex bg-bg-track p-1 rounded-md border border-border-main gap-1">
+            <button
+              onClick={() => setBlurSettings({ mode: 'blur' })}
+              className={cn(
+                "flex-1 text-[10px] py-1.5 font-bold rounded transition",
+                blurSettings.mode === 'blur' ? "bg-bg-surface text-white shadow-sm" : "text-txt-subtle hover:text-txt-muted"
+              )}
+            >
+              BOX BLUR
+            </button>
+            <button
+              onClick={() => setBlurSettings({ mode: 'hybrid' })}
+              className={cn(
+                "flex-1 text-[10px] py-1.5 font-bold rounded transition",
+                blurSettings.mode === 'hybrid' ? "bg-brand-500 text-white shadow-sm" : "text-txt-subtle hover:text-txt-muted"
+              )}
+            >
+              HYBRID INPAINT
+            </button>
+          </div>
         </div>
-
         <div className="bg-bg-panel border border-border-main rounded-lg p-3 space-y-4 shadow-sm">
-            <div className="flex items-center gap-2 text-[11px] font-bold text-txt-subtle uppercase tracking-wider mb-1">
-                 <ScanLine size={14} className="text-green-500" /> Target Area
-            </div>
-            <div className="space-y-4">
-                <Slider
-                  label="Vertical Position (Y)"
-                  max={videoHeight}
-                  value={videoHeight - blurSettings.y}
-                  onChange={handleYChange}
-                />
-                <Slider
-                  label="Text Height"
-                  min={10} max={100} step={1}
-                  value={blurSettings.font_size}
-                  suffix="px"
-                  onChange={(e) => setBlurSettings({ font_size: Number(e.target.value) })}
-                />
-                <Slider
-                  label="Width Ratio"
-                  min={0.5} max={3.0} step={0.05}
-                  value={blurSettings.width_multiplier || 1.0}
-                  suffix="x"
-                  onChange={(e) => setBlurSettings({ width_multiplier: Number(e.target.value) })}
-                />
-            </div>
+          <div className="flex items-center gap-2 text-[11px] font-bold text-txt-subtle uppercase tracking-wider mb-1">
+            <ScanLine size={14} className="text-green-500" /> Target Area
+          </div>
+          <div className="space-y-4">
+            <Slider
+              label="Vertical Position (Y)"
+              max={videoHeight}
+              value={videoHeight - blurSettings.y}
+              onChange={handleYChange}
+            />
+            <Slider
+              label="Text Height"
+              min={10} max={100} step={1}
+              value={blurSettings.font_size}
+              suffix="px"
+              onChange={(e) => setBlurSettings({ font_size: Number(e.target.value) })}
+            />
+            <Slider
+              label="Width Ratio"
+              min={0.5} max={3.0} step={0.05}
+              value={blurSettings.width_multiplier || 1.0}
+              suffix="x"
+              onChange={(e) => setBlurSettings({ width_multiplier: Number(e.target.value) })}
+            />
+            <Slider
+              label="Height Ratio"
+              min={0.5} max={3.0} step={0.05}
+              value={blurSettings.height_multiplier || 1.0}
+              suffix="x"
+              onChange={(e) => setBlurSettings({ height_multiplier: Number(e.target.value) })}
+            />
+          </div>
         </div>
-
         <div className="bg-bg-panel border border-border-main rounded-lg p-3 space-y-4 shadow-sm">
-            <div className="flex items-center gap-2 text-[11px] font-bold text-txt-subtle uppercase tracking-wider mb-1">
-                 <BoxSelect size={14} className="text-red-500" /> Padding Coverage
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-                <Slider
-                  label="Spread X"
-                  max={150}
-                  value={blurSettings.padding_x}
-                  suffix="px"
-                  onChange={(e) => setBlurSettings({ padding_x: Number(e.target.value) })}
-                />
-                <Slider
-                  label="Spread Y"
-                  min={0} max={4.0} step={0.1}
-                  value={blurSettings.padding_y}
-                  suffix="x"
-                  onChange={(e) => setBlurSettings({ padding_y: Number(e.target.value) })}
-                />
-            </div>
+          <div className="flex items-center gap-2 text-[11px] font-bold text-txt-subtle uppercase tracking-wider mb-1">
+            <BoxSelect size={14} className="text-red-500" /> Padding Coverage
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Slider
+              label="Spread X"
+              min={0.1} max={2.0} step={0.05}
+              value={blurSettings.padding_x}
+              suffix="x"
+              onChange={(e) => setBlurSettings({ padding_x: Number(e.target.value) })}
+            />
+            <Slider
+              label="Spread Y"
+              min={0} max={4.0} step={0.1}
+              value={blurSettings.padding_y}
+              suffix="x"
+              onChange={(e) => setBlurSettings({ padding_y: Number(e.target.value) })}
+            />
+          </div>
         </div>
-
         <div className="bg-bg-panel border border-border-main rounded-lg p-3 space-y-4 shadow-sm">
-            <div className="flex items-center gap-2 text-[11px] font-bold text-txt-subtle uppercase tracking-wider mb-1">
-                <Droplet size={14} className="text-brand-400" /> Appearance
-            </div>
-            <div className="space-y-4">
-                <Slider
-                  label="Intensity (Sigma)"
-                  max={100}
-                  value={blurSettings.sigma}
-                  suffix="%"
-                  onChange={(e) => setBlurSettings({ sigma: Number(e.target.value) })}
-                />
-                <Slider
-                  label="Edge Softness"
-                  max={100}
-                  value={blurSettings.feather}
-                  suffix="px"
-                  onChange={(e) => setBlurSettings({ feather: Number(e.target.value) })}
-                />
-            </div>
+          <div className="flex items-center gap-2 text-[11px] font-bold text-txt-subtle uppercase tracking-wider mb-1">
+            <Droplet size={14} className="text-brand-400" /> Appearance
+          </div>
+          <div className="space-y-4">
+            <Slider
+              label="Intensity (Sigma)"
+              max={100}
+              value={blurSettings.sigma}
+              suffix="%"
+              onChange={(e) => setBlurSettings({ sigma: Number(e.target.value) })}
+            />
+            <Slider
+              label="Edge Softness"
+              max={100}
+              value={blurSettings.feather}
+              suffix="px"
+              onChange={(e) => setBlurSettings({ feather: Number(e.target.value) })}
+            />
+          </div>
         </div>
-
       </div>
-
       <div className="p-4 border-t border-border-main bg-bg-panel">
         <Button
           variant="primary"

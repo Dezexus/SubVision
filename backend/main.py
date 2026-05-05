@@ -1,6 +1,3 @@
-"""
-Main application module for the stateless SubVision API integrating ARQ and Redis Pub/Sub.
-"""
 import asyncio
 import json
 import logging

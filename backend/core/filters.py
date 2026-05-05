@@ -1,12 +1,8 @@
-"""
-Image filtering operations including denoising, scaling, and sharpening.
-"""
 from typing import Any
 import cv2
 import numpy as np
 from core.constants import SHARPEN_KERNEL_NP
 from core.gpu_utils import has_cuda, ensure_gpu, ensure_cpu
-
 
 def denoise_frame(frame: Any, strength: float) -> Any:
     if frame is None or strength <= 0:
@@ -25,7 +21,6 @@ def denoise_frame(frame: Any, strength: float) -> Any:
 
     cpu_frame = ensure_cpu(frame)
     return cv2.fastNlMeansDenoisingColored(cpu_frame, None, h_val, h_val, 7, 21)
-
 
 def apply_scaling(frame: Any, scale_factor: float) -> Any:
     if frame is None:
@@ -47,7 +42,6 @@ def apply_scaling(frame: Any, scale_factor: float) -> Any:
 
     cpu_frame = ensure_cpu(frame)
     return cv2.resize(cpu_frame, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC)
-
 
 def apply_sharpening(frame: Any) -> Any:
     if frame is None:

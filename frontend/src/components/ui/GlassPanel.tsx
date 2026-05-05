@@ -1,6 +1,3 @@
-/**
- * A styled container component utilizing semantic background and border colors.
- */
 import React from 'react';
 import { cn } from '../../utils/cn';
 

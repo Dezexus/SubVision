@@ -3,7 +3,8 @@ import {
   ChevronLeft, ChevronRight,
   Clock, ZoomIn, ZoomOut, Play, Pause, Volume2
 } from 'lucide-react';
-import { useAppStore } from '../../../store/useAppStore';
+import { useVideoStore } from '../../../store/videoStore';
+import { useProcessingStore } from '../../../store/processingStore';
 import { cn } from '../../../utils/cn';
 import { formatTimeDisplay } from '../../../utils/format';
 import { calculateTracks, type ProcessedSubtitle } from '../utils/timelineUtils';
@@ -31,12 +32,10 @@ export const HybridTimeline: React.FC<HybridTimelineProps> = ({
   currentTimeOverride,
   durationOverride,
 }) => {
-  const {
-    metadata,
-    subtitles,
-    currentFrameIndex,
-    setCurrentFrame,
-  } = useAppStore();
+  const metadata = useVideoStore((s) => s.metadata);
+  const currentFrameIndex = useVideoStore((s) => s.currentFrameIndex);
+  const setCurrentFrame = useVideoStore((s) => s.setCurrentFrame);
+  const subtitles = useProcessingStore((s) => s.subtitles);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -72,7 +71,7 @@ export const HybridTimeline: React.FC<HybridTimelineProps> = ({
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (hoveredSubIdRef.current !== null) {
           e.preventDefault();
-          useAppStore.getState().deleteSubtitle(hoveredSubIdRef.current);
+          useProcessingStore.getState().deleteSubtitle(hoveredSubIdRef.current);
           setHoveredSub(null);
         }
       } else if (e.ctrlKey && (e.key === '=' || e.key === '+' || e.key === '-')) {
@@ -159,7 +158,7 @@ export const HybridTimeline: React.FC<HybridTimelineProps> = ({
             )}
             {!isPreviewMode && (
               <>
-                <button onClick={() => setCurrentFrame(f => Math.max(0, f - 1))} className="p-1.5 rounded-md hover:bg-bg-surface text-txt-subtle hover:text-white transition" title="Prev Frame">
+                <button onClick={() => setCurrentFrame((f: number) => Math.max(0, f - 1))} className="p-1.5 rounded-md hover:bg-bg-surface text-txt-subtle hover:text-white transition" title="Prev Frame">
                   <ChevronLeft size={16} />
                 </button>
                 <div className="flex items-center px-2 gap-1 border-l border-border-main ml-1 pl-2">
@@ -167,7 +166,7 @@ export const HybridTimeline: React.FC<HybridTimelineProps> = ({
                     <span className="text-[10px] font-mono w-8 text-center">{Math.round(zoomLevel * 100)}%</span>
                     <button onClick={() => handleZoomButton(0.5)} className="p-1 text-txt-subtle hover:text-white"><ZoomIn size={14}/></button>
                 </div>
-                <button onClick={() => setCurrentFrame(f => Math.min(metadata?.total_frames ?? 1 - 1, f + 1))} className="p-1.5 rounded-md hover:bg-bg-surface text-txt-subtle hover:text-white transition" title="Next Frame">
+                <button onClick={() => setCurrentFrame((f: number) => Math.min(metadata?.total_frames ?? 1 - 1, f + 1))} className="p-1.5 rounded-md hover:bg-bg-surface text-txt-subtle hover:text-white transition" title="Next Frame">
                   <ChevronRight size={16} />
                 </button>
               </>

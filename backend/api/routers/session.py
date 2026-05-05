@@ -7,7 +7,6 @@ from core.config import settings
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-
 @router.post("/register")
 async def register_session():
     redis_client = aioredis.from_url(settings.redis_url)
