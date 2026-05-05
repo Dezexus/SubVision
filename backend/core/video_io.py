@@ -2,7 +2,7 @@ import functools
 import logging
 import subprocess
 import json
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict, Any, NamedTuple
 import cv2
 import numpy as np
 from core.filters import apply_sharpening, denoise_frame
@@ -10,6 +10,11 @@ from core.filters import apply_sharpening, denoise_frame
 _dar_cache: Dict[str, float] = {}
 _codec_cache: Dict[str, str] = {}
 HW_DISABLED_CODECS = frozenset({"av1", "vp9"})
+
+class VideoInfo(NamedTuple):
+    frame: Optional[np.ndarray]
+    total_frames: int
+    corrected_width: int
 
 def get_video_codec(video_path: str) -> str:
     if video_path in _codec_cache:
@@ -233,21 +238,22 @@ def iter_frames_ffmpeg(video_path: str, step: int = 1, fps: float = 25.0, total:
         proc.kill()
         proc.wait()
 
-def get_video_info(video_path: str) -> Tuple[np.ndarray | None, int, int]:
+def get_video_info(video_path: str) -> VideoInfo:
     if not video_path:
-        return None, 1, 0
+        return VideoInfo(None, 1, 0)
 
     dar = get_video_dar(video_path)
     result = extract_frame_cv2(video_path, 0, dar=dar)
     if result is None:
-        return None, 1, 0
+        return VideoInfo(None, 1, 0)
 
     frame, corrected_width = result
     cap = create_video_capture(video_path)
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     cap.release()
 
-    return (cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), total, corrected_width)
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) if frame is not None else None
+    return VideoInfo(frame_rgb, total, corrected_width)
 
 def get_frame_image(video_path: str, frame_index: int) -> np.ndarray | None:
     dar = get_video_dar(video_path)

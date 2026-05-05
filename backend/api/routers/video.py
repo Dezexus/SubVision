@@ -74,13 +74,15 @@ async def complete_upload(req: UploadCompleteRequest) -> VideoMetadata:
         raise HTTPException(status_code=500, detail="Failed to complete storage upload.")
 
     video_path = get_video_path(safe_filename)
-    frame, total_frames, corrected_width = await asyncio.to_thread(get_video_info, video_path)
-    if frame is None:
+    info = await asyncio.to_thread(get_video_info, video_path)
+    if info.frame is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid video format or unsupported codec."
         )
-    height = frame.shape[0]
+    total_frames = info.total_frames
+    corrected_width = info.corrected_width
+    height = info.frame.shape[0]
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
     duration = total_frames / fps
