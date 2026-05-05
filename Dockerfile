@@ -40,8 +40,8 @@ COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 RUN mkdir -p /app/backend/uploads && \
     chown -R appuser:appuser /app && \
-    mkdir -p /var/log/nginx /var/run/nginx && \
-    chown -R appuser:appuser /var/log/nginx /var/run/nginx
+    mkdir -p /var/log/nginx /var/run/nginx /var/lib/nginx && \
+    chown -R appuser:appuser /var/log/nginx /var/run/nginx /var/lib/nginx
 
 EXPOSE 7860
 CMD ["sh", "-c", "chown -R appuser:appuser /app/backend/uploads 2>/dev/null; exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf"]
