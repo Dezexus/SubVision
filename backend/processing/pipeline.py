@@ -17,6 +17,7 @@ def run_ocr_pipeline(
     reporter: OCRReporter,
     cancel_check: callable
 ) -> bool:
+    """Executes the OCR pipeline on a video, tracking progress and aggregating subtitles."""
     logger.info("Starting OCR pipeline")
 
     conf_threshold_pct = float(params.get("conf_threshold", 80.0))
@@ -47,6 +48,9 @@ def run_ocr_pipeline(
     start_time = time.time()
     total_frames = video.total_frames
 
+    last_text = ""
+    last_conf = 0.0
+
     try:
         for frame_idx, timestamp, frame in video:
             if cancel_check():
@@ -62,13 +66,18 @@ def run_ocr_pipeline(
                 reporter.progress(frame_idx, total_frames, f"{eta_sec // 60:02d}:{eta_sec % 60:02d}")
 
             if skipped:
+                aggregator.add_result(last_text, last_conf, timestamp)
                 continue
 
             if final_img is not None:
                 raw_res = ocr_engine.predict_batch([final_img])
                 text, conf = PaddleWrapper.parse_results(raw_res[0], min_conf)
+                last_text = text
+                last_conf = conf
                 aggregator.add_result(text, conf, timestamp)
             else:
+                last_text = ""
+                last_conf = 0.0
                 aggregator.add_result("", 0.0, timestamp)
 
         aggregator.finalize()
