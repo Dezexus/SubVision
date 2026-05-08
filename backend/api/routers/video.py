@@ -8,19 +8,17 @@ from fastapi import APIRouter, HTTPException, status, Form, UploadFile, File, Re
 from fastapi.responses import StreamingResponse, FileResponse
 from io import BytesIO
 from pydantic import BaseModel
-
 from core.video_io import get_video_info, get_frame_image, generate_video_preview, get_video_dar
 from api.schemas import VideoMetadata, PreviewConfig
 from api.dependencies import get_video_path
 from core.storage import storage_manager
 from core.config import settings
 from core.utils import validate_filename
+from core.constants import ALLOWED_VIDEO_EXTENSIONS
 from arq.jobs import Job
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-ALLOWED_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm"}
 
 class UploadInitRequest(BaseModel):
     filename: str
@@ -34,17 +32,26 @@ class UploadCompleteRequest(BaseModel):
 
 _session_store: Dict[str, str] = {}
 
+@router.get("/config")
+async def get_upload_config() -> Dict[str, Any]:
+    """Return upload configuration constants for the frontend."""
+    return {
+        "chunk_size": settings.upload_chunk_size,
+        "max_size": settings.max_upload_size,
+        "allowed_extensions": list(ALLOWED_VIDEO_EXTENSIONS)
+    }
+
 @router.get("/allowed-extensions")
 async def get_allowed_extensions() -> List[str]:
-    return list(ALLOWED_EXTENSIONS)
+    return list(ALLOWED_VIDEO_EXTENSIONS)
 
 @router.post("/upload/init")
 async def init_upload(req: UploadInitRequest) -> Dict[str, Any]:
     ext = os.path.splitext(req.filename)[1].lower()
-    if ext not in ALLOWED_EXTENSIONS:
+    if ext not in ALLOWED_VIDEO_EXTENSIONS:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=f"Extension not allowed. Supported: {', '.join(ALLOWED_EXTENSIONS)}"
+            detail=f"Extension not allowed. Supported: {', '.join(ALLOWED_VIDEO_EXTENSIONS)}"
         )
     safe_filename = f"{uuid.uuid4().hex}{ext}"
     _session_store[safe_filename] = req.filename
@@ -67,12 +74,9 @@ async def upload_local_chunk(
 async def complete_upload(req: UploadCompleteRequest) -> VideoMetadata:
     safe_filename = req.filename
     original_name = _session_store.pop(safe_filename, safe_filename)
-
     success = await storage_manager.complete_local_upload(req.upload_id, safe_filename, req.total_chunks)
-
     if not success:
         raise HTTPException(status_code=500, detail="Failed to complete storage upload.")
-
     video_path = get_video_path(safe_filename)
     info = await asyncio.to_thread(get_video_info, video_path)
     if info.frame is None:
@@ -104,11 +108,9 @@ async def complete_upload(req: UploadCompleteRequest) -> VideoMetadata:
 @router.delete("/delete/{filename}")
 async def delete_video(filename: str, request: Request):
     safe_filename = validate_filename(filename)
-
     redis_conn = request.app.state.redis
     pending_jobs_key = f"pending_jobs:{safe_filename}"
     job_ids = await redis_conn.smembers(pending_jobs_key)
-
     pool = request.app.state.arq_pool
     for jid_bytes in job_ids:
         jid = jid_bytes.decode() if isinstance(jid_bytes, bytes) else jid_bytes
@@ -121,9 +123,7 @@ async def delete_video(filename: str, request: Request):
             await redis_conn.setex(f"job:{jid}:cancel", 3600, "1")
         except Exception:
             pass
-
     await redis_conn.delete(pending_jobs_key)
-
     success = await storage_manager.delete_file(safe_filename)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to delete file.")

@@ -2,12 +2,14 @@ from typing import Any
 import cv2
 import numpy as np
 from core.gpu_utils import ensure_gpu, ensure_cpu, has_cuda
-
-MOTION_BLUR_KSIZE: tuple[int, int] = (5, 5)
-MOTION_DIFF_THRESH: float = 15.0
-MOTION_PIXEL_COUNT_THRESH: int = 15
+from core.constants import (
+    MOTION_BLUR_KSIZE,
+    MOTION_DIFF_THRESH,
+    MOTION_PIXEL_COUNT_THRESH
+)
 
 def detect_change_absolute(img1: Any, img2: Any) -> bool:
+    """Detect significant visual changes between two frames."""
     if img1 is None or img2 is None:
         return True
     try:
