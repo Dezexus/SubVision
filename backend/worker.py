@@ -7,21 +7,25 @@ import tempfile
 from typing import Dict, Any
 import redis.asyncio as aioredis
 from arq.connections import RedisSettings
+import numpy as np
 
 from core.config import settings
 from core.storage import storage_manager
 from core.exceptions import TaskCancelledError
 from processing.pipeline import run_ocr_pipeline
 from processing.interfaces import OCRReporter
+from processing.ocr_engine import get_paddle_engine
 from rendering.pipeline import render_blur_pipeline
 from rendering.interfaces import Reporter, Storage, CancellationToken
 from rendering.models import RenderTaskConfig
 
 async def publish_ws(redis_conn: aioredis.Redis, client_id: str, job_id: str, payload: Dict[str, Any]) -> None:
+    """Publish a message to a WebSocket client via Redis."""
     payload['job_id'] = job_id
     await redis_conn.publish(f"ws_{client_id}", json.dumps(payload))
 
 class ProgressReporter:
+    """Reporter class for tracking and broadcasting progress via WebSockets."""
     def __init__(self, client_id: str, job_id: str, redis_conn: aioredis.Redis, loop: asyncio.AbstractEventLoop) -> None:
         self._client_id = client_id
         self._job_id = job_id
@@ -59,6 +63,7 @@ class ProgressReporter:
         self._send(payload)
 
 class RedisCancellationToken:
+    """Token to check if a job has been cancelled by the user."""
     def __init__(self, job_id: str, redis_conn: aioredis.Redis, loop: asyncio.AbstractEventLoop) -> None:
         self._job_id = job_id
         self._redis = redis_conn
@@ -80,6 +85,7 @@ class RedisCancellationToken:
             return False
 
 async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
+    """Execute the OCR extraction pipeline task."""
     client_id = config['client_id']
     filename = config['filename']
     safe_filename = os.path.basename(filename)
@@ -93,7 +99,6 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
             local_video_path = os.path.join(tmpdir, safe_filename)
-
             reporter.log("Downloading video from storage...")
 
             dl_ok = await storage_manager.download_file(safe_filename, local_video_path)
@@ -122,6 +127,7 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
         await redis_conn.srem(f"pending_jobs:{safe_filename}", job_id)
 
 class RedisReporter:
+    """Reporter class for the blur rendering process."""
     def __init__(self, client_id: str, job_id: str, redis_conn: aioredis.Redis) -> None:
         self._client_id = client_id
         self._job_id = job_id
@@ -141,6 +147,7 @@ class RedisReporter:
         await self._send({"type": "progress", "current": total, "total": total, "eta": "00:00"})
 
 class StorageAdapter:
+    """Adapter for storage manager operations."""
     async def download(self, key: str, dest: str) -> bool:
         return await storage_manager.download_file(key, dest)
 
@@ -148,12 +155,23 @@ class StorageAdapter:
         return await storage_manager.upload_file(src, key)
 
 async def startup(ctx: Dict[str, Any]) -> None:
+    """Initialize the worker and pre-warm the OCR engine."""
     logging.info("Worker starting up...")
+    logging.info("Pre-warming OCR engine...")
+    try:
+        engine = get_paddle_engine(lang="en", use_gpu=True)
+        dummy_frame = np.zeros((100, 100, 3), dtype=np.uint8)
+        engine.predict_batch([dummy_frame])
+        logging.info("OCR engine pre-warmed successfully.")
+    except Exception as e:
+        logging.error(f"Failed to pre-warm OCR: {e}")
 
 async def shutdown(ctx: Dict[str, Any]) -> None:
+    """Handle worker shutdown."""
     logging.info("Worker shutting down...")
 
 async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
+    """Execute the blur rendering pipeline task."""
     client_id = config['client_id']
     job_id = ctx.get('job_id', 'unknown')
     redis_conn: aioredis.Redis = ctx['redis']
@@ -191,6 +209,7 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
         await redis_conn.srem(f"pending_jobs:{safe_filename}", job_id)
 
 async def on_job_end_handler(ctx: Dict[str, Any], job_id: str, result: Any, exc: Exception) -> None:
+    """Handle job completion or failure."""
     if exc is not None:
         logging.error(f"Job {job_id} failed critically: {exc}")
         try:
@@ -209,6 +228,7 @@ async def on_job_end_handler(ctx: Dict[str, Any], job_id: str, result: Any, exc:
             logging.error(f"Failed to publish error state for {job_id}: {e}")
 
 class WorkerSettings:
+    """Arq worker settings configuration."""
     functions = [process_ocr_task, render_blur_task]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     on_startup = startup
