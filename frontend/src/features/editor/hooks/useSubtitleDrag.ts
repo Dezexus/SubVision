@@ -1,97 +1,91 @@
-import { useState, useRef, useCallback } from 'react';
-import { useProcessingStore } from '../../../store/processingStore';
-import { useVideoStore } from '../../../store/videoStore';
-import type { SubtitleItem } from '../../../types';
+import { useState, useEffect, useCallback } from 'react';
 
-export const useSubtitleDrag = (scrollContainerRef: React.RefObject<HTMLDivElement | null>) => {
-  const isDraggingRef = useRef(false);
-  const dragRef = useRef<{
-    subId: number;
-    edge: 'start' | 'end';
-    startX: number;
-    initialStart: number;
-    initialEnd: number;
-    initialState: SubtitleItem;
-  } | null>(null);
+export interface DragState {
+  activeId: string | number | null;
+  isDragging: boolean;
+  isResizing: boolean;
+  dragType: 'move' | 'start' | 'end' | null;
+  startX: number;
+}
 
-  const [draggedEdge, setDraggedEdge] = useState<{ id: number, edge: 'start' | 'end' } | null>(null);
+/**
+ * Custom hook to manage subtitle dragging and resizing events.
+ * Safely handles global DOM cursor states and prevents text selection during drag.
+ */
+export const useSubtitleDrag = (
+  containerRef: React.RefObject<HTMLDivElement>,
+  duration: number,
+  onUpdate: (id: string | number, type: 'move' | 'start' | 'end', delta: number) => void
+) => {
+  const [dragState, setDragState] = useState<DragState>({
+    activeId: null,
+    isDragging: false,
+    isResizing: false,
+    dragType: null,
+    startX: 0
+  });
 
-  const handleEdgeMouseMove = useCallback((e: MouseEvent) => {
-    if (!dragRef.current || !scrollContainerRef.current) return;
-    const currentMetadata = useVideoStore.getState().metadata;
-    const currentSubtitles = useProcessingStore.getState().subtitles;
-    if (!currentMetadata) return;
+  useEffect(() => {
+    const { isResizing, isDragging } = dragState;
+    if (!isResizing && !isDragging) return;
 
-    const { subId, edge, startX, initialStart, initialEnd } = dragRef.current;
-    const calculatedDuration = currentMetadata.total_frames / currentMetadata.fps;
-    const deltaX = e.clientX - startX;
-    const containerWidth = scrollContainerRef.current.scrollWidth;
-    const deltaTime = (deltaX / containerWidth) * calculatedDuration;
+    const style = document.createElement('style');
+    const cursor = isResizing ? 'col-resize' : 'grabbing';
+    style.innerHTML = `* { cursor: ${cursor} !important; user-select: none !important; }`;
+    document.head.appendChild(style);
 
-    const currentSub = currentSubtitles.find(s => s.id === subId);
-    if (!currentSub) return;
-
-    const rawNewTime = edge === 'start' ? initialStart + deltaTime : initialEnd + deltaTime;
-    const fps = currentMetadata.fps;
-    let targetFrame = Math.round(rawNewTime * fps);
-
-    const updatedSub = { ...currentSub };
-    if (edge === 'start') {
-        const maxStartFrame = Math.floor((currentSub.end - 0.1) * fps);
-        targetFrame = Math.min(Math.max(0, targetFrame), maxStartFrame);
-        updatedSub.start = targetFrame / fps;
-    } else {
-        const minEndFrame = Math.ceil((currentSub.start + 0.1) * fps);
-        targetFrame = Math.max(Math.min(currentMetadata.total_frames, targetFrame), minEndFrame);
-        updatedSub.end = targetFrame / fps;
-    }
-    useProcessingStore.getState().updateSubtitle(updatedSub);
-  }, [scrollContainerRef]);
-
-  const handleEdgeMouseUp = useCallback(function onMouseUp() {
-    if (dragRef.current) {
-      const finalSubtitles = useProcessingStore.getState().subtitles;
-      const finalSub = finalSubtitles.find(s => s.id === dragRef.current!.subId);
-      if (finalSub &&
-          (finalSub.start !== dragRef.current.initialState.start ||
-           finalSub.end !== dragRef.current.initialState.end)) {
-        useProcessingStore.getState().saveHistory();
+    return () => {
+      if (document.head.contains(style)) {
+        document.head.removeChild(style);
       }
-    }
-    dragRef.current = null;
-    setDraggedEdge(null);
-    document.body.style.cursor = '';
-    window.removeEventListener('mousemove', handleEdgeMouseMove);
-    window.removeEventListener('mouseup', onMouseUp);
-    document.removeEventListener('mouseleave', onMouseUp);
-    setTimeout(() => { isDraggingRef.current = false; }, 100);
-  }, [handleEdgeMouseMove]);
-
-  const handleEdgeMouseDown = (e: React.MouseEvent, sub: SubtitleItem, edge: 'start' | 'end') => {
-    e.stopPropagation();
-    e.preventDefault();
-
-    const initialState = { ...sub };
-
-    isDraggingRef.current = true;
-    dragRef.current = {
-      subId: sub.id,
-      edge,
-      startX: e.clientX,
-      initialStart: sub.start,
-      initialEnd: sub.end,
-      initialState
     };
-    setDraggedEdge({ id: sub.id, edge });
-    document.body.style.cursor = 'col-resize';
-    window.addEventListener('mousemove', handleEdgeMouseMove);
-    window.addEventListener('mouseup', handleEdgeMouseUp);
-    document.addEventListener('mouseleave', handleEdgeMouseUp);
-  };
+  }, [dragState.isResizing, dragState.isDragging]);
 
-  return {
-    isDraggingRef,
-    draggedEdge,
-    handleEdgeMouseDown
-  };
+  const onMouseDown = useCallback((
+    e: React.MouseEvent,
+    id: string | number,
+    type: 'move' | 'start' | 'end'
+  ) => {
+    e.stopPropagation();
+    setDragState({
+      activeId: id,
+      isDragging: type === 'move',
+      isResizing: type !== 'move',
+      dragType: type,
+      startX: e.clientX
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!dragState.activeId) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!containerRef.current || duration <= 0) return;
+      const containerWidth = containerRef.current.getBoundingClientRect().width;
+      const deltaX = e.clientX - dragState.startX;
+      const deltaTime = (deltaX / containerWidth) * duration;
+      
+      onUpdate(dragState.activeId, dragState.dragType!, deltaTime);
+    };
+
+    const handleMouseUp = () => {
+      setDragState(prev => ({ 
+        ...prev, 
+        activeId: null, 
+        isDragging: false, 
+        isResizing: false, 
+        dragType: null 
+      }));
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [dragState, containerRef, duration, onUpdate]);
+
+  return { dragState, onMouseDown };
 };
