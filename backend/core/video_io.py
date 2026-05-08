@@ -23,7 +23,7 @@ def get_video_codec(video_path: str) -> str:
         video_path
     ]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=5.0)
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=30.0)
         data = json.loads(result.stdout)
         streams = data.get("streams", [])
         codec = streams[0].get("codec_name", "unknown") if streams else "unknown"
@@ -44,7 +44,7 @@ def get_video_dar(video_path: str) -> Optional[float]:
         video_path
     ]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=5.0)
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=30.0)
         data = json.loads(result.stdout)
         stream = data.get("streams", [{}])[0]
         width = int(stream.get("width", 1))
@@ -102,7 +102,7 @@ def get_video_metadata(video_path: str) -> Dict[str, Any]:
         video_path
     ]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=5.0)
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=30.0)
         data = json.loads(result.stdout)
     except subprocess.TimeoutExpired:
         raise RuntimeError(f"Timeout extracting metadata from {video_path}")
@@ -190,7 +190,7 @@ def extract_frame_cv2(video_path: str, frame_index: int, dar: Optional[float] = 
                 "ffmpeg", "-y", "-ss", str(timestamp), "-i", video_path,
                 "-frames:v", "1", "-f", "image2", "-vcodec", "mjpeg", "pipe:1"
             ]
-            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=5.0)
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=30.0)
             if result.returncode == 0 and result.stdout:
                  image_array = np.asarray(bytearray(result.stdout), dtype=np.uint8)
                  decoded = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
@@ -199,7 +199,7 @@ def extract_frame_cv2(video_path: str, frame_index: int, dar: Optional[float] = 
                      ok = True
                      height, width = frame.shape[:2]
         except Exception as e:
-            logging.getLogger(__name__).warning(f"FFmpeg fallback failed: {e}")
+             logging.getLogger(__name__).warning(f"FFmpeg fallback failed: {e}")
 
     if ok and frame is not None:
         if dar is None:
