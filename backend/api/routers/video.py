@@ -30,8 +30,6 @@ class UploadCompleteRequest(BaseModel):
     upload_id: str
     total_chunks: int
 
-_session_store: Dict[str, str] = {}
-
 @router.get("/config")
 async def get_upload_config() -> Dict[str, Any]:
     """Return upload configuration constants for the frontend."""
@@ -46,7 +44,7 @@ async def get_allowed_extensions() -> List[str]:
     return list(ALLOWED_VIDEO_EXTENSIONS)
 
 @router.post("/upload/init")
-async def init_upload(req: UploadInitRequest) -> Dict[str, Any]:
+async def init_upload(req: UploadInitRequest, request: Request) -> Dict[str, Any]:
     ext = os.path.splitext(req.filename)[1].lower()
     if ext not in ALLOWED_VIDEO_EXTENSIONS:
         raise HTTPException(
@@ -54,7 +52,7 @@ async def init_upload(req: UploadInitRequest) -> Dict[str, Any]:
             detail=f"Extension not allowed. Supported: {', '.join(ALLOWED_VIDEO_EXTENSIONS)}"
         )
     safe_filename = f"{uuid.uuid4().hex}{ext}"
-    _session_store[safe_filename] = req.filename
+    await request.app.state.redis.setex(f"session:{safe_filename}", 86400, req.filename)
     upload_id = await storage_manager.create_multipart_upload(safe_filename, req.content_type)
     if not upload_id:
         raise HTTPException(status_code=500, detail="Failed to initialize storage upload.")
@@ -71,9 +69,12 @@ async def upload_local_chunk(
     return {"status": "ok"}
 
 @router.post("/upload/complete")
-async def complete_upload(req: UploadCompleteRequest) -> VideoMetadata:
+async def complete_upload(req: UploadCompleteRequest, request: Request) -> VideoMetadata:
     safe_filename = req.filename
-    original_name = _session_store.pop(safe_filename, safe_filename)
+    redis_conn = request.app.state.redis
+    orig_bytes = await redis_conn.get(f"session:{safe_filename}")
+    original_name = orig_bytes.decode('utf-8') if orig_bytes else safe_filename
+    await redis_conn.delete(f"session:{safe_filename}")
     success = await storage_manager.complete_local_upload(req.upload_id, safe_filename, req.total_chunks)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to complete storage upload.")

@@ -7,8 +7,6 @@ import cv2
 import numpy as np
 from core.filters import apply_sharpening, denoise_frame
 
-_dar_cache: Dict[str, float] = {}
-_codec_cache: Dict[str, str] = {}
 HW_DISABLED_CODECS = frozenset({"av1", "vp9"})
 
 class VideoInfo(NamedTuple):
@@ -18,8 +16,6 @@ class VideoInfo(NamedTuple):
 
 def get_video_codec(video_path: str) -> str:
     """Extract video codec name using ffprobe."""
-    if video_path in _codec_cache:
-        return _codec_cache[video_path]
     cmd = [
         "ffprobe", "-v", "quiet", "-print_format", "json",
         "-select_streams", "v:0",
@@ -31,7 +27,6 @@ def get_video_codec(video_path: str) -> str:
         data = json.loads(result.stdout)
         streams = data.get("streams", [])
         codec = streams[0].get("codec_name", "unknown") if streams else "unknown"
-        _codec_cache[video_path] = codec
         return codec
     except subprocess.TimeoutExpired:
         logging.getLogger(__name__).warning(f"Timeout getting codec for {video_path}")
@@ -42,8 +37,6 @@ def get_video_codec(video_path: str) -> str:
 
 def get_video_dar(video_path: str) -> Optional[float]:
     """Calculate the Display Aspect Ratio (DAR) using ffprobe."""
-    if video_path in _dar_cache:
-        return _dar_cache[video_path]
     cmd = [
         "ffprobe", "-v", "quiet", "-print_format", "json",
         "-select_streams", "v:0",
@@ -61,7 +54,6 @@ def get_video_dar(video_path: str) -> Optional[float]:
             sar = "1:1"
         sar_num, sar_den = map(int, sar.split(':'))
         dar = (width / height) * (sar_num / sar_den)
-        _dar_cache[video_path] = dar
         return dar
     except subprocess.TimeoutExpired:
         logging.getLogger(__name__).warning(f"Timeout getting DAR for {video_path}")
