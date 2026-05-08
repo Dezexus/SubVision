@@ -1,19 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 export interface DragState {
   activeId: string | number | null;
   isDragging: boolean;
   isResizing: boolean;
   dragType: 'move' | 'start' | 'end' | null;
-  startX: number;
 }
 
-/**
- * Custom hook to manage subtitle dragging and resizing events.
- * Safely handles global DOM cursor states and prevents text selection during drag.
- */
 export const useSubtitleDrag = (
-  containerRef: React.RefObject<HTMLDivElement>,
+  containerRef: React.RefObject<HTMLDivElement | null>,
   duration: number,
   onUpdate: (id: string | number, type: 'move' | 'start' | 'end', delta: number) => void
 ) => {
@@ -21,9 +16,11 @@ export const useSubtitleDrag = (
     activeId: null,
     isDragging: false,
     isResizing: false,
-    dragType: null,
-    startX: 0
+    dragType: null
   });
+
+  const dragMeta = useRef({ startX: 0, activeId: null as string | number | null, dragType: null as 'move' | 'start' | 'end' | null });
+  const isDraggingRef = useRef(false);
 
   useEffect(() => {
     const { isResizing, isDragging } = dragState;
@@ -47,12 +44,13 @@ export const useSubtitleDrag = (
     type: 'move' | 'start' | 'end'
   ) => {
     e.stopPropagation();
+    isDraggingRef.current = true;
+    dragMeta.current = { startX: e.clientX, activeId: id, dragType: type };
     setDragState({
       activeId: id,
       isDragging: type === 'move',
       isResizing: type !== 'move',
-      dragType: type,
-      startX: e.clientX
+      dragType: type
     });
   }, []);
 
@@ -61,21 +59,26 @@ export const useSubtitleDrag = (
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!containerRef.current || duration <= 0) return;
-      const containerWidth = containerRef.current.getBoundingClientRect().width;
-      const deltaX = e.clientX - dragState.startX;
-      const deltaTime = (deltaX / containerWidth) * duration;
-      
-      onUpdate(dragState.activeId, dragState.dragType!, deltaTime);
+      const contentWidth = containerRef.current.scrollWidth;
+      const deltaX = e.clientX - dragMeta.current.startX;
+      const deltaTime = (deltaX / contentWidth) * duration;
+
+      if (deltaTime !== 0) {
+        onUpdate(dragMeta.current.activeId!, dragMeta.current.dragType!, deltaTime);
+        dragMeta.current.startX = e.clientX;
+      }
     };
 
     const handleMouseUp = () => {
-      setDragState(prev => ({ 
-        ...prev, 
-        activeId: null, 
-        isDragging: false, 
-        isResizing: false, 
-        dragType: null 
-      }));
+      setDragState({
+        activeId: null,
+        isDragging: false,
+        isResizing: false,
+        dragType: null
+      });
+      setTimeout(() => {
+        isDraggingRef.current = false;
+      }, 50);
     };
 
     document.addEventListener('mousemove', handleMouseMove);
@@ -85,7 +88,7 @@ export const useSubtitleDrag = (
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [dragState, containerRef, duration, onUpdate]);
+  }, [dragState.activeId, containerRef, duration, onUpdate]);
 
-  return { dragState, onMouseDown };
+  return { dragState, onMouseDown, isDraggingRef };
 };

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
   ChevronLeft, ChevronRight,
   Clock, ZoomIn, ZoomOut, Play, Pause, Volume2
@@ -36,12 +36,13 @@ export const HybridTimeline: React.FC<HybridTimelineProps> = ({
   const currentFrameIndex = useVideoStore((s) => s.currentFrameIndex);
   const setCurrentFrame = useVideoStore((s) => s.setCurrentFrame);
   const subtitles = useProcessingStore((s) => s.subtitles);
+  const updateSubtitle = useProcessingStore((s) => s.updateSubtitle);
+  const saveHistory = useProcessingStore((s) => s.saveHistory);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const { zoomLevel, applyAnchorZoom, handleZoomButton, resetZoom } = useTimelineZoom(scrollContainerRef);
-  const { isDraggingRef, draggedEdge, handleEdgeMouseDown } = useSubtitleDrag(scrollContainerRef);
 
   const [hoveredSub, setHoveredSub] = useState<ProcessedSubtitle | null>(null);
   const [hoverPos, setHoverPos] = useState<number>(0);
@@ -51,9 +52,41 @@ export const HybridTimeline: React.FC<HybridTimelineProps> = ({
 
   const exactDuration = durationOverride ?? (metadata ? metadata.total_frames / metadata.fps : 1);
   const currentTime = currentTimeOverride ?? (metadata ? currentFrameIndex / metadata.fps : 0);
-
   const currentTimeDisplay = formatTimeDisplay(currentTime);
   const totalTimeDisplay = formatTimeDisplay(exactDuration);
+
+  const handleSubtitleUpdate = useCallback((id: string | number, type: 'move' | 'start' | 'end', delta: number) => {
+    const sub = useProcessingStore.getState().subtitles.find(s => s.id === id);
+    if (!sub) return;
+
+    let newStart = sub.start;
+    let newEnd = sub.end;
+
+    if (type === 'start') {
+      newStart += delta;
+      if (newStart >= newEnd - 0.1) newStart = newEnd - 0.1;
+    } else if (type === 'end') {
+      newEnd += delta;
+      if (newEnd <= newStart + 0.1) newEnd = newStart + 0.1;
+    } else {
+      newStart += delta;
+      newEnd += delta;
+    }
+
+    if (newStart < 0) {
+      newEnd -= newStart;
+      newStart = 0;
+    }
+
+    updateSubtitle({ ...sub, start: newStart, end: newEnd });
+  }, [updateSubtitle]);
+
+  const { dragState, onMouseDown, isDraggingRef } = useSubtitleDrag(scrollContainerRef, exactDuration, handleSubtitleUpdate);
+
+  const handleEdgeMouseDown = (e: React.MouseEvent, id: number | string, type: 'move' | 'start' | 'end') => {
+    saveHistory();
+    onMouseDown(e, id, type);
+  };
 
   const processedSubtitles = useMemo(() => calculateTracks(subtitles), [subtitles]);
 
@@ -218,8 +251,10 @@ export const HybridTimeline: React.FC<HybridTimelineProps> = ({
                       const startPercent = (sub.start / exactDuration) * 100;
                       const durationPercent = ((sub.end - sub.start) / exactDuration) * 100;
                       const isActive = currentTime >= sub.start && currentTime <= sub.end;
-                      const isDraggedStart = draggedEdge?.id === sub.id && draggedEdge.edge === 'start';
-                      const isDraggedEnd = draggedEdge?.id === sub.id && draggedEdge.edge === 'end';
+
+                      const isDraggedStart = dragState.activeId === sub.id && dragState.dragType === 'start';
+                      const isDraggedEnd = dragState.activeId === sub.id && dragState.dragType === 'end';
+                      const isDraggedMove = dragState.activeId === sub.id && dragState.dragType === 'move';
 
                       let colorClass = "bg-bg-surface border-border-strong";
                       if (sub.isEdited) colorClass = "bg-blue-500/20 border-blue-500/40 text-blue-200";
@@ -242,8 +277,11 @@ export const HybridTimeline: React.FC<HybridTimelineProps> = ({
                         >
                             <div className={cn(
                                 "w-full h-full rounded-sm border transition-all duration-150 backdrop-blur-sm truncate px-1 text-[9px] font-mono leading-6 opacity-80 hover:opacity-100 relative",
-                                colorClass
-                            )}>
+                                colorClass,
+                                isDraggedMove ? "cursor-grabbing" : "cursor-grab"
+                            )}
+                            onMouseDown={(e) => handleEdgeMouseDown(e, sub.id, 'move')}
+                            >
                                 {zoomLevel > 3 && sub.text}
 
                                 <div
@@ -251,14 +289,14 @@ export const HybridTimeline: React.FC<HybridTimelineProps> = ({
                                         "absolute left-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-white/50 transition-colors z-10",
                                         isDraggedStart ? "bg-yellow-400/80" : ""
                                     )}
-                                    onMouseDown={(e) => handleEdgeMouseDown(e, sub, 'start')}
+                                    onMouseDown={(e) => handleEdgeMouseDown(e, sub.id, 'start')}
                                 />
                                 <div
                                     className={cn(
                                         "absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-white/50 transition-colors z-10",
                                         isDraggedEnd ? "bg-yellow-400/80" : ""
                                     )}
-                                    onMouseDown={(e) => handleEdgeMouseDown(e, sub, 'end')}
+                                    onMouseDown={(e) => handleEdgeMouseDown(e, sub.id, 'end')}
                                 />
                             </div>
                         </div>
