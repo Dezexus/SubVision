@@ -11,14 +11,14 @@ services:
       timeout: 3s
       retries: 30
 
-  subvision:
+  api:
     build:
       context: .
       target: api
     container_name: subvision_api
     restart: unless-stopped
-    ports:
-      - "7860:7860"
+    expose:
+      - "8000"
     depends_on:
       redis:
         condition: service_healthy
@@ -58,6 +58,19 @@ services:
       interval: 10s
       timeout: 3s
       retries: 3
+
+  nginx:
+    build:
+      context: .
+      target: web
+    container_name: subvision_nginx
+    restart: unless-stopped
+    ports:
+      - "7860:7860"
+    depends_on:
+      - api
+    volumes:
+      - ./backend/uploads:/app/backend/uploads
 
 volumes:
   paddle_models:
