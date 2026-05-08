@@ -17,6 +17,7 @@ class VideoInfo(NamedTuple):
     corrected_width: int
 
 def get_video_codec(video_path: str) -> str:
+    """Extract video codec name using ffprobe."""
     if video_path in _codec_cache:
         return _codec_cache[video_path]
     cmd = [
@@ -26,17 +27,21 @@ def get_video_codec(video_path: str) -> str:
         video_path
     ]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=5.0)
         data = json.loads(result.stdout)
         streams = data.get("streams", [])
         codec = streams[0].get("codec_name", "unknown") if streams else "unknown"
         _codec_cache[video_path] = codec
         return codec
+    except subprocess.TimeoutExpired:
+        logging.getLogger(__name__).warning(f"Timeout getting codec for {video_path}")
+        return "unknown"
     except Exception as e:
         logging.getLogger(__name__).warning(f"Failed to get codec for {video_path}: {e}")
         return "unknown"
 
 def get_video_dar(video_path: str) -> Optional[float]:
+    """Calculate the Display Aspect Ratio (DAR) using ffprobe."""
     if video_path in _dar_cache:
         return _dar_cache[video_path]
     cmd = [
@@ -46,7 +51,7 @@ def get_video_dar(video_path: str) -> Optional[float]:
         video_path
     ]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=5.0)
         data = json.loads(result.stdout)
         stream = data.get("streams", [{}])[0]
         width = int(stream.get("width", 1))
@@ -58,11 +63,15 @@ def get_video_dar(video_path: str) -> Optional[float]:
         dar = (width / height) * (sar_num / sar_den)
         _dar_cache[video_path] = dar
         return dar
+    except subprocess.TimeoutExpired:
+        logging.getLogger(__name__).warning(f"Timeout getting DAR for {video_path}")
+        return None
     except Exception as e:
         logging.getLogger(__name__).warning(f"Failed to get DAR for {video_path}: {e}")
         return None
 
 def create_video_capture(video_path: str) -> cv2.VideoCapture:
+    """Create and configure a cv2.VideoCapture object based on codec compatibility."""
     codec = get_video_codec(video_path)
     if codec in HW_DISABLED_CODECS:
         cap = cv2.VideoCapture(video_path)
@@ -93,14 +102,21 @@ def create_video_capture(video_path: str) -> cv2.VideoCapture:
     return cap
 
 def get_video_metadata(video_path: str) -> Dict[str, Any]:
+    """Retrieve essential video metadata using ffprobe."""
     cmd = [
         "ffprobe", "-v", "quiet", "-print_format", "json",
         "-select_streams", "v:0",
         "-show_entries", "stream=width,height,r_frame_rate,nb_frames,duration",
         video_path
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-    data = json.loads(result.stdout)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=5.0)
+        data = json.loads(result.stdout)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"Timeout extracting metadata from {video_path}")
+    except Exception as e:
+        raise RuntimeError(f"Failed to extract metadata from {video_path}: {e}")
+
     streams = data.get("streams", [])
     if not streams:
         raise RuntimeError("No video stream found")
@@ -131,6 +147,7 @@ def get_video_metadata(video_path: str) -> Dict[str, Any]:
     }
 
 def _correct_sar(frame: np.ndarray, src_width: int, src_height: int, dar: float) -> np.ndarray:
+    """Adjust frame dimensions to match the display aspect ratio."""
     current_par = src_width / src_height
     if abs(current_par - dar) < 1e-3:
         return frame
@@ -141,6 +158,7 @@ def _correct_sar(frame: np.ndarray, src_width: int, src_height: int, dar: float)
 
 @functools.lru_cache(maxsize=32)
 def extract_frame_cv2(video_path: str, frame_index: int, dar: Optional[float] = None) -> Optional[Tuple[np.ndarray, int]]:
+    """Extract a specific frame with OpenCV and fallback to FFmpeg."""
     if not video_path:
         return None
 
@@ -167,7 +185,7 @@ def extract_frame_cv2(video_path: str, frame_index: int, dar: Optional[float] = 
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
             if total > 0 and frame_index >= total:
-                safe_index = int(total - 1)
+                 safe_index = int(total - 1)
 
             ok, frame = _try_read(cap, safe_index, fps)
         finally:
@@ -182,12 +200,12 @@ def extract_frame_cv2(video_path: str, frame_index: int, dar: Optional[float] = 
             ]
             result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=5.0)
             if result.returncode == 0 and result.stdout:
-                image_array = np.asarray(bytearray(result.stdout), dtype=np.uint8)
-                decoded = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
-                if decoded is not None:
-                    frame = decoded
-                    ok = True
-                    height, width = frame.shape[:2]
+                 image_array = np.asarray(bytearray(result.stdout), dtype=np.uint8)
+                 decoded = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+                 if decoded is not None:
+                     frame = decoded
+                     ok = True
+                     height, width = frame.shape[:2]
         except Exception as e:
             logging.getLogger(__name__).warning(f"FFmpeg fallback failed: {e}")
 
@@ -205,6 +223,7 @@ def extract_frame_cv2(video_path: str, frame_index: int, dar: Optional[float] = 
 def iter_frames_ffmpeg(video_path: str, step: int = 1, fps: float = 25.0, total: int = 0,
                         width: int = 0, height: int = 0,
                         use_hwaccel: bool = True):
+    """Yield video frames sequentially via an FFmpeg pipe."""
     if total <= 0 or fps <= 0 or width <= 0 or height <= 0:
         raise RuntimeError("Invalid video metadata for ffmpeg pipe")
 
@@ -239,6 +258,7 @@ def iter_frames_ffmpeg(video_path: str, step: int = 1, fps: float = 25.0, total:
         proc.wait()
 
 def get_video_info(video_path: str) -> VideoInfo:
+    """Get preliminary video metadata and the first frame."""
     if not video_path:
         return VideoInfo(None, 1, 0)
 
@@ -256,6 +276,7 @@ def get_video_info(video_path: str) -> VideoInfo:
     return VideoInfo(frame_rgb, total, corrected_width)
 
 def get_frame_image(video_path: str, frame_index: int) -> np.ndarray | None:
+    """Retrieve a single frame as an RGB numpy array."""
     dar = get_video_dar(video_path)
     result = extract_frame_cv2(video_path, frame_index, dar=dar)
     if result is None:
@@ -269,6 +290,7 @@ def generate_video_preview(
     roi_override: list[int] | None,
     scale_factor: float,
 ) -> np.ndarray | None:
+    """Generate a processed preview image applying ROI and filters."""
     if not video_path:
         return None
 
