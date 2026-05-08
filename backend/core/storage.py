@@ -1,99 +1,82 @@
 import os
-import logging
-import uuid
 import shutil
+import logging
 import asyncio
-from typing import Optional
-
-from core.config import settings
-
-logger = logging.getLogger(__name__)
+from typing import Dict
 
 class StorageManager:
-    def __init__(self) -> None:
-        pass
+    """Manages file storage operations including chunked uploads and file transfers."""
+    def __init__(self, upload_dir: str = "uploads", temp_dir: str = ".temp") -> None:
+        self.upload_dir = upload_dir
+        self.temp_dir = temp_dir
+        self._locks: Dict[str, asyncio.Lock] = {}
+        os.makedirs(self.upload_dir, exist_ok=True)
+        os.makedirs(self.temp_dir, exist_ok=True)
 
-    def _resolve_path(self, filename: str) -> str:
-        return os.path.join(settings.cache_dir, filename)
+    def _get_lock(self, filename: str) -> asyncio.Lock:
+        """Retrieve or create an asyncio lock for a specific file to prevent race conditions."""
+        if filename not in self._locks:
+            self._locks[filename] = asyncio.Lock()
+        return self._locks[filename]
 
-    def init_local_upload(self, upload_id: str) -> None:
-        temp_dir = os.path.join(settings.cache_dir, ".temp", upload_id)
-        os.makedirs(temp_dir, exist_ok=True)
+    async def save_chunk(self, filename: str, chunk_data: bytes, offset: int) -> bool:
+        """Write a data chunk directly into the target file at the specified byte offset."""
+        temp_path = os.path.join(self.temp_dir, filename)
+        
+        def _write_chunk() -> None:
+            mode = "r+b" if os.path.exists(temp_path) else "w+b"
+            with open(temp_path, mode) as f:
+                f.seek(offset)
+                f.write(chunk_data)
 
-    async def save_local_chunk(self, upload_id: str, part_number: int, data: bytes) -> None:
-        chunk_path = os.path.join(settings.cache_dir, ".temp", upload_id, f"{part_number}.chunk")
-        def _write():
-            with open(chunk_path, "wb") as f:
-                f.write(data)
-        await asyncio.to_thread(_write)
-
-    async def complete_local_upload(self, upload_id: str, filename: str, total_chunks: int) -> bool:
-        temp_dir = os.path.join(settings.cache_dir, ".temp", upload_id)
-        final_path = self._resolve_path(filename)
-
-        def _assemble():
-            for i in range(1, total_chunks + 1):
-                chunk_path = os.path.join(temp_dir, f"{i}.chunk")
-                if not os.path.exists(chunk_path):
-                    raise FileNotFoundError(f"Missing chunk {i}")
-            with open(final_path, "wb") as final_file:
-                for i in range(1, total_chunks + 1):
-                    chunk_path = os.path.join(temp_dir, f"{i}.chunk")
-                    with open(chunk_path, "rb") as chunk_file:
-                        final_file.write(chunk_file.read())
-                    os.remove(chunk_path)
-            os.rmdir(temp_dir)
-
-        try:
-            await asyncio.to_thread(_assemble)
-            return True
-        except Exception as e:
-            logger.error(f"Local assembly failed: {e}")
+        lock = self._get_lock(filename)
+        async with lock:
             try:
-                for i in range(1, total_chunks + 1):
-                    chunk = os.path.join(temp_dir, f"{i}.chunk")
-                    if os.path.exists(chunk):
-                        os.remove(chunk)
-                if os.path.exists(temp_dir):
-                    os.rmdir(temp_dir)
-            except Exception as cleanup_err:
-                logger.error(f"Cleanup after assembly error failed: {cleanup_err}")
-            return False
-
-    async def create_multipart_upload(self, s3_key: str, content_type: str) -> Optional[str]:
-        upload_id = str(uuid.uuid4())
-        self.init_local_upload(upload_id)
-        return upload_id
-
-    async def upload_file(self, local_path: str, key: str) -> bool:
-        try:
-            target_path = self._resolve_path(key)
-            await asyncio.to_thread(shutil.copy2, local_path, target_path)
-            return True
-        except Exception as e:
-            logger.error(f"Local upload failed: {e}")
-            return False
-
-    async def download_file(self, key: str, local_path: str) -> bool:
-        source_path = self._resolve_path(key)
-        if not os.path.exists(source_path):
-            return False
-        try:
-            await asyncio.to_thread(shutil.copy2, source_path, local_path)
-            return True
-        except Exception as e:
-            logger.error(f"Local download failed: {e}")
-            return False
-
-    async def delete_file(self, key: str) -> bool:
-        target_path = self._resolve_path(key)
-        if os.path.exists(target_path):
-            try:
-                os.remove(target_path)
+                await asyncio.to_thread(_write_chunk)
                 return True
             except Exception as e:
-                logger.error(f"Local file deletion failed: {e}")
+                logging.error(f"Failed to write chunk for {filename} at offset {offset}: {e}")
                 return False
-        return True
+
+    async def complete_local_upload(self, filename: str) -> bool:
+        """Finalize the upload by moving the assembled file to the final storage directory."""
+        temp_path = os.path.join(self.temp_dir, filename)
+        final_path = os.path.join(self.upload_dir, filename)
+        
+        lock = self._get_lock(filename)
+        async with lock:
+            if not os.path.exists(temp_path):
+                logging.error(f"Temp file missing for completion: {filename}")
+                return False
+            try:
+                await asyncio.to_thread(shutil.move, temp_path, final_path)
+                return True
+            except Exception as e:
+                logging.error(f"Failed to finalize upload for {filename}: {e}")
+                return False
+            finally:
+                self._locks.pop(filename, None)
+
+    async def download_file(self, key: str, dest: str) -> bool:
+        """Copy a file from the managed storage to a specified local destination."""
+        src = os.path.join(self.upload_dir, key)
+        if not os.path.exists(src):
+            return False
+        try:
+            await asyncio.to_thread(shutil.copy2, src, dest)
+            return True
+        except Exception as e:
+            logging.error(f"Failed to download {key} to {dest}: {e}")
+            return False
+
+    async def upload_file(self, src: str, key: str) -> bool:
+        """Copy a file from a local source path into the managed storage."""
+        dest = os.path.join(self.upload_dir, key)
+        try:
+            await asyncio.to_thread(shutil.copy2, src, dest)
+            return True
+        except Exception as e:
+            logging.error(f"Failed to upload {src} to {key}: {e}")
+            return False
 
 storage_manager = StorageManager()
