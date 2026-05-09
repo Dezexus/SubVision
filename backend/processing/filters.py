@@ -11,23 +11,24 @@ class ImagePipeline:
         self.last_raw_roi: Any = None
         self.skipped_count = 0
 
-    def process(self, frame: np.ndarray) -> tuple[np.ndarray | None, bool]:
+    def get_roi(self, frame: np.ndarray) -> np.ndarray:
         if self.roi and len(self.roi) == 4 and self.roi[2] > 0:
             x, y, w_roi, h_roi = self.roi
             h, w = frame.shape[:2]
             y1, y2 = max(0, y), min(h, y + h_roi)
             x1, x2 = max(0, x), min(w, x + w_roi)
-            frame_roi = frame[y1:y2, x1:x2]
-        else:
-            frame_roi = frame
+            return frame[y1:y2, x1:x2]
+        return frame
+
+    def process(self, frame: np.ndarray) -> tuple[np.ndarray | None, bool]:
+        frame_roi = self.get_roi(frame)
 
         if frame_roi.size == 0:
             return None, True
 
-        smart_skip = self.config.get("smart_skip", True)
         skipped = False
 
-        if smart_skip and self.last_raw_roi is not None:
+        if self.last_raw_roi is not None:
             has_changed = detect_change_absolute(frame_roi, self.last_raw_roi)
             if not has_changed:
                 self.skipped_count += 1
@@ -39,11 +40,16 @@ class ImagePipeline:
         if skipped:
             return None, True
 
+        return self.apply_filters(frame), False
+
+    def apply_filters(self, frame: np.ndarray) -> np.ndarray | None:
+        frame_roi = self.get_roi(frame)
+        if frame_roi.size == 0:
+            return None
+
         denoise_str = float(self.config.get("denoise_strength", 3))
         scale_factor = float(self.config.get("scale_factor", 2.0))
 
         denoised = denoise_frame(frame_roi, strength=denoise_str)
-        processed = denoised
-        scaled = apply_scaling(processed, scale_factor=scale_factor)
-        final = apply_sharpening(scaled)
-        return final, False
+        scaled = apply_scaling(denoised, scale_factor=scale_factor)
+        return apply_sharpening(scaled)
