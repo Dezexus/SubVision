@@ -1,91 +1,84 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useProcessingStore } from '../../../store/processingStore';
+import { useVideoStore } from '../../../store/videoStore';
+import type { SubtitleItem } from '../../../types';
 
-export interface DragState {
-  activeId: string | number | null;
-  isDragging: boolean;
-  isResizing: boolean;
-  dragType: 'move' | 'start' | 'end' | null;
-  startX: number;
-}
-
-/**
- * Custom hook to manage subtitle dragging and resizing events.
- * Safely handles global DOM cursor states and prevents text selection during drag.
- */
 export const useSubtitleDrag = (
-  containerRef: React.RefObject<HTMLDivElement>,
-  duration: number,
-  onUpdate: (id: string | number, type: 'move' | 'start' | 'end', delta: number) => void
+  scrollContainerRef: React.RefObject<HTMLDivElement | null>
 ) => {
-  const [dragState, setDragState] = useState<DragState>({
-    activeId: null,
-    isDragging: false,
-    isResizing: false,
-    dragType: null,
-    startX: 0
-  });
+  const isDraggingRef = useRef(false);
+  const [draggedEdge, setDraggedEdge] = useState<{ id: number; edge: 'start' | 'end' } | null>(null);
+
+  const dragStartRef = useRef<{
+    startX: number;
+    originalSub: SubtitleItem;
+  } | null>(null);
+
+  const handleEdgeMouseDown = useCallback(
+    (e: React.MouseEvent, sub: SubtitleItem, edge: 'start' | 'end') => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      isDraggingRef.current = true;
+      setDraggedEdge({ id: sub.id, edge });
+      dragStartRef.current = {
+        startX: e.clientX,
+        originalSub: { ...sub }
+      };
+    },
+    []
+  );
 
   useEffect(() => {
-    const { isResizing, isDragging } = dragState;
-    if (!isResizing && !isDragging) return;
-
-    const style = document.createElement('style');
-    const cursor = isResizing ? 'col-resize' : 'grabbing';
-    style.innerHTML = `* { cursor: ${cursor} !important; user-select: none !important; }`;
-    document.head.appendChild(style);
-
-    return () => {
-      if (document.head.contains(style)) {
-        document.head.removeChild(style);
-      }
-    };
-  }, [dragState.isResizing, dragState.isDragging]);
-
-  const onMouseDown = useCallback((
-    e: React.MouseEvent,
-    id: string | number,
-    type: 'move' | 'start' | 'end'
-  ) => {
-    e.stopPropagation();
-    setDragState({
-      activeId: id,
-      isDragging: type === 'move',
-      isResizing: type !== 'move',
-      dragType: type,
-      startX: e.clientX
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!dragState.activeId) return;
+    if (!draggedEdge) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (!containerRef.current || duration <= 0) return;
-      const containerWidth = containerRef.current.getBoundingClientRect().width;
-      const deltaX = e.clientX - dragState.startX;
-      const deltaTime = (deltaX / containerWidth) * duration;
-      
-      onUpdate(dragState.activeId, dragState.dragType!, deltaTime);
+      if (!dragStartRef.current || !scrollContainerRef.current) return;
+
+      const metadata = useVideoStore.getState().metadata;
+      if (!metadata) return;
+
+      const duration = metadata.total_frames / metadata.fps;
+      const containerWidth = scrollContainerRef.current.scrollWidth;
+
+      const deltaX = e.clientX - dragStartRef.current.startX;
+      const deltaSec = (deltaX / containerWidth) * duration;
+
+      const { originalSub } = dragStartRef.current;
+      const newSub = { ...originalSub };
+
+      if (draggedEdge.edge === 'start') {
+        newSub.start = Math.max(0, Math.min(originalSub.start + deltaSec, newSub.end - 0.1));
+      } else {
+        newSub.end = Math.max(newSub.start + 0.1, Math.min(originalSub.end + deltaSec, duration));
+      }
+
+      useProcessingStore.getState().updateSubtitle(newSub);
     };
 
     const handleMouseUp = () => {
-      setDragState(prev => ({ 
-        ...prev, 
-        activeId: null, 
-        isDragging: false, 
-        isResizing: false, 
-        dragType: null 
-      }));
+      setTimeout(() => {
+        isDraggingRef.current = false;
+      }, 0);
+      setDraggedEdge(null);
+      dragStartRef.current = null;
     };
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
 
+    const style = document.createElement('style');
+    style.innerHTML = `* { cursor: col-resize !important; user-select: none !important; }`;
+    document.head.appendChild(style);
+
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      if (document.head.contains(style)) {
+        document.head.removeChild(style);
+      }
     };
-  }, [dragState, containerRef, duration, onUpdate]);
+  }, [draggedEdge, scrollContainerRef]);
 
-  return { dragState, onMouseDown };
+  return { isDraggingRef, draggedEdge, handleEdgeMouseDown };
 };

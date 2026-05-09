@@ -24,7 +24,13 @@ export const useProcessingSocket = (clientId: string | null) => {
   const { lastJsonMessage } = useWebSocket(
     clientId ? `${SOCKET_URL}/${clientId}` : null,
     {
-      shouldReconnect: () => true,
+      shouldReconnect: (closeEvent) => {
+        if (closeEvent.code === 4001) {
+          window.location.reload();
+          return false;
+        }
+        return true;
+      },
       reconnectInterval: 3000,
     }
   );
