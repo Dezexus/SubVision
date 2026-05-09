@@ -1,184 +1,201 @@
 import { create } from 'zustand';
-import type { SubtitleItem } from '../types';
-import { api } from '../services/api';
+import { SubtitleItem } from '../types';
 
-export interface ProgressData {
-  current: number;
-  total: number;
-  eta: string;
-}
-
-export interface ProcessingState {
-  isProcessing: boolean;
-  stoppedJobId: string | null;
-  progress: ProgressData;
+interface ProcessingState {
   subtitles: SubtitleItem[];
   pastSubtitles: SubtitleItem[][];
   futureSubtitles: SubtitleItem[][];
-  logs: string[];
+  
+  isProcessing: boolean;
   activeOcrJobId: string | null;
   activeBlurJobId: string | null;
+  stoppedJobId: string | null;
   renderedVideoUrl: string | null;
-}
+  
+  logs: string[];
+  progress: { current: number; total: number; eta: string };
+  error: string | null;
 
-export interface ProcessingActions {
-  setProcessing: (isProcessing: boolean) => void;
-  setStoppedJobId: (id: string | null) => void;
-  setActiveOcrJobId: (id: string | null) => void;
-  setActiveBlurJobId: (id: string | null) => void;
-  restoreFromStorage: () => void;
-  addLog: (msg: string) => void;
-  updateProgress: (current: number, total: number, eta: string) => void;
-  addSubtitle: (sub: SubtitleItem) => void;
   setSubtitles: (subs: SubtitleItem[]) => void;
+  addSubtitle: (sub: SubtitleItem) => void;
   updateSubtitle: (sub: SubtitleItem) => void;
   deleteSubtitle: (id: number) => void;
   mergeSubtitles: (index: number) => void;
+  
+  setProcessing: (processing: boolean) => void;
+  setActiveOcrJobId: (id: string | null) => void;
+  setActiveBlurJobId: (id: string | null) => void;
+  setStoppedJobId: (id: string | null) => void;
   setRenderedVideoUrl: (url: string | null) => void;
-  saveHistory: () => void;
+  
   undo: () => void;
   redo: () => void;
+  saveHistory: () => void;
+  
+  restoreFromStorage: () => void;
   reset: () => void;
+  resetProgress: () => void;
+
+  addLog: (log: string) => void;
+  updateProgress: (current: number, total: number, eta?: string) => void;
+  setError: (error: string | null) => void;
 }
 
-export const useProcessingStore = create<ProcessingState & ProcessingActions>((set, get) => ({
-  isProcessing: false,
-  stoppedJobId: null,
-  progress: { current: 0, total: 0, eta: '--:--' },
+export const useProcessingStore = create<ProcessingState>()((set, get) => ({
   subtitles: [],
   pastSubtitles: [],
   futureSubtitles: [],
-  logs: [],
+  
+  isProcessing: false,
   activeOcrJobId: null,
   activeBlurJobId: null,
+  stoppedJobId: null,
   renderedVideoUrl: null,
+  
+  logs: [],
+  progress: { current: 0, total: 0, eta: '' },
+  error: null,
 
-  setProcessing: (isProcessing) => set({ isProcessing }),
-  setStoppedJobId: (id) => set({ stoppedJobId: id }),
-
-  setActiveOcrJobId: (id) => {
-    if (id) {
-      sessionStorage.setItem('activeOcrJobId', id);
-    } else {
-      sessionStorage.removeItem('activeOcrJobId');
-    }
-    set({ activeOcrJobId: id });
+  saveHistory: () => {
+    set((state) => ({
+      pastSubtitles: [...state.pastSubtitles, state.subtitles],
+      futureSubtitles: []
+    }));
   },
 
-  setActiveBlurJobId: (id) => {
-    if (id) {
-      sessionStorage.setItem('activeBlurJobId', id);
-    } else {
-      sessionStorage.removeItem('activeBlurJobId');
-    }
-    set({ activeBlurJobId: id });
+  setSubtitles: (subs) => {
+    get().saveHistory();
+    set({ subtitles: subs });
+    localStorage.setItem('subvision_subtitles', JSON.stringify(subs));
+  },
+
+  addSubtitle: (sub) => {
+    set((state) => ({ subtitles: [...state.subtitles, sub] }));
+    localStorage.setItem('subvision_subtitles', JSON.stringify(get().subtitles));
+  },
+
+  updateSubtitle: (sub) => {
+    const newSubs = get().subtitles.map(s => s.id === sub.id ? { ...sub, isEdited: true } : s);
+    set({ subtitles: newSubs });
+    localStorage.setItem('subvision_subtitles', JSON.stringify(newSubs));
+  },
+
+  deleteSubtitle: (id) => {
+    get().saveHistory();
+    const newSubs = get().subtitles.filter(s => s.id !== id);
+    set({ subtitles: newSubs });
+    localStorage.setItem('subvision_subtitles', JSON.stringify(newSubs));
+  },
+
+  mergeSubtitles: (index) => {
+    const subs = get().subtitles;
+    if (index < 0 || index >= subs.length - 1) return;
+    
+    get().saveHistory();
+    const curr = subs[index];
+    const next = subs[index + 1];
+    
+    const merged = {
+      ...curr,
+      end: next.end,
+      text: `${curr.text} ${next.text}`.trim(),
+      isEdited: true
+    };
+    
+    const newSubs = [
+      ...subs.slice(0, index),
+      merged,
+      ...subs.slice(index + 2)
+    ];
+    
+    set({ subtitles: newSubs });
+    localStorage.setItem('subvision_subtitles', JSON.stringify(newSubs));
+  },
+
+  setProcessing: (isProcessing) => set({ isProcessing }),
+  setActiveOcrJobId: (activeOcrJobId) => set({ activeOcrJobId }),
+  setActiveBlurJobId: (activeBlurJobId) => set({ activeBlurJobId }),
+  setStoppedJobId: (stoppedJobId) => set({ stoppedJobId }),
+  setRenderedVideoUrl: (renderedVideoUrl) => set({ renderedVideoUrl }),
+
+  addLog: (log) => set((state) => ({ logs: [...state.logs, log] })),
+  
+  updateProgress: (current, total, eta = '') => set({ 
+    progress: { current, total, eta }
+  }),
+  
+  setError: (error) => set({ error }),
+
+  undo: () => {
+    const { pastSubtitles, subtitles, futureSubtitles } = get();
+    if (pastSubtitles.length === 0) return;
+    
+    const previous = pastSubtitles[pastSubtitles.length - 1];
+    const newPast = pastSubtitles.slice(0, -1);
+    
+    set({
+      subtitles: previous,
+      pastSubtitles: newPast,
+      futureSubtitles: [subtitles, ...futureSubtitles]
+    });
+    localStorage.setItem('subvision_subtitles', JSON.stringify(previous));
+  },
+
+  redo: () => {
+    const { pastSubtitles, subtitles, futureSubtitles } = get();
+    if (futureSubtitles.length === 0) return;
+    
+    const next = futureSubtitles[0];
+    const newFuture = futureSubtitles.slice(1);
+    
+    set({
+      subtitles: next,
+      pastSubtitles: [...pastSubtitles, subtitles],
+      futureSubtitles: newFuture
+    });
+    localStorage.setItem('subvision_subtitles', JSON.stringify(next));
   },
 
   restoreFromStorage: () => {
-    const ocr = sessionStorage.getItem('activeOcrJobId');
-    const blur = sessionStorage.getItem('activeBlurJobId');
-    set({
-      activeOcrJobId: ocr || null,
-      activeBlurJobId: blur || null,
-    });
+    try {
+      const saved = localStorage.getItem('subvision_subtitles');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          set({ subtitles: parsed, pastSubtitles: [], futureSubtitles: [] });
+        }
+      }
+    } catch (e) {
+      console.error('Failed to restore subtitles', e);
+    }
   },
 
-  addLog: (msg) => set((state) => ({ logs: [...state.logs, msg] })),
-  updateProgress: (current, total, eta) => set({ progress: { current, total, eta } }),
-  addSubtitle: (sub) => set((state) => ({ subtitles: [...state.subtitles, sub] })),
-
-  setSubtitles: (subs) => set({ subtitles: subs, pastSubtitles: [], futureSubtitles: [] }),
-
-  updateSubtitle: (updatedSub) =>
-    set((state) => ({
-      subtitles: state.subtitles.map((sub) =>
-        sub.id === updatedSub.id ? { ...updatedSub, isEdited: true } : sub
-      ),
-    })),
-
-  deleteSubtitle: (id) =>
-    set((state) => ({
-      pastSubtitles: [...state.pastSubtitles, state.subtitles].slice(-50),
-      futureSubtitles: [],
-      subtitles: state.subtitles.filter((sub) => sub.id !== id),
-    })),
-
-  mergeSubtitles: (index) =>
-    set((state) => {
-      const subs = [...state.subtitles];
-      if (index < 0 || index >= subs.length - 1) return { subtitles: subs };
-      const current = subs[index];
-      const next = subs[index + 1];
-      const merged: SubtitleItem = {
-        ...current,
-        end: next.end,
-        text: `${current.text} ${next.text}`,
-        conf: (current.conf + next.conf) / 2,
-        isEdited: true,
-      };
-      subs.splice(index, 2, merged);
-      return {
-        pastSubtitles: [...state.pastSubtitles, state.subtitles].slice(-50),
-        futureSubtitles: [],
-        subtitles: subs,
-      };
-    }),
-
-  setRenderedVideoUrl: (url) => set({ renderedVideoUrl: url }),
-
-  saveHistory: () =>
-    set((state) => {
-      const lastPast = state.pastSubtitles[state.pastSubtitles.length - 1];
-      if (lastPast === state.subtitles) return state;
-      return {
-        pastSubtitles: [...state.pastSubtitles, state.subtitles].slice(-50),
-        futureSubtitles: [],
-      };
-    }),
-
-  undo: () =>
-    set((state) => {
-      if (state.pastSubtitles.length === 0) return state;
-      const previous = state.pastSubtitles[state.pastSubtitles.length - 1];
-      return {
-        pastSubtitles: state.pastSubtitles.slice(0, -1),
-        subtitles: previous,
-        futureSubtitles: [state.subtitles, ...state.futureSubtitles],
-      };
-    }),
-
-  redo: () =>
-    set((state) => {
-      if (state.futureSubtitles.length === 0) return state;
-      const next = state.futureSubtitles[0];
-      return {
-        pastSubtitles: [...state.pastSubtitles, state.subtitles],
-        subtitles: next,
-        futureSubtitles: state.futureSubtitles.slice(1),
-      };
-    }),
-
-  reset: () => {
-    const state = get();
-    if (state.renderedVideoUrl) {
-      const match = state.renderedVideoUrl.match(/\/download\/(.+?)(?:\?|$)/);
-      if (match) {
-        api.deleteVideo(match[1]).catch(() => {});
-      }
-    }
-    sessionStorage.removeItem('activeOcrJobId');
-    sessionStorage.removeItem('activeBlurJobId');
+  resetProgress: () => {
     set({
       isProcessing: false,
-      stoppedJobId: null,
-      progress: { current: 0, total: 0, eta: '--:--' },
-      subtitles: [],
-      pastSubtitles: [],
-      futureSubtitles: [],
-      logs: [],
       activeOcrJobId: null,
       activeBlurJobId: null,
-      renderedVideoUrl: null,
+      stoppedJobId: null,
+      logs: [],
+      progress: { current: 0, total: 0, eta: '' },
+      error: null
     });
   },
+
+  reset: () => {
+    set({ 
+      subtitles: [], 
+      pastSubtitles: [],
+      futureSubtitles: [],
+      isProcessing: false, 
+      activeOcrJobId: null, 
+      activeBlurJobId: null,
+      stoppedJobId: null,
+      renderedVideoUrl: null,
+      logs: [],
+      progress: { current: 0, total: 0, eta: '' },
+      error: null
+    });
+    localStorage.removeItem('subvision_subtitles');
+  }
 }));
