@@ -44,9 +44,13 @@ async def start_process(config: ProcessConfig, request: Request):
         pool = request.app.state.arq_pool
         job_id = f"ocr_{config.client_id}_{uuid.uuid4().hex[:8]}"
         await pool.enqueue_job("process_ocr_task", config.model_dump(), _job_id=job_id)
+        
         safe_filename = os.path.basename(config.filename)
         redis_conn = request.app.state.redis
+        
         await redis_conn.sadd(f"pending_jobs:{safe_filename}", job_id)
+        await redis_conn.set(f"active_job:{config.client_id}", job_id)
+        
         return {"status": "queued", "job_id": job_id}
     except Exception as e:
         logger.error(f"Failed to enqueue OCR task: {e}", exc_info=True)
@@ -114,9 +118,13 @@ async def render_blur_video(config: RenderConfig, request: Request):
         pool = request.app.state.arq_pool
         job_id = f"blur_{config.client_id}_{uuid.uuid4().hex[:8]}"
         await pool.enqueue_job("render_blur_task", config.model_dump(), _job_id=job_id)
+        
         safe_filename = os.path.basename(config.filename)
         redis_conn = request.app.state.redis
+        
         await redis_conn.sadd(f"pending_jobs:{safe_filename}", job_id)
+        await redis_conn.set(f"active_job:{config.client_id}", job_id)
+        
         return {"status": "queued", "job_id": job_id}
     except Exception as e:
         logger.error(f"Failed to enqueue render task: {e}", exc_info=True)

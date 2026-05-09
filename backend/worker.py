@@ -210,20 +210,28 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
 
 async def on_job_end_handler(ctx: Dict[str, Any], job_id: str, result: Any, exc: Exception) -> None:
     """Handle job completion or failure."""
+    redis_conn: aioredis.Redis = ctx['redis']
+    
+    client_id = "unknown"
+    if "_" in job_id:
+        client_id = job_id.split("_", 1)[1].rsplit("_", 1)[0]
+        
+    if client_id != "unknown":
+        try:
+            await redis_conn.delete(f"active_job:{client_id}")
+        except Exception as e:
+            logging.error(f"Failed to clear active job for {client_id}: {e}")
+
     if exc is not None:
         logging.error(f"Job {job_id} failed critically: {exc}")
         try:
-            if "_" in job_id:
-                client_id = job_id.split("_", 1)[1]
-            else:
-                client_id = "unknown"
             error_payload = {
                 "type": "finish",
                 "success": False,
                 "error": f"Task Failed: {str(exc)}",
                 "job_id": job_id
             }
-            await ctx['redis'].publish(f"ws_{client_id}", json.dumps(error_payload))
+            await redis_conn.publish(f"ws_{client_id}", json.dumps(error_payload))
         except Exception as e:
             logging.error(f"Failed to publish error state for {job_id}: {e}")
 

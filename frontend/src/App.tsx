@@ -4,6 +4,7 @@ import { EditorPanel } from './features/editor/EditorPanel';
 import { ResultsPanel } from './features/results/ResultsPanel';
 import { ToastContainer } from './components/ui/ToastContainer';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { SessionRecoveryModal } from './components/SessionRecoveryModal';
 import { useVideoStore } from './store/videoStore';
 import { useProcessingStore } from './store/processingStore';
 import { useProcessingSocket } from './hooks/useProcessingSocket';
@@ -56,6 +57,7 @@ function App() {
 
   return (
     <div className="w-full h-screen bg-bg-main flex flex-col text-txt-main overflow-hidden">
+      <SessionRecoveryModal />
       <div className="h-1 w-full bg-brand-500 flex-shrink-0" />
       <div className="flex h-full p-4 gap-4">
         {isProjectActive && (
