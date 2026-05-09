@@ -6,6 +6,7 @@ import os
 import tempfile
 from typing import Dict, Any
 import redis.asyncio as aioredis
+import redis
 from arq.connections import RedisSettings
 import numpy as np
 
@@ -22,19 +23,48 @@ from rendering.models import RenderTaskConfig
 async def publish_ws(redis_conn: aioredis.Redis, client_id: str, job_id: str, payload: Dict[str, Any]) -> None:
     """Publish a message to a WebSocket client via Redis."""
     payload['job_id'] = job_id
-    await redis_conn.publish(f"ws_{client_id}", json.dumps(payload))
+    try:
+        await redis_conn.publish(f"ws_{client_id}", json.dumps(payload))
+    except Exception as e:
+        logging.error(f"WS publish failed: {e}")
+
+class RedisCancellationToken:
+    """Token to directly check if a job has been cancelled by the user using a sync client."""
+    def __init__(self, job_id: str) -> None:
+        self._job_id = job_id
+        self._sync_redis = redis.Redis.from_url(settings.redis_url)
+
+    def is_cancelled(self) -> bool:
+        try:
+            return bool(self._sync_redis.exists(f"job:{self._job_id}:cancel"))
+        except Exception as e:
+            logging.error(f"Sync cancel check failed for {self._job_id}: {e}")
+            return False
+
+    def is_cancelled_sync(self) -> bool:
+        return self.is_cancelled()
+        
+    def __call__(self) -> bool:
+        return self.is_cancelled()
 
 class ProgressReporter:
-    """Reporter class for tracking and broadcasting progress via WebSockets."""
-    def __init__(self, client_id: str, job_id: str, redis_conn: aioredis.Redis, loop: asyncio.AbstractEventLoop) -> None:
+    """Reporter class for tracking and broadcasting progress via WebSockets with a Poison Pill."""
+    def __init__(self, client_id: str, job_id: str, redis_conn: aioredis.Redis, loop: asyncio.AbstractEventLoop, cancel_token: RedisCancellationToken = None) -> None:
         self._client_id = client_id
         self._job_id = job_id
         self._redis = redis_conn
         self._loop = loop
+        self._cancel_token = cancel_token
         self._last_progress = None
-        self._throttle_interval = 0.2
+        self._throttle_interval = 0.5
         self._throttle_ts = 0.0
         self._total = 0
+
+    def _check_cancel(self) -> None:
+        """Poison Pill: forcefully kill the background thread if the job was cancelled."""
+        if self._cancel_token and self._cancel_token.is_cancelled():
+            logging.info(f"Poison pill triggered for job {self._job_id}. Halting detached thread.")
+            raise TaskCancelledError("Job cancelled by user.")
 
     def set_total(self, total: int) -> None:
         self._total = total
@@ -42,13 +72,20 @@ class ProgressReporter:
     def _send(self, payload: dict) -> None:
         payload['job_id'] = self._job_id
         async def do_send():
-            await self._redis.publish(f"ws_{self._client_id}", json.dumps(payload))
-        asyncio.run_coroutine_threadsafe(do_send(), self._loop)
+            try:
+                await self._redis.publish(f"ws_{self._client_id}", json.dumps(payload))
+            except Exception:
+                pass
+        
+        if not self._loop.is_closed():
+            asyncio.run_coroutine_threadsafe(do_send(), self._loop)
 
     def log(self, message: str) -> None:
+        self._check_cancel()
         self._send({"type": "log", "message": message})
 
     def progress(self, current: int, total: int, eta: str) -> None:
+        self._check_cancel()
         now = time.time()
         if now - self._throttle_ts >= self._throttle_interval:
             self._throttle_ts = now
@@ -56,33 +93,13 @@ class ProgressReporter:
         self._last_progress = {"type": "progress", "current": current, "total": total, "eta": eta}
 
     def subtitle(self, item: Dict[str, Any]) -> None:
+        self._check_cancel()
         self._send({"type": "subtitle_new", "item": item})
 
     def done(self) -> None:
+        self._check_cancel()
         payload = {"type": "progress", "current": self._total, "total": self._total, "eta": "00:00"}
         self._send(payload)
-
-class RedisCancellationToken:
-    """Token to check if a job has been cancelled by the user."""
-    def __init__(self, job_id: str, redis_conn: aioredis.Redis, loop: asyncio.AbstractEventLoop) -> None:
-        self._job_id = job_id
-        self._redis = redis_conn
-        self._loop = loop
-
-    async def is_cancelled(self) -> bool:
-        try:
-            flag = await self._redis.get(f"job:{self._job_id}:cancel")
-            return bool(flag)
-        except Exception:
-            return False
-
-    def is_cancelled_sync(self) -> bool:
-        try:
-            future = asyncio.run_coroutine_threadsafe(self._redis.get(f"job:{self._job_id}:cancel"), self._loop)
-            result = future.result(timeout=2)
-            return bool(result)
-        except Exception:
-            return False
 
 async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
     """Execute the OCR extraction pipeline task."""
@@ -93,8 +110,8 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
     redis_conn: aioredis.Redis = ctx['redis']
     loop = asyncio.get_running_loop()
 
-    reporter = ProgressReporter(client_id, job_id, redis_conn, loop)
-    cancellation = RedisCancellationToken(job_id, redis_conn, loop)
+    cancellation = RedisCancellationToken(job_id)
+    reporter = ProgressReporter(client_id, job_id, redis_conn, loop, cancellation)
 
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -123,27 +140,47 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
                 await publish_ws(redis_conn, client_id, job_id, {"type": "finish", "success": True})
             else:
                 raise RuntimeError("OCR pipeline execution failed or was interrupted.")
+    except asyncio.CancelledError:
+        logging.info(f"ARQ successfully aborted the main task wrapper for {job_id}.")
+        raise
+    except TaskCancelledError:
+        logging.info(f"Detached thread for {job_id} was successfully halted via poison pill.")
+        raise
+    except Exception as e:
+        logging.error(f"Pipeline crashed: {e}")
+        raise
     finally:
         await redis_conn.srem(f"pending_jobs:{safe_filename}", job_id)
 
 class RedisReporter:
-    """Reporter class for the blur rendering process."""
-    def __init__(self, client_id: str, job_id: str, redis_conn: aioredis.Redis) -> None:
+    """Reporter class for the blur rendering process with Poison Pill."""
+    def __init__(self, client_id: str, job_id: str, redis_conn: aioredis.Redis, cancel_token: RedisCancellationToken = None) -> None:
         self._client_id = client_id
         self._job_id = job_id
         self._redis = redis_conn
+        self._cancel_token = cancel_token
+
+    def _check_cancel(self) -> None:
+        if self._cancel_token and self._cancel_token.is_cancelled():
+            raise TaskCancelledError("Job cancelled by user.")
 
     async def _send(self, payload: dict) -> None:
         payload['job_id'] = self._job_id
-        await self._redis.publish(f"ws_{self._client_id}", json.dumps(payload))
+        try:
+            await self._redis.publish(f"ws_{self._client_id}", json.dumps(payload))
+        except Exception:
+            pass
 
     async def log(self, message: str) -> None:
+        self._check_cancel()
         await self._send({"type": "log", "message": message})
 
     async def progress(self, current: int, total: int, eta: str) -> None:
+        self._check_cancel()
         await self._send({"type": "progress", "current": current, "total": total, "eta": eta})
 
     async def done(self, total: int) -> None:
+        self._check_cancel()
         await self._send({"type": "progress", "current": total, "total": total, "eta": "00:00"})
 
 class StorageAdapter:
@@ -176,9 +213,9 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
     job_id = ctx.get('job_id', 'unknown')
     redis_conn: aioredis.Redis = ctx['redis']
 
-    reporter = RedisReporter(client_id, job_id, redis_conn)
+    cancellation = RedisCancellationToken(job_id)
+    reporter = RedisReporter(client_id, job_id, redis_conn, cancellation)
     storage = StorageAdapter()
-    cancellation = RedisCancellationToken(job_id, redis_conn, asyncio.get_running_loop())
 
     task_config = RenderTaskConfig(**config)
     safe_filename = os.path.basename(task_config.filename)
@@ -205,6 +242,9 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
             "job_id": job_id
         }
         await redis_conn.publish(f"ws_{client_id}", json.dumps(finish_payload))
+    except (asyncio.CancelledError, TaskCancelledError):
+        logging.info(f"Render task {job_id} cancelled successfully.")
+        raise
     finally:
         await redis_conn.srem(f"pending_jobs:{safe_filename}", job_id)
 
@@ -223,12 +263,15 @@ async def on_job_end_handler(ctx: Dict[str, Any], job_id: str, result: Any, exc:
             logging.error(f"Failed to clear active job for {client_id}: {e}")
 
     if exc is not None:
-        logging.error(f"Job {job_id} failed critically: {exc}")
+        logging.error(f"Job {job_id} ended with exception: {exc}")
         try:
+            is_cancelled = "cancel" in str(exc).lower() or isinstance(exc, TaskCancelledError) or isinstance(exc, asyncio.CancelledError)
+            error_message = "Task Cancelled" if is_cancelled else f"Task Failed: {str(exc)}"
+            
             error_payload = {
                 "type": "finish",
                 "success": False,
-                "error": f"Task Failed: {str(exc)}",
+                "error": error_message,
                 "job_id": job_id
             }
             await redis_conn.publish(f"ws_{client_id}", json.dumps(error_payload))
