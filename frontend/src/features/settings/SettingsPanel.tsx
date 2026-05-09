@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Play, Square, RefreshCw } from 'lucide-react';
 import { useVideoStore } from '../../store/videoStore';
 import { useProcessingStore } from '../../store/processingStore';
@@ -6,11 +6,10 @@ import { useBlurStore } from '../../store/blurStore';
 import { useConfigStore } from '../../store/configStore';
 import { GlassPanel } from '../../components/ui/GlassPanel';
 import { Button } from '../../components/ui/Button';
-import { api } from '../../services/api';
 import { useStartOcr } from '../../commands/useStartOcr';
 import { useStopOcr } from '../../commands/useStopOcr';
 import { PresetSelector } from './components/PresetSelector';
-import { AdvancedSettings } from './components/AdvancedSettings';
+import { LanguageSelector } from './components/LanguageSelector';
 import { BlurControlPanel } from '../blur/BlurControlPanel';
 
 export const SettingsPanel = () => {
@@ -23,41 +22,18 @@ export const SettingsPanel = () => {
   const isBlurMode = useBlurStore((s) => s.isBlurMode);
   const resetProject = useVideoStore((s) => s.resetProject);
   const config = useConfigStore((s) => s.config);
-  const preset = useConfigStore((s) => s.preset);
-  const defaultConfig = useConfigStore((s) => s.defaultConfig);
-  const setConfig = useConfigStore((s) => s.setConfig);
-  const setPreset = useConfigStore((s) => s.setPreset);
-  const setDefaultConfig = useConfigStore((s) => s.setDefaultConfig);
 
   const { execute: startOcr } = useStartOcr();
   const { execute: stopOcr } = useStopOcr();
 
-  useEffect(() => {
-    const fetchProcessDefaults = async () => {
-      try {
-        const defaults = await api.getDefaultProcessConfig();
-        setDefaultConfig(defaults);
-        if (!preset) setPreset(defaults.preset || '');
-      } catch (error) {
-        console.error(error);
-      }
-    };
-    if (!defaultConfig) fetchProcessDefaults();
-  }, [defaultConfig, preset, setDefaultConfig, setPreset]);
-
   const handleStart = () => {
     if (!metadata || !clientId) return;
-
     const processConfig = {
       filename: metadata.filename,
       client_id: clientId,
       roi,
-      preset: preset || defaultConfig?.preset || '',
-      languages: config.languages || defaultConfig?.languages || 'en',
-      step: config.step ?? defaultConfig?.step ?? 2,
-      conf_threshold: config.conf_threshold ?? defaultConfig?.conf_threshold ?? 80,
-      scale_factor: config.scale_factor ?? defaultConfig?.scale_factor ?? 2.0,
-      smart_skip: config.smart_skip ?? defaultConfig?.smart_skip ?? true,
+      preset: config.preset || '⚖️ Balance',
+      languages: config.languages || 'en'
     };
     startOcr(processConfig);
   };
@@ -93,10 +69,10 @@ export const SettingsPanel = () => {
         {isBlurMode ? (
           <BlurControlPanel />
         ) : (
-          <div className="p-5 space-y-8">
-            <PresetSelector preset={preset} setPreset={setPreset} setConfig={setConfig} />
-            <div className="h-px bg-border-main" />
-            <AdvancedSettings config={config} setConfig={setConfig} defaultConfig={defaultConfig} />
+          <div className="p-5 space-y-6">
+            <PresetSelector />
+            <div className="w-full h-px bg-border-main" />
+            <LanguageSelector />
           </div>
         )}
       </div>
