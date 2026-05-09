@@ -1,5 +1,5 @@
 import React from 'react';
-import { Download, ScanFace, ArrowLeft, Upload, FileVideo, Play, EyeOff, Undo, Redo } from 'lucide-react';
+import { Download, ScanFace, ArrowLeft, Upload, FileVideo, Play, EyeOff, Undo, Redo, Scissors } from 'lucide-react';
 import { GlassPanel } from '../../components/ui/GlassPanel';
 import { Button } from '../../components/ui/Button';
 import { ProgressHeader } from './components/ProgressHeader';
@@ -69,14 +69,18 @@ export const ResultsPanel = () => {
   return (
     <GlassPanel className="flex flex-col h-full bg-bg-main">
       <ProgressHeader />
-      <div className="flex items-center justify-between p-2 border-b border-border-main bg-bg-panel">
-        <div className="flex items-center gap-1">
-          <span className="text-xs font-bold text-txt-subtle px-2">SUBTITLES</span>
-          <div className="flex items-center gap-0.5 border-l border-border-strong pl-1">
+      
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-main bg-bg-surface/50">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 text-txt-main">
+            <Scissors size={14} className="text-brand-500" />
+            <span className="text-xs font-bold uppercase tracking-wider">Editor</span>
+          </div>
+          <div className="flex items-center gap-1 border-l border-border-strong pl-3">
             <button
               onClick={undo}
               disabled={pastSubtitles.length === 0}
-              className="p-1 rounded text-txt-muted hover:text-txt-main hover:bg-bg-hover disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+              className="p-1.5 rounded-md text-txt-muted hover:text-txt-main hover:bg-bg-hover disabled:opacity-30 disabled:hover:bg-transparent transition-all"
               title="Undo (Ctrl+Z)"
             >
               <Undo size={14} />
@@ -84,7 +88,7 @@ export const ResultsPanel = () => {
             <button
               onClick={redo}
               disabled={futureSubtitles.length === 0}
-              className="p-1 rounded text-txt-muted hover:text-txt-main hover:bg-bg-hover disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+              className="p-1.5 rounded-md text-txt-muted hover:text-txt-main hover:bg-bg-hover disabled:opacity-30 disabled:hover:bg-transparent transition-all"
               title="Redo (Ctrl+Y)"
             >
               <Redo size={14} />
@@ -93,11 +97,11 @@ export const ResultsPanel = () => {
         </div>
         <button
           onClick={() => fileInputRef.current?.click()}
-          className="flex items-center gap-1 text-[10px] bg-bg-surface hover:bg-bg-input-hover text-txt-muted px-2 py-1 rounded transition"
+          className="flex items-center gap-1.5 text-[10px] font-bold bg-bg-panel border border-border-strong hover:border-brand-500 hover:text-brand-400 text-txt-muted px-3 py-1.5 rounded-md transition-colors uppercase tracking-wide shadow-sm"
           title="Import .SRT"
         >
-          <Upload size={10} />
-          IMPORT SRT
+          <Upload size={12} />
+          Import SRT
         </button>
         <input
           type="file"
@@ -107,63 +111,66 @@ export const ResultsPanel = () => {
           className="hidden"
         />
       </div>
-      <div className="flex-1 overflow-y-auto p-2 scrollbar-hide bg-bg-main">
+
+      <div className="flex-1 overflow-y-auto p-3 scrollbar-hide bg-bg-main">
         <SubtitleList />
       </div>
-      <div className="p-4 border-t border-border-main bg-bg-panel space-y-3">
+
+      <div className="p-4 border-t border-border-main bg-bg-panel space-y-4 shrink-0">
         {subtitles.length > 0 && (
-          <div className="flex justify-between text-xs text-txt-subtle font-mono px-1">
-            <span>Lines: <b className="text-txt-main">{subtitles.length}</b></span>
+          <div className="flex justify-between items-center text-xs text-txt-subtle font-mono px-1">
+            <span className="uppercase tracking-wider text-[10px] font-bold">Total Lines</span>
+            <b className="text-txt-main text-sm">{subtitles.length}</b>
           </div>
         )}
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3">
           {!isBlurMode ? (
             <>
               <Button
                 variant={isPreviewMode ? "danger" : "secondary"}
-                className="w-full py-3 h-11 text-xs font-semibold shadow-md bg-bg-surface hover:bg-bg-input-hover text-white border-border-strong"
+                className={`w-full py-3 h-11 text-xs font-semibold shadow-md border ${isPreviewMode ? 'border-red-500/50' : 'border-border-strong bg-bg-surface hover:bg-bg-input-hover text-white'}`}
                 disabled={isProcessing || !metadata || subtitles.length === 0}
                 onClick={() => setPreviewMode(!isPreviewMode)}
-                icon={isPreviewMode ? <EyeOff size={14} /> : <Play size={14} />}
+                icon={isPreviewMode ? <EyeOff size={16} /> : <Play size={16} />}
               >
-                {isPreviewMode ? 'Close Preview' : 'Open Preview'}
+                {isPreviewMode ? 'CLOSE PREVIEW' : 'OPEN PREVIEW'}
               </Button>
-              <div className="flex gap-2">
+              <div className="grid grid-cols-2 gap-3">
                 <Button
                   variant="primary"
-                  className="flex-1 py-3 h-11 text-xs font-semibold shadow-md"
+                  className="py-3 h-11 text-xs font-semibold shadow-md"
                   disabled={isProcessing || !metadata || subtitles.length === 0}
                   onClick={exportSrt}
                   icon={<Download size={14} />}
                 >
-                  SRT
+                  EXPORT SRT
                 </Button>
                 <Button
                   variant="secondary"
-                  className="flex-1 py-3 h-11 text-xs font-semibold shadow-md bg-purple-600/20 hover:bg-purple-600/30 text-purple-200 border-purple-500/30"
+                  className="py-3 h-11 text-xs font-semibold shadow-md bg-purple-600/10 hover:bg-purple-600/20 text-purple-300 border-purple-500/30 transition-colors"
                   disabled={isProcessing || !metadata || subtitles.length === 0}
                   onClick={() => setBlurMode(true)}
                   icon={<ScanFace size={14} />}
                 >
-                  BLUR
+                  SMART BLUR
                 </Button>
               </div>
             </>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {renderedVideoUrl && (
                 <Button
                   variant="success"
-                  className="w-full py-3 h-11 text-sm font-semibold shadow-md animate-in fade-in slide-in-from-bottom-2"
+                  className="w-full py-3 h-11 text-sm font-semibold shadow-lg animate-in fade-in slide-in-from-bottom-2"
                   onClick={handleDownloadVideo}
-                  icon={<FileVideo size={16} />}
+                  icon={<FileVideo size={18} />}
                 >
                   DOWNLOAD VIDEO
                 </Button>
               )}
               <Button
                 variant="secondary"
-                className="w-full py-3 h-11 text-sm font-semibold shadow-md"
+                className="w-full py-3 h-11 text-sm font-semibold shadow-md bg-bg-surface hover:bg-bg-input-hover border-border-strong"
                 onClick={() => setBlurMode(false)}
                 icon={<ArrowLeft size={16} />}
               >
