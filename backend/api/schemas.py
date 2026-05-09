@@ -1,5 +1,5 @@
 from typing import List, Dict, Any, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from rendering.models import BlurSettings
 
 class VideoMetadata(BaseModel):
@@ -21,13 +21,14 @@ class PreviewConfig(BaseModel):
 class ProcessConfig(BaseModel):
     filename: str
     client_id: str
-    roi: List[int]
-    preset: str = "⚖️ Balance"
-    languages: str = "en"
-    step: int = 2
-    conf_threshold: float = 80.0
-    scale_factor: float = 2.0
-    smart_skip: bool = True
+    preset: str = Field(default="⚖️ Balance")
+    languages: str = Field(default="en")
+    roi: List[int] = Field(default=[0, 0, 0, 0])
+    step: Optional[int] = None
+    min_conf: Optional[float] = None
+    scale_factor: Optional[float] = None
+    denoise_strength: Optional[float] = None
+    smart_skip: Optional[bool] = None
 
 class RenderConfig(BaseModel):
     filename: str
