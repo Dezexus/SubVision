@@ -9,7 +9,6 @@ import { Button } from '../../components/ui/Button';
 import { api } from '../../services/api';
 import { useStartOcr } from '../../commands/useStartOcr';
 import { useStopOcr } from '../../commands/useStopOcr';
-
 import { PresetSelector } from './components/PresetSelector';
 import { AdvancedSettings } from './components/AdvancedSettings';
 import { BlurControlPanel } from '../blur/BlurControlPanel';
@@ -23,7 +22,6 @@ export const SettingsPanel = () => {
   const activeBlurJobId = useProcessingStore((s) => s.activeBlurJobId);
   const isBlurMode = useBlurStore((s) => s.isBlurMode);
   const resetProject = useVideoStore((s) => s.resetProject);
-
   const config = useConfigStore((s) => s.config);
   const preset = useConfigStore((s) => s.preset);
   const defaultConfig = useConfigStore((s) => s.defaultConfig);
@@ -49,6 +47,7 @@ export const SettingsPanel = () => {
 
   const handleStart = () => {
     if (!metadata || !clientId) return;
+
     const processConfig = {
       filename: metadata.filename,
       client_id: clientId,
@@ -67,6 +66,12 @@ export const SettingsPanel = () => {
     stopOcr();
   };
 
+  const handleReset = () => {
+    if (window.confirm('Are you sure you want to start a new project? All unsaved progress will be lost.')) {
+      resetProject();
+    }
+  };
+
   const hasActiveJob = !!activeOcrJobId || !!activeBlurJobId;
 
   return (
@@ -76,7 +81,7 @@ export const SettingsPanel = () => {
           {isBlurMode ? 'Blur Settings' : 'Project Settings'}
         </h2>
         <button
-          onClick={resetProject}
+          onClick={handleReset}
           className="p-2 hover:bg-bg-surface rounded text-txt-dim hover:text-txt-main transition"
           title="New Project"
         >
