@@ -1,7 +1,7 @@
 import logging
 import uuid
 import os
-from fastapi import APIRouter, HTTPException, UploadFile, File, Request
+from fastapi import APIRouter, HTTPException, UploadFile, File, Request, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from io import BytesIO
 import cv2
@@ -56,23 +56,30 @@ async def start_process(config: ProcessConfig, request: Request):
         logger.error(f"Failed to enqueue OCR task: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+async def _cancel_in_background(pool, redis_conn, job_id: str):
+    """Execute cancellation logic reliably in the background."""
+    try:
+        await redis_conn.setex(f"job:{job_id}:cancel", 3600, "1")
+        
+        client_id = "unknown"
+        if "_" in job_id:
+            client_id = job_id.split("_", 1)[1].rsplit("_", 1)[0]
+            
+        if client_id != "unknown":
+            await redis_conn.delete(f"active_job:{client_id}")
+            
+        job = Job(job_id, pool)
+        await job.abort()
+        logger.info(f"Background cancellation completed for {job_id}")
+    except Exception as e:
+        logger.error(f"Failed to background cancel job {job_id}: {e}")
+
 @router.post("/stop")
-async def stop_process(req: StopRequest, request: Request):
+async def stop_process(req: StopRequest, request: Request, background_tasks: BackgroundTasks):
     pool = request.app.state.arq_pool
-    job = Job(req.job_id, pool)
-    try:
-        stopped = await job.abort()
-    except Exception as e:
-        logger.warning(f"Abort attempt failed: {e}")
-        stopped = False
-
-    try:
-        redis_conn = request.app.state.redis
-        await redis_conn.setex(f"job:{req.job_id}:cancel", 3600, "1")
-    except Exception as e:
-        logger.warning(f"Could not set cancel flag in Redis: {e}")
-
-    return {"status": "stopped", "job_id": req.job_id, "success": stopped}
+    redis_conn = request.app.state.redis
+    background_tasks.add_task(_cancel_in_background, pool, redis_conn, req.job_id)
+    return {"status": "stopping", "job_id": req.job_id}
 
 @router.post("/import_srt")
 async def import_srt(file: UploadFile = File(...)):
