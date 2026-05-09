@@ -29,26 +29,29 @@ async def publish_ws(redis_conn: aioredis.Redis, client_id: str, job_id: str, pa
         logging.error(f"WS publish failed: {e}")
 
 class RedisCancellationToken:
-    """Token to directly check if a job has been cancelled by the user using a sync client."""
+    """Token to check if a job has been cancelled by the user using Redis."""
     def __init__(self, job_id: str) -> None:
         self._job_id = job_id
         self._sync_redis = redis.Redis.from_url(settings.redis_url)
 
-    def is_cancelled(self) -> bool:
+    async def is_cancelled(self) -> bool:
+        """Asynchronous check for the rendering pipeline."""
+        return self.is_cancelled_sync()
+
+    def is_cancelled_sync(self) -> bool:
+        """Synchronous check for the OCR pipeline thread."""
         try:
             return bool(self._sync_redis.exists(f"job:{self._job_id}:cancel"))
         except Exception as e:
             logging.error(f"Sync cancel check failed for {self._job_id}: {e}")
             return False
 
-    def is_cancelled_sync(self) -> bool:
-        return self.is_cancelled()
-        
     def __call__(self) -> bool:
-        return self.is_cancelled()
+        """Support for legacy functional checks."""
+        return self.is_cancelled_sync()
 
 class ProgressReporter:
-    """Reporter class for tracking and broadcasting progress via WebSockets with a Poison Pill."""
+    """Reporter for tracking progress via WebSockets for synchronous tasks."""
     def __init__(self, client_id: str, job_id: str, redis_conn: aioredis.Redis, loop: asyncio.AbstractEventLoop, cancel_token: RedisCancellationToken = None) -> None:
         self._client_id = client_id
         self._job_id = job_id
@@ -61,9 +64,9 @@ class ProgressReporter:
         self._total = 0
 
     def _check_cancel(self) -> None:
-        """Poison Pill: forcefully kill the background thread if the job was cancelled."""
-        if self._cancel_token and self._cancel_token.is_cancelled():
-            logging.info(f"Poison pill triggered for job {self._job_id}. Halting detached thread.")
+        """Forcefully halt the thread if the job was cancelled."""
+        if self._cancel_token and self._cancel_token.is_cancelled_sync():
+            logging.info(f"Poison pill triggered for job {self._job_id}.")
             raise TaskCancelledError("Job cancelled by user.")
 
     def set_total(self, total: int) -> None:
@@ -153,15 +156,16 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
         await redis_conn.srem(f"pending_jobs:{safe_filename}", job_id)
 
 class RedisReporter:
-    """Reporter class for the blur rendering process with Poison Pill."""
+    """Reporter class for the blur rendering process with async support."""
     def __init__(self, client_id: str, job_id: str, redis_conn: aioredis.Redis, cancel_token: RedisCancellationToken = None) -> None:
         self._client_id = client_id
         self._job_id = job_id
         self._redis = redis_conn
         self._cancel_token = cancel_token
 
-    def _check_cancel(self) -> None:
-        if self._cancel_token and self._cancel_token.is_cancelled():
+    async def _check_cancel(self) -> None:
+        """Asynchronously check for cancellation."""
+        if self._cancel_token and await self._cancel_token.is_cancelled():
             raise TaskCancelledError("Job cancelled by user.")
 
     async def _send(self, payload: dict) -> None:
@@ -172,15 +176,15 @@ class RedisReporter:
             pass
 
     async def log(self, message: str) -> None:
-        self._check_cancel()
+        await self._check_cancel()
         await self._send({"type": "log", "message": message})
 
     async def progress(self, current: int, total: int, eta: str) -> None:
-        self._check_cancel()
+        await self._check_cancel()
         await self._send({"type": "progress", "current": current, "total": total, "eta": eta})
 
     async def done(self, total: int) -> None:
-        self._check_cancel()
+        await self._check_cancel()
         await self._send({"type": "progress", "current": total, "total": total, "eta": "00:00"})
 
 class StorageAdapter:
