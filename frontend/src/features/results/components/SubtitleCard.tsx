@@ -70,7 +70,7 @@ export const SubtitleCard = ({ item, index }: { item: SubtitleItem, index: numbe
         value={item.text}
         onFocus={() => saveHistory()}
         onChange={(e) => updateSubtitle({ ...item, text: e.target.value })}
-        className="w-full bg-black/10 hover:bg-black/20 focus:bg-bg-input text-[14px] text-txt-main resize-none focus:outline-none focus:ring-1 focus:ring-brand-500 rounded-md p-2 transition-colors leading-relaxed min-h-[48px] scrollbar-hide border border-transparent focus:border-brand-500/50"
+        className="w-full bg-transparent text-[14px] text-txt-main resize-none focus:outline-none focus:ring-1 focus:ring-brand-500/50 rounded-md px-1 py-0.5 transition-colors leading-relaxed min-h-[48px] scrollbar-hide border border-transparent focus:border-brand-500/30"
         rows={2}
         spellCheck={false}
       />
