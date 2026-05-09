@@ -18,18 +18,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libdav1d6 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
-RUN addgroup --gid 1000 appuser && \
-    adduser --uid 1000 --gid 1000 --disabled-password --gecos "" appuser
 WORKDIR /app
 COPY backend/requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --upgrade pip \
     && python -m pip install -r requirements.txt
 COPY backend ./backend
-RUN mkdir -p /app/backend/uploads && \
-    chown -R appuser:appuser /app
+RUN mkdir -p /app/backend/uploads
 EXPOSE 8000
-USER appuser
 WORKDIR /app/backend
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
 

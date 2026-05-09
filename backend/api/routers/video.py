@@ -32,7 +32,6 @@ class UploadCompleteRequest(BaseModel):
 
 @router.get("/config")
 async def get_upload_config() -> Dict[str, Any]:
-    """Return upload configuration constants for the frontend."""
     return {
         "chunk_size": settings.upload_chunk_size,
         "max_size": settings.max_upload_size,
@@ -53,9 +52,7 @@ async def init_upload(req: UploadInitRequest, request: Request) -> Dict[str, Any
         )
     safe_filename = f"{uuid.uuid4().hex}{ext}"
     await request.app.state.redis.setex(f"session:{safe_filename}", 86400, req.filename)
-    upload_id = await storage_manager.create_multipart_upload(safe_filename, req.content_type)
-    if not upload_id:
-        raise HTTPException(status_code=500, detail="Failed to initialize storage upload.")
+    upload_id = safe_filename
     return {"upload_id": upload_id, "urls": [], "storage_filename": safe_filename}
 
 @router.post("/upload/chunk")
@@ -65,7 +62,10 @@ async def upload_local_chunk(
     file: UploadFile = File(...)
 ) -> Dict[str, Any]:
     data = await file.read()
-    await storage_manager.save_local_chunk(upload_id, part_number, data)
+    offset = (part_number - 1) * settings.upload_chunk_size
+    success = await storage_manager.save_chunk(upload_id, data, offset)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to save chunk.")
     return {"status": "ok"}
 
 @router.post("/upload/complete")
@@ -75,9 +75,11 @@ async def complete_upload(req: UploadCompleteRequest, request: Request) -> Video
     orig_bytes = await redis_conn.get(f"session:{safe_filename}")
     original_name = orig_bytes.decode('utf-8') if orig_bytes else safe_filename
     await redis_conn.delete(f"session:{safe_filename}")
-    success = await storage_manager.complete_local_upload(req.upload_id, safe_filename, req.total_chunks)
+    
+    success = await storage_manager.complete_local_upload(safe_filename)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to complete storage upload.")
+        
     video_path = get_video_path(safe_filename)
     info = await asyncio.to_thread(get_video_info, video_path)
     if info.frame is None:
@@ -125,6 +127,7 @@ async def delete_video(filename: str, request: Request):
         except Exception:
             pass
     await redis_conn.delete(pending_jobs_key)
+    
     success = await storage_manager.delete_file(safe_filename)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to delete file.")
