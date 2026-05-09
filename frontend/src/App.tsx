@@ -13,24 +13,25 @@ function App() {
   const initializeClientId = useVideoStore((s) => s.initializeClientId);
   const clientId = useVideoStore((s) => s.clientId);
   const file = useVideoStore((s) => s.file);
+  const filename = useVideoStore((s) => s.filename);
   const metadata = useVideoStore((s) => s.metadata);
+  
   const undo = useProcessingStore((s) => s.undo);
   const redo = useProcessingStore((s) => s.redo);
   const restoreFromStorage = useProcessingStore((s) => s.restoreFromStorage);
+  const restoreVideoState = useVideoStore((s) => s.restoreVideoState);
 
   useEffect(() => {
-    initializeClientId();
-  }, [initializeClientId]);
-
-  useEffect(() => {
-    if (clientId) {
+    const id = initializeClientId();
+    if (id) {
       restoreFromStorage();
+      restoreVideoState();
     }
-  }, [clientId, restoreFromStorage]);
+  }, [initializeClientId, restoreFromStorage, restoreVideoState]);
 
   useProcessingSocket(clientId);
 
-  const isProjectActive = !!file || !!metadata;
+  const isProjectLoaded = !!clientId && (!!file || !!metadata || !!filename);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -57,22 +58,24 @@ function App() {
 
   return (
     <div className="w-full h-screen bg-bg-main flex flex-col text-txt-main overflow-hidden">
-      <SessionRecoveryModal />
+      {clientId && <SessionRecoveryModal />}
       <div className="h-1 w-full bg-brand-500 flex-shrink-0" />
       <div className="flex h-full p-4 gap-4">
-        {isProjectActive && (
+        {isProjectLoaded && (
           <div className="h-full z-20 flex-shrink-0">
             <ErrorBoundary>
               <SettingsPanel />
             </ErrorBoundary>
           </div>
         )}
+        
         <div className="flex-1 h-full z-10 min-w-0">
           <ErrorBoundary>
             <EditorPanel />
           </ErrorBoundary>
         </div>
-        {isProjectActive && (
+
+        {isProjectLoaded && (
           <div className="h-full z-20 flex-shrink-0 w-[420px] min-w-[380px]">
             <ErrorBoundary>
               <ResultsPanel />
