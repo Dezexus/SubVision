@@ -12,7 +12,7 @@ from api.schemas import ProcessConfig, RenderConfig, BlurPreviewConfig, BlurSett
 from api.dependencies import get_video_path
 from rendering.blur_preview import generate_blur_preview
 from processing.subtitle_parser import parse_srt
-from processing.presets import get_all_presets, get_supported_languages
+from processing.presets import get_all_presets, get_supported_languages, get_preset_config
 from core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -35,8 +35,10 @@ async def get_blur_defaults():
 
 @router.get("/process-defaults")
 async def get_process_defaults():
-    dummy = ProcessConfig(filename="", client_id="", roi=[0,0,0,0])
-    return dummy.model_dump(exclude={"filename", "client_id", "roi"})
+    config = get_preset_config("⚖️ Balance")
+    config["preset"] = "⚖️ Balance"
+    config["languages"] = "en"
+    return config
 
 @router.post("/start")
 async def start_process(config: ProcessConfig, request: Request):
@@ -57,7 +59,6 @@ async def start_process(config: ProcessConfig, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 async def _cancel_in_background(pool, redis_conn, job_id: str):
-    """Execute cancellation logic reliably in the background."""
     try:
         await redis_conn.setex(f"job:{job_id}:cancel", 3600, "1")
         
