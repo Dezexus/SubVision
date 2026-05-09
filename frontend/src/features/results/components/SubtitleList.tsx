@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Unlock } from 'lucide-react';
+import { Unlock, FileText } from 'lucide-react';
 import { useProcessingStore } from '../../../store/processingStore';
 import { useVideoStore } from '../../../store/videoStore';
 import { SubtitleCard } from './SubtitleCard';
@@ -10,6 +10,7 @@ export const SubtitleList = () => {
   const isProcessing = useProcessingStore((s) => s.isProcessing);
   const currentFrameIndex = useVideoStore((s) => s.currentFrameIndex);
   const metadata = useVideoStore((s) => s.metadata);
+  
   const parentRef = useRef<HTMLDivElement>(null);
   const lastActiveIndexRef = useRef<number>(-1);
 
@@ -18,7 +19,7 @@ export const SubtitleList = () => {
   const rowVirtualizer = useVirtualizer({
     count: subtitles.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 110,
+    estimateSize: () => 115,
     overscan: 10,
   });
 
@@ -32,6 +33,7 @@ export const SubtitleList = () => {
     if (isProcessing || !metadata || subtitles.length === 0 || !autoScroll) return;
     const time = currentFrameIndex / metadata.fps;
     const activeIndex = subtitles.findIndex(s => time >= s.start && time <= s.end);
+    
     if (activeIndex !== -1 && activeIndex !== lastActiveIndexRef.current) {
       lastActiveIndexRef.current = activeIndex;
       rowVirtualizer.scrollToIndex(activeIndex, { align: 'center' });
@@ -48,8 +50,14 @@ export const SubtitleList = () => {
 
   if (subtitles.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center text-txt-subtle text-xs italic">
-        Waiting for results...
+      <div className="h-full flex flex-col items-center justify-center p-6 text-center animate-in fade-in zoom-in-95 duration-300">
+        <div className="w-16 h-16 rounded-2xl bg-bg-surface border border-border-strong flex items-center justify-center mb-4 shadow-sm">
+          <FileText size={28} className="text-txt-dim" />
+        </div>
+        <h3 className="text-sm font-bold text-txt-main mb-1 tracking-wide">No Subtitles Yet</h3>
+        <p className="text-xs text-txt-subtle max-w-[220px] leading-relaxed">
+          Start the OCR process or import an existing .SRT file to begin editing.
+        </p>
       </div>
     );
   }
@@ -58,7 +66,7 @@ export const SubtitleList = () => {
     <div className="relative h-full w-full">
       <div
         ref={parentRef}
-        className="h-full w-full overflow-y-auto scrollbar-hide pb-4"
+        className="h-full w-full overflow-y-auto scrollbar-hide pb-16"
         onWheel={handleUserScroll}
         onTouchMove={handleUserScroll}
       >
@@ -84,13 +92,14 @@ export const SubtitleList = () => {
           })}
         </div>
       </div>
+
       {!autoScroll && !isProcessing && (
         <button
           onClick={() => setAutoScroll(true)}
-          className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-bg-surface border border-border-strong text-txt-muted hover:text-white hover:bg-bg-hover px-4 py-2 rounded-full shadow-lg flex items-center gap-2 text-[10px] font-bold uppercase transition-all z-10"
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-bg-panel/80 backdrop-blur-md border border-border-strong text-txt-muted hover:text-txt-main hover:border-brand-500/50 px-4 py-2 rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.5)] flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider transition-all z-10 animate-in fade-in slide-in-from-bottom-2"
           title="Resume auto-scroll"
         >
-          <Unlock size={12} />
+          <Unlock size={14} className="text-brand-500" />
           Follow Video
         </button>
       )}
