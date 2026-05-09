@@ -6,14 +6,14 @@ const PRESETS = [
   {
     id: '🎯 Quality',
     icon: <Gem size={20} />,
-    label: 'Качество (Quality)',
-    desc: 'Максимальная точность. Идеально для финального видео.',
+    label: 'Quality',
+    desc: 'Maximum accuracy. Ideal for final video render.',
   },
   {
     id: '⚖️ Balance',
     icon: <Gauge size={20} />,
-    label: 'Баланс (Balance)',
-    desc: 'Быстро и качественно. Оптимально для большинства задач.',
+    label: 'Balance',
+    desc: 'Fast and reliable. Optimal for most tasks.',
   },
 ];
 
@@ -23,7 +23,7 @@ export const PresetSelector: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="text-sm font-bold text-txt-subtle uppercase tracking-wider">Режим обработки</h3>
+      <h3 className="text-sm font-bold text-txt-subtle uppercase tracking-wider">Processing Mode</h3>
       <div className="grid grid-cols-1 gap-3">
         {PRESETS.map((preset) => {
           const isActive = config.preset === preset.id;
