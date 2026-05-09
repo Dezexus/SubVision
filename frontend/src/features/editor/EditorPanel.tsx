@@ -4,6 +4,7 @@ import { FilterPreview } from './components/FilterPreview';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { HybridTimeline } from './components/HybridTimeline';
 import { PreviewMode } from './components/PreviewMode';
+import { GlobalProgress } from '../../components/GlobalProgress';
 import { useVideoStore } from '../../store/videoStore';
 
 export const EditorPanel = () => {
@@ -38,25 +39,27 @@ export const EditorPanel = () => {
     );
   }
 
-  if (isPreviewMode) {
-    return (
-      <div className="flex-1 h-full relative overflow-hidden">
-        <PreviewMode />
-      </div>
-    );
-  }
-
   return (
     <div className="flex-1 h-full relative overflow-hidden flex flex-col gap-4">
-      <div className="flex-1 relative flex items-center justify-center overflow-hidden mx-4 mt-4 min-h-0">
-        <VideoCanvas />
-      </div>
-      <div className="shrink-0 h-[126px] px-4 w-full">
-        <FilterPreview />
-      </div>
-      <div className="shrink-0 px-4 pb-4">
-        <HybridTimeline />
-      </div>
+      <GlobalProgress />
+      
+      {isPreviewMode ? (
+        <div className="flex-1 relative overflow-hidden">
+          <PreviewMode />
+        </div>
+      ) : (
+        <>
+          <div className="flex-1 relative flex items-center justify-center overflow-hidden min-h-0">
+            <VideoCanvas />
+          </div>
+          <div className="shrink-0 h-[126px] w-full">
+            <FilterPreview />
+          </div>
+          <div className="shrink-0">
+            <HybridTimeline />
+          </div>
+        </>
+      )}
     </div>
   );
 };

@@ -2,7 +2,6 @@ import React from 'react';
 import { Download, ScanFace, ArrowLeft, Upload, FileVideo, Play, EyeOff, Undo, Redo, Scissors } from 'lucide-react';
 import { GlassPanel } from '../../components/ui/GlassPanel';
 import { Button } from '../../components/ui/Button';
-import { ProgressHeader } from './components/ProgressHeader';
 import { SubtitleList } from './components/SubtitleList';
 import { useVideoStore } from '../../store/videoStore';
 import { useProcessingStore } from '../../store/processingStore';
@@ -68,8 +67,6 @@ export const ResultsPanel = () => {
 
   return (
     <GlassPanel className="flex flex-col h-full bg-bg-main">
-      <ProgressHeader />
-      
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-main bg-bg-surface/50">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 text-txt-main">
