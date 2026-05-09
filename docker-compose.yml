@@ -15,6 +15,7 @@ services:
     build:
       context: .
       target: api
+    init: true
     container_name: subvision_api
     restart: unless-stopped
     expose:
@@ -31,6 +32,7 @@ services:
     build:
       context: .
       target: worker
+    init: true
     container_name: subvision_worker
     restart: unless-stopped
     depends_on:
