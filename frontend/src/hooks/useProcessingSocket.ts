@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import useWebSocket from 'react-use-websocket';
 import { useProcessingStore } from '../store/processingStore';
 import { API_BASE } from '../services/api';
+import { getClientId } from '../utils/clientId';
 
 const getSocketUrl = () => {
   const url = new URL(API_BASE);
@@ -11,7 +12,9 @@ const getSocketUrl = () => {
 
 const SOCKET_URL = getSocketUrl();
 
-export const useProcessingSocket = (clientId: string | null) => {
+export const useProcessingSocket = (providedClientId?: string | null) => {
+  const [clientId] = useState(() => providedClientId || getClientId());
+
   const activeOcrJobId = useProcessingStore((s) => s.activeOcrJobId);
   const activeBlurJobId = useProcessingStore((s) => s.activeBlurJobId);
   const addLog = useProcessingStore((s) => s.addLog);
