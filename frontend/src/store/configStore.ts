@@ -1,35 +1,26 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 
-export interface ConfigState {
-  config: Record<string, any>;
+export interface ProcessConfig {
   preset: string;
-  defaultConfig: Record<string, any> | null;
-  setConfig: (updates: Record<string, any>) => void;
-  setPreset: (preset: string) => void;
-  setDefaultConfig: (defaults: Record<string, any>) => void;
+  languages: string;
+  roi: number[];
 }
 
-export const useConfigStore = create<ConfigState>()(
-  persist(
-    (set) => ({
-      config: {},
-      preset: '',
-      defaultConfig: null,
+interface ConfigState {
+  config: ProcessConfig;
+  setConfig: (newConfig: Partial<ProcessConfig>) => void;
+  resetConfig: () => void;
+}
 
-      setConfig: (updates) =>
-        set((state) => ({ config: { ...state.config, ...updates } })),
+const defaultConfig: ProcessConfig = {
+  preset: '⚖️ Balance',
+  languages: 'en',
+  roi: [0, 0, 0, 0],
+};
 
-      setPreset: (preset) => set({ preset }),
-
-      setDefaultConfig: (defaults) =>
-        set((state) => ({
-          defaultConfig: defaults,
-          config: Object.keys(state.config).length === 0 ? { ...defaults } : { ...state.config },
-        })),
-    }),
-    {
-      name: 'subvision-config',
-    }
-  )
-);
+export const useConfigStore = create<ConfigState>((set) => ({
+  config: defaultConfig,
+  setConfig: (newConfig) =>
+    set((state) => ({ config: { ...state.config, ...newConfig } })),
+  resetConfig: () => set({ config: defaultConfig }),
+}));
