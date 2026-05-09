@@ -64,42 +64,55 @@ export const SessionRecoveryModal: React.FC = () => {
   if (loading || !activeJob) return null;
 
   return (
-    <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-50 backdrop-blur-md">
-      <div className="bg-white p-8 rounded-2xl shadow-[0_20px_50px_-12px_rgba(0,0,0,0.25)] max-w-lg w-full mx-4 border border-slate-100">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity">
+      <div className="relative w-full max-w-lg mx-4 overflow-hidden rounded-2xl bg-slate-900 shadow-[0_0_40px_-10px_rgba(0,0,0,0.7)] ring-1 ring-white/10 sm:mx-auto animate-in fade-in zoom-in-95 duration-200">
         
-        <div className="flex items-center gap-4 mb-6">
-          <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-            <svg className="h-6 w-6 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-20"></span>
+        {/* Акцентная градиентная линия сверху */}
+        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500" />
+        
+        <div className="p-8">
+          {/* Шапка модального окна */}
+          <div className="mb-6 flex items-start gap-4">
+            <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 border border-blue-500/20">
+              <svg className="h-6 w-6 text-blue-400 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              {/* Пульсирующая точка индикатора */}
+              <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+              </span>
+            </div>
+            <div className="pt-1">
+              <h2 className="text-xl font-bold tracking-tight text-white">Обнаружен активный процесс</h2>
+              <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-blue-400/90">Восстановление сеанса</p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-xl font-bold text-slate-900">Активный процесс</h2>
-            <p className="text-sm font-medium text-blue-600">Найдена незавершенная задача</p>
+
+          <div className="mb-8">
+            <p className="text-sm text-slate-300 leading-relaxed">
+              На сервере выполняется фоновая обработка вашего предыдущего видео. Вы можете подключиться к процессу, чтобы следить за прогрессом, либо прервать его и начать новую задачу.
+            </p>
           </div>
-        </div>
 
-        <p className="mb-8 text-slate-600 leading-relaxed">
-          На сервере уже обрабатывается ваше предыдущее видео. Вы можете подключиться к процессу, чтобы следить за статусом, либо отменить его и запустить новую задачу.
-        </p>
-
-        <div className="flex flex-col sm:flex-row gap-3">
-          <button 
-            onClick={handleCancel} 
-            disabled={isCancelling}
-            className="flex-1 inline-flex justify-center items-center px-4 py-2.5 bg-white border border-slate-300 text-slate-700 font-medium rounded-xl hover:bg-slate-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isCancelling ? 'Отмена...' : 'Остановить задачу'}
-          </button>
-          <button 
-            onClick={handleContinue}
-            disabled={isCancelling}
-            className="flex-1 inline-flex justify-center items-center px-4 py-2.5 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-sm shadow-blue-600/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Подключиться
-          </button>
+          {/* Блок кнопок */}
+          <div className="flex flex-col-reverse sm:flex-row gap-3 sm:gap-4">
+            <button 
+              onClick={handleCancel} 
+              disabled={isCancelling}
+              className="group relative flex w-full justify-center items-center rounded-xl border border-slate-700 bg-slate-800/50 px-4 py-3 text-sm font-medium text-slate-300 transition-all hover:bg-slate-800 hover:text-white hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed sm:w-auto sm:flex-1"
+            >
+              {isCancelling ? 'Остановка...' : 'Отменить всё'}
+            </button>
+            <button 
+              onClick={handleContinue}
+              disabled={isCancelling}
+              className="group relative flex w-full justify-center items-center rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3 text-sm font-semibold text-white transition-all hover:from-blue-500 hover:to-indigo-500 hover:shadow-[0_0_20px_rgba(79,70,229,0.3)] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed sm:w-auto sm:flex-1"
+            >
+              Подключиться
+            </button>
+          </div>
         </div>
       </div>
     </div>
