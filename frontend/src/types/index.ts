@@ -45,8 +45,6 @@ export interface BlurSettings {
   mode: string;
   y: number;
   font_size: number;
-  padding_x: number;
-  padding_y: number;
   sigma: number;
   feather: number;
   width_multiplier: number;

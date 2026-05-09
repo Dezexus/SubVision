@@ -20,8 +20,6 @@ const initialBlurSettings: BlurSettings = {
   mode: 'hybrid',
   y: 912,
   font_size: 22,
-  padding_x: 0.4,
-  padding_y: 2.0,
   sigma: 5,
   feather: 40,
   width_multiplier: 1.0,

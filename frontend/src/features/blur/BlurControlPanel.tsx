@@ -103,7 +103,7 @@ export const BlurControlPanel = () => {
             ) : (
                 <div className="w-32" />
             )}
-          </div>
+        </div>
 
           <div className="flex-none">
               <button
@@ -183,28 +183,6 @@ export const BlurControlPanel = () => {
                 onChange={(e) => setBlurSettings({ height_multiplier: Number(e.target.value) })}
               />
             </div>
-          </div>
-        </div>
-
-        <div className="bg-bg-panel border border-border-main rounded-xl p-4 shadow-sm">
-          <div className="flex items-center gap-2 text-xs font-bold text-txt-main tracking-wide mb-4">
-            <BoxSelect size={16} className="text-amber-500" /> Padding Coverage
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Slider
-              label="Spread X"
-              min={0.1} max={2.0} step={0.05}
-              value={blurSettings.padding_x}
-              suffix="x"
-              onChange={(e) => setBlurSettings({ padding_x: Number(e.target.value) })}
-            />
-            <Slider
-              label="Spread Y"
-              min={0} max={4.0} step={0.1}
-              value={blurSettings.padding_y}
-              suffix="x"
-              onChange={(e) => setBlurSettings({ padding_y: Number(e.target.value) })}
-            />
           </div>
         </div>
 

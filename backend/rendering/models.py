@@ -2,11 +2,10 @@ from typing import List, Dict, Any
 from pydantic import BaseModel
 
 class BlurSettings(BaseModel):
+    """Configuration for the blur rendering process."""
     mode: str = "hybrid"
     y: int = 912
     font_size: int = 30
-    padding_x: float = 0.4
-    padding_y: float = 2.0
     sigma: int = 5
     feather: int = 40
     width_multiplier: float = 1.0
@@ -14,6 +13,7 @@ class BlurSettings(BaseModel):
     encoder: str = "auto"
 
 class RenderTaskConfig(BaseModel):
+    """Configuration for a video rendering task."""
     filename: str
     client_id: str
     blur_settings: BlurSettings

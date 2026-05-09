@@ -84,19 +84,22 @@ export const VideoCanvas = () => {
     const fontSizePx = blurSettings.font_size;
     const widthMultiplier = blurSettings.width_multiplier || 1.0;
     const heightMultiplier = blurSettings.height_multiplier || 1.0;
-    const paddingX = blurSettings.padding_x || 0.4;
-    const paddingY = blurSettings.padding_y || 2.0;
+
     const textWidth = estimateTextWidth(textToMeasure, fontSizePx, widthMultiplier);
     const textHeight = (fontSizePx + 4) * heightMultiplier;
-    const padXPx = Math.floor(textWidth * paddingX);
-    const padYPx = Math.floor(textHeight * paddingY);
+
+    const padXPx = Math.floor(fontSizePx * 0.8);
+    const padYPx = Math.floor(fontSizePx * 0.3) + 4;
+
     const x = Math.floor((metadata.width - textWidth) / 2);
     const y = blurSettings.y - textHeight;
+
     const greenX = x, greenY = y, greenW = textWidth, greenH = textHeight;
     const redX = Math.max(0, x - padXPx);
     const redY = Math.max(0, y - padYPx);
     const redW = Math.min(metadata.width - redX, textWidth + padXPx * 2);
     const redH = Math.min(metadata.height - redY, textHeight + padYPx * 2);
+
     return {
       green: { x: greenX, y: greenY, w: greenW, h: greenH },
       red: { x: redX, y: redY, w: redW, h: redH },

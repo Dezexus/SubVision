@@ -3,6 +3,7 @@ import re
 from typing import Tuple, Dict, Any
 
 def estimate_text_width(text: str, font_size: int, width_multiplier: float) -> int:
+    """Calculate the approximate width of a text string in pixels."""
     if not text:
         return 0
 
@@ -24,6 +25,7 @@ def estimate_text_width(text: str, font_size: int, width_multiplier: float) -> i
     return int(math.ceil(width * font_size * width_multiplier))
 
 def calculate_text_roi(text: str, width: int, height: int, settings: Dict[str, Any]) -> Tuple[int, int, int, int]:
+    """Calculate the coordinates of the text base rectangle (green area)."""
     if not text:
         return 0, 0, 0, 0
 
@@ -57,41 +59,20 @@ def calculate_text_roi(text: str, width: int, height: int, settings: Dict[str, A
     return final_x, final_y, final_w, final_h
 
 def calculate_blur_roi(text: str, width: int, height: int, settings: Dict[str, Any]) -> Tuple[int, int, int, int]:
+    """Calculate the coordinates of the adaptive blur region (red area)."""
     if not text:
         return 0, 0, 0, 0
 
-    y_pos = int(settings.get('y', height - 50))
-    if y_pos > height:
-        y_pos = height - 50
-
     font_size_px = int(settings.get('font_size', 21))
-    width_multiplier = float(settings.get('width_multiplier', 1.0))
-    height_multiplier = float(settings.get('height_multiplier', 1.0))
+    tx, ty, tw, th = calculate_text_roi(text, width, height, settings)
 
-    lines = text.split('\n')
-    max_line_width = 0
-    for line in lines:
-        line_width = estimate_text_width(line, font_size_px, width_multiplier)
-        if line_width > max_line_width:
-            max_line_width = line_width
-    num_lines = len(lines)
+    pad_x = int(font_size_px * 0.8)
+    pad_y = int(font_size_px * 0.3) + 4
 
-    text_h = int((font_size_px + 4) * num_lines * height_multiplier)
-    text_w = max_line_width
-
-    padding_x = float(settings.get('padding_x', 0.4))
-    padding_y_factor = float(settings.get('padding_y', 2.0))
-
-    pad_x_px = int(text_w * padding_x)
-    pad_y_px = int(text_h * padding_y_factor)
-
-    x = (width - text_w) // 2
-    y = y_pos - text_h
-
-    left = x - pad_x_px
-    top = y - pad_y_px
-    right = left + text_w + (pad_x_px * 2)
-    bottom = top + text_h + (pad_y_px * 2)
+    left = tx - pad_x
+    top = ty - pad_y
+    right = tx + tw + pad_x
+    bottom = ty + th + pad_y
 
     final_x = max(0, left)
     final_y = max(0, top)
