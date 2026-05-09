@@ -1,83 +1,122 @@
 import { create } from 'zustand';
+import { getClientId } from '../utils/clientId';
 import type { VideoMetadata } from '../types';
-import { api } from '../services/api';
 
-let cachedClientId: string | null = null;
-
-export interface VideoState {
+interface VideoState {
   file: File | null;
+  filename: string | null;
   metadata: VideoMetadata | null;
-  currentFrameIndex: number;
+  clientId: string;
+  isUploading: boolean;
+  uploadProgress: number;
+  
   isPreviewMode: boolean;
   previewVolume: number;
   allowedExtensions: string[];
-  clientId: string | null;
+  currentFrameIndex: number;
   roi: [number, number, number, number];
-}
 
-export interface VideoActions {
+  initializeClientId: () => string;
+  restoreVideoState: () => void;
+  
   setFile: (file: File | null) => void;
-  setMetadata: (meta: VideoMetadata | null) => void;
-  setCurrentFrame: (index: number | ((prev: number) => number)) => void;
-  setPreviewMode: (active: boolean) => void;
+  setMetadata: (metadata: VideoMetadata | null) => void;
+  setUploadInfo: (filename: string, metadata: VideoMetadata) => void;
+  setUploading: (isUploading: boolean, progress: number) => void;
+  
+  setPreviewMode: (mode: boolean) => void;
   setPreviewVolume: (vol: number) => void;
   setAllowedExtensions: (exts: string[]) => void;
+  setCurrentFrame: (frame: number | ((prev: number) => number)) => void;
   setRoi: (roi: [number, number, number, number]) => void;
-  initializeClientId: () => Promise<void>;
+  
+  reset: () => void;
   resetProject: () => void;
 }
 
-export const useVideoStore = create<VideoState & VideoActions>((set, get) => ({
+export const useVideoStore = create<VideoState>()((set, get) => ({
   file: null,
+  filename: null,
   metadata: null,
-  currentFrameIndex: 0,
+  clientId: '',
+  isUploading: false,
+  uploadProgress: 0,
+  
   isPreviewMode: false,
-  previewVolume: 1,
+  previewVolume: 0.5,
   allowedExtensions: [],
-  clientId: null,
+  currentFrameIndex: 0,
   roi: [0, 0, 0, 0],
 
+  initializeClientId: () => {
+    const existingId = get().clientId;
+    if (existingId) return existingId;
+    
+    const id = getClientId();
+    set({ clientId: id });
+    return id;
+  },
+
+  restoreVideoState: () => {
+    try {
+      const saved = localStorage.getItem('subvision_video_state');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.filename && parsed.metadata) {
+          set({ filename: parsed.filename, metadata: parsed.metadata });
+        }
+      }
+    } catch (e) {
+      console.error('Failed to restore video state', e);
+    }
+  },
+
   setFile: (file) => set({ file }),
-  setMetadata: (metadata) => set({ metadata, currentFrameIndex: 0 }),
-  setCurrentFrame: (index) =>
-    set((state) => ({
-      currentFrameIndex:
-        typeof index === 'function' ? index(state.currentFrameIndex) : index,
-    })),
-  setPreviewMode: (active) => set({ isPreviewMode: active }),
-  setPreviewVolume: (vol) => set({ previewVolume: Math.min(1, Math.max(0, vol)) }),
-  setAllowedExtensions: (exts) => set({ allowedExtensions: exts }),
+  
+  setMetadata: (metadata) => {
+    set({ metadata });
+    if (metadata) {
+      localStorage.setItem('subvision_video_state', JSON.stringify({ filename: metadata.filename, metadata }));
+    }
+  },
+  
+  setUploadInfo: (filename, metadata) => {
+    set({ 
+      filename, 
+      metadata,
+      isUploading: false, 
+      uploadProgress: 100 
+    });
+    localStorage.setItem('subvision_video_state', JSON.stringify({ filename, metadata }));
+  },
+
+  setUploading: (isUploading, uploadProgress) => set({ isUploading, uploadProgress }),
+  
+  setPreviewMode: (isPreviewMode) => set({ isPreviewMode }),
+  setPreviewVolume: (previewVolume) => set({ previewVolume }),
+  setAllowedExtensions: (allowedExtensions) => set({ allowedExtensions }),
+  
+  setCurrentFrame: (frame) => set((state) => ({ 
+    currentFrameIndex: typeof frame === 'function' ? frame(state.currentFrameIndex) : frame 
+  })),
+  
   setRoi: (roi) => set({ roi }),
 
-  initializeClientId: async () => {
-    if (cachedClientId) {
-      set({ clientId: cachedClientId });
-      return;
-    }
-    const stored = sessionStorage.getItem('subvision_client_id');
-    if (stored) {
-      cachedClientId = stored;
-      set({ clientId: stored });
-      return;
-    }
-    const { client_id } = await api.registerSession();
-    sessionStorage.setItem('subvision_client_id', client_id);
-    cachedClientId = client_id;
-    set({ clientId: client_id });
-  },
-
-  resetProject: () => {
-    const state = get();
-    if (state.metadata) {
-      api.deleteVideo(state.metadata.filename).catch(() => {});
-    }
+  reset: () => {
     set({
       file: null,
+      filename: null,
       metadata: null,
-      currentFrameIndex: 0,
+      isUploading: false,
+      uploadProgress: 0,
       isPreviewMode: false,
-      previewVolume: 1,
-      roi: [0, 0, 0, 0],
+      currentFrameIndex: 0,
+      roi: [0, 0, 0, 0]
     });
+    localStorage.removeItem('subvision_video_state');
   },
+  
+  resetProject: () => {
+    get().reset();
+  }
 }));
