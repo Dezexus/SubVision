@@ -1,5 +1,5 @@
-import React from 'react';
-import { Play, Square, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Play, Square, RefreshCw, ChevronLeft, ChevronRight, Settings2, AlertTriangle } from 'lucide-react';
 import { useVideoStore } from '../../store/videoStore';
 import { useProcessingStore } from '../../store/processingStore';
 import { useBlurStore } from '../../store/blurStore';
@@ -23,8 +23,19 @@ export const SettingsPanel = () => {
   const resetProject = useVideoStore((s) => s.resetProject);
   const config = useConfigStore((s) => s.config);
 
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
+
   const { execute: startOcr } = useStartOcr();
   const { execute: stopOcr } = useStopOcr();
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (confirmReset) {
+      timer = setTimeout(() => setConfirmReset(false), 3000);
+    }
+    return () => clearTimeout(timer);
+  }, [confirmReset]);
 
   const handleStart = () => {
     if (!metadata || !clientId) return;
@@ -43,29 +54,49 @@ export const SettingsPanel = () => {
   };
 
   const handleReset = () => {
-    if (window.confirm('Are you sure you want to start a new project? All unsaved progress will be lost.')) {
-      resetProject();
+    if (!confirmReset) {
+      setConfirmReset(true);
+      return;
     }
+    resetProject();
+    setConfirmReset(false);
   };
 
   const hasActiveJob = !!activeOcrJobId || !!activeBlurJobId;
 
   return (
-    <GlassPanel className="w-[360px] flex flex-col h-full z-20 bg-bg-main">
-      <div className="p-5 border-b border-border-main flex justify-between items-center bg-bg-panel">
-        <h2 className="font-bold text-txt-main uppercase tracking-wider text-sm">
-          {isBlurMode ? 'Blur Settings' : 'Project Settings'}
-        </h2>
-        <button
-          onClick={handleReset}
-          className="p-2 hover:bg-bg-surface rounded text-txt-dim hover:text-txt-main transition"
-          title="New Project"
-        >
-          <RefreshCw size={16} />
-        </button>
+    <GlassPanel className={`transition-all duration-300 ease-in-out flex flex-col h-full z-20 bg-bg-main ${isCollapsed ? 'w-[64px]' : 'w-[360px]'}`}>
+      <div className="p-4 border-b border-border-main flex justify-between items-center bg-bg-panel h-14 shrink-0">
+        {!isCollapsed && (
+          <h2 className="font-bold text-txt-main uppercase tracking-wider text-sm whitespace-nowrap overflow-hidden">
+            {isBlurMode ? 'Blur Settings' : 'Project Settings'}
+          </h2>
+        )}
+        <div className={`flex items-center gap-1 ${isCollapsed ? 'mx-auto' : ''}`}>
+          {!isCollapsed && (
+            <button
+              onClick={handleReset}
+              className={`p-2 rounded transition-colors flex items-center gap-2 ${
+                confirmReset 
+                  ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' 
+                  : 'hover:bg-bg-surface text-txt-dim hover:text-txt-main'
+              }`}
+              title={confirmReset ? "Click again to confirm" : "New Project"}
+            >
+              {confirmReset ? <AlertTriangle size={16} /> : <RefreshCw size={16} />}
+            </button>
+          )}
+          <button
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="p-2 hover:bg-bg-surface rounded text-txt-dim hover:text-txt-main transition-colors"
+            title={isCollapsed ? "Expand panel" : "Collapse panel"}
+          >
+            {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto scrollbar-hide bg-bg-main">
+      <div className={`flex-1 overflow-y-auto scrollbar-hide bg-bg-main ${isCollapsed ? 'hidden' : 'block'}`}>
         {isBlurMode ? (
           <BlurControlPanel />
         ) : (
@@ -77,8 +108,16 @@ export const SettingsPanel = () => {
         )}
       </div>
 
-      {!isBlurMode && (
-        <div className="p-5 border-t border-border-main bg-bg-panel">
+      {isCollapsed && (
+        <div className="flex-1 flex flex-col items-center py-4 space-y-4 bg-bg-main">
+          <div className="w-8 h-8 rounded-full bg-bg-surface flex items-center justify-center text-brand-500 shadow-sm border border-border-strong">
+            <Settings2 size={16} />
+          </div>
+        </div>
+      )}
+
+      {!isBlurMode && !isCollapsed && (
+        <div className="p-5 border-t border-border-main bg-bg-panel shrink-0">
           {!isProcessing ? (
             <Button
               onClick={handleStart}
@@ -98,6 +137,29 @@ export const SettingsPanel = () => {
             >
               STOP
             </Button>
+          )}
+        </div>
+      )}
+
+      {!isBlurMode && isCollapsed && (
+        <div className="p-3 border-t border-border-main bg-bg-panel flex justify-center shrink-0">
+          {!isProcessing ? (
+            <button 
+              onClick={handleStart} 
+              disabled={!metadata || hasActiveJob} 
+              className="p-2.5 bg-brand-500 text-white rounded-full disabled:opacity-50 disabled:grayscale transition-transform hover:scale-105 active:scale-95 shadow-md"
+              title="Start Processing"
+            >
+              <Play size={18} fill="currentColor" />
+            </button>
+          ) : (
+            <button 
+              onClick={handleStop} 
+              className="p-2.5 bg-red-500 text-white rounded-full transition-transform hover:scale-105 active:scale-95 shadow-md animate-pulse"
+              title="Stop Processing"
+            >
+              <Square size={18} fill="currentColor" />
+            </button>
           )}
         </div>
       )}
