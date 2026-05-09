@@ -6,12 +6,14 @@ export const getClientId = (): string => {
   try {
     let id = localStorage.getItem(key);
     if (!id) {
-      id = crypto.randomUUID();
+      id = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : 'client_' + Math.random().toString(36).substring(2, 15);
       localStorage.setItem(key, id);
     }
     return id;
   } catch {
-    return crypto.randomUUID();
+    return 'client_' + Math.random().toString(36).substring(2, 15);
   }
 };
 

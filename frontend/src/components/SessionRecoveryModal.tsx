@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { getClientId } from '../utils/clientId';
 import { useProcessingStore } from '../store/processingStore';
+import { api } from '../services/api';
 
 export const SessionRecoveryModal: React.FC = () => {
   const [activeJob, setActiveJob] = useState<string | null>(null);
@@ -9,15 +10,18 @@ export const SessionRecoveryModal: React.FC = () => {
   useEffect(() => {
     const checkStatus = async () => {
       const clientId = getClientId();
+      if (!clientId) {
+        setLoading(false);
+        return;
+      }
+      
       try {
-        const res = await fetch(`/api/session/status/${clientId}`);
-        if (!res.ok) throw new Error('Failed to fetch status');
-        const data = await res.json();
+        const data = await api.getSessionStatus(clientId);
         if (data.has_active_job && data.job_id) {
           setActiveJob(data.job_id);
         }
       } catch (error) {
-        console.error(error);
+        console.error('Failed to check session status:', error);
       } finally {
         setLoading(false);
       }
@@ -43,13 +47,9 @@ export const SessionRecoveryModal: React.FC = () => {
     setLoading(true);
     const clientId = getClientId();
     try {
-      await fetch(`/api/session/jobs/${activeJob}/cancel`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ client_id: clientId })
-      });
+      await api.cancelSessionJob(activeJob, clientId);
     } catch (error) {
-      console.error(error);
+      console.error('Failed to cancel job:', error);
     } finally {
       setActiveJob(null);
       setLoading(false);

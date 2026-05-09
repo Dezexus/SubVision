@@ -66,5 +66,15 @@ export const processApi = {
       `${API_URL}/process/render_blur`, config
     );
     return response.data;
+  },
+
+  getSessionStatus: async (clientId: string): Promise<{ has_active_job: boolean; job_id: string | null }> => {
+    const response = await axios.get(`${API_URL}/session/status/${clientId}`);
+    return response.data;
+  },
+
+  cancelSessionJob: async (jobId: string, clientId: string): Promise<{ status: string }> => {
+    const response = await axios.post(`${API_URL}/session/jobs/${jobId}/cancel`, { client_id: clientId });
+    return response.data;
   }
 };
