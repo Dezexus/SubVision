@@ -95,11 +95,7 @@ async def health_check():
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
     redis_client = websocket.app.state.redis
-    valid = await redis_client.getex(f"ws_valid:{client_id}", ex=3600)
-    if not valid:
-        await websocket.close(code=4001, reason="Invalid or expired client ID")
-        return
-
+    
     await connection_manager.connect(websocket, client_id)
 
     pubsub = None
