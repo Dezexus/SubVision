@@ -24,7 +24,7 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./backend/uploads:/app/backend/uploads
+      - subvision_uploads:/app/backend/uploads
     environment:
       - REDIS_URL=redis://redis:6379/0
 
@@ -39,7 +39,7 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./backend/uploads:/app/backend/uploads
+      - subvision_uploads:/app/backend/uploads
       - paddle_models:/root/.paddleocr
       - paddlex_cache:/root/.paddlex
     environment:
@@ -72,8 +72,9 @@ services:
     depends_on:
       - api
     volumes:
-      - ./backend/uploads:/app/backend/uploads
+      - subvision_uploads:/app/backend/uploads
 
 volumes:
   paddle_models:
   paddlex_cache:
+  subvision_uploads:
