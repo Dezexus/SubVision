@@ -5,26 +5,20 @@ ConfigType = dict[str, int | float | bool]
 DEFAULT_CONFIG: ConfigType = {
     "step": 2,
     "min_conf": 80,
-    "smart_skip": True,
     "denoise_strength": 3,
     "scale_factor": 2.0,
 }
 
 PRESETS_DELTAS: dict[str, dict[str, Any]] = {
-    "⚖️ Balance": {
-        "label": "Balanced",
-        "desc": "Movies & TV Shows",
-        "config": {"step": 2, "min_conf": 80, "denoise_strength": 3, "scale_factor": 2.0}
-    },
-    "🏎️ Speed": {
-        "label": "Speed",
-        "desc": "Draft / Clean video",
-        "config": {"step": 4, "min_conf": 70, "denoise_strength": 0, "scale_factor": 1.5}
-    },
     "🎯 Quality": {
         "label": "Quality",
         "desc": "Frame-perfect timing",
-        "config": {"step": 1, "min_conf": 85, "smart_skip": False, "denoise_strength": 5, "scale_factor": 2.5}
+        "config": {"step": 1, "min_conf": 85, "denoise_strength": 5, "scale_factor": 2.5}
+    },
+    "⚖️ Balance": {
+        "label": "Balance",
+        "desc": "Fast & accurate",
+        "config": {"step": 5, "min_conf": 80, "denoise_strength": 3, "scale_factor": 2.0}
     }
 }
 
