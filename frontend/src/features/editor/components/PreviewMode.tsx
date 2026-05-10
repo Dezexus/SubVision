@@ -1,8 +1,8 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { MoveVertical, Trash2 } from 'lucide-react';
 import { useVideoStore } from '../../../store/videoStore';
 import { useProcessingStore } from '../../../store/processingStore';
-import { HybridTimeline } from './HybridTimeline';
+import { Timeline } from '../../timeline/components/Timeline';
+import { ActiveSubtitleEditor } from '../../subtitles/components/ActiveSubtitleEditor';
 import { API_BASE } from '../../../services/api';
 import type { SubtitleItem } from '../../../types';
 
@@ -21,18 +21,17 @@ export const PreviewMode = () => {
   const saveHistory = useProcessingStore((s) => s.saveHistory);
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const dragStartRef = useRef<{ y: number; initialOffset: number } | null>(null);
   const animationFrameRef = useRef<number>();
   const lastThrottleTimeRef = useRef<number>(0);
 
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [bottomOffset, setBottomOffset] = useState(20);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [activeSub, setActiveSub] = useState<SubtitleItem | null | undefined>(null);
   const [localText, setLocalText] = useState('');
+  const [isFocused, setIsFocused] = useState(false);
+
   const prevActiveSubIdRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -170,7 +169,7 @@ export const PreviewMode = () => {
   }, []);
 
   const handleTextChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const newText = e.target.value;
       setLocalText(newText);
       if (activeSub) {
@@ -180,39 +179,11 @@ export const PreviewMode = () => {
     [activeSub, updateSubtitle]
   );
 
-  const handleDragStart = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      dragStartRef.current = { y: e.clientY, initialOffset: bottomOffset };
-      const handleMouseMove = (moveEvent: MouseEvent) => {
-        if (!containerRef.current || !dragStartRef.current) return;
-        const rect = containerRef.current.getBoundingClientRect();
-        const deltaY = moveEvent.clientY - dragStartRef.current.y;
-        const deltaPercent = (deltaY / rect.height) * 100;
-        let newPercent = dragStartRef.current.initialOffset - deltaPercent;
-        newPercent = Math.max(2, Math.min(newPercent, 90));
-        setBottomOffset(newPercent);
-      };
-      const handleMouseUp = () => {
-        dragStartRef.current = null;
-        window.removeEventListener('mousemove', handleMouseMove);
-        window.removeEventListener('mouseup', handleMouseUp);
-      };
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-    },
-    [bottomOffset]
-  );
-
   if (!metadata) return null;
 
   return (
-    <div className="w-full h-full flex flex-col bg-bg-main border border-border-main rounded-xl overflow-hidden shadow-2xl">
-      <div
-        ref={containerRef}
-        className="relative w-full flex-1 bg-black flex items-center justify-center group/video overflow-hidden"
-      >
+    <div className="w-full h-full flex flex-col gap-4">
+      <div className="relative w-full flex-1 bg-black flex items-center justify-center rounded-xl border border-border-main overflow-hidden shadow-2xl">
         {videoUrl && (
           <video
             ref={videoRef}
@@ -225,57 +196,33 @@ export const PreviewMode = () => {
             className="w-full h-full object-contain"
           />
         )}
-        {activeSub && (
-          <div
-            className="absolute w-11/12 max-w-5xl left-1/2 -translate-x-1/2 flex flex-col items-center group/sub"
-            style={{ bottom: `${bottomOffset}%` }}
-          >
-            <div
-              className="w-20 h-2.5 mb-1 bg-white/20 hover:bg-brand-500 rounded-full cursor-ns-resize backdrop-blur-sm transition-colors shadow-sm flex items-center justify-center opacity-0 group-hover/video:opacity-100"
-              onMouseDown={handleDragStart}
-              title="Drag to adjust vertical position"
-            >
-              <MoveVertical size={12} className="text-white/80 opacity-0 group-hover/sub:opacity-100" />
-            </div>
-            <div className="relative inline-grid max-w-full group/textarea">
-              <span
-                className="col-start-1 row-start-1 invisible whitespace-pre px-16 py-2.5 text-lg md:text-xl min-w-[280px] overflow-hidden"
-                aria-hidden="true"
-              >
-                {localText || ' '}
-              </span>
-              <input
-                type="text"
-                value={localText}
-                onFocus={saveHistory}
-                onChange={handleTextChange}
-                onKeyDown={(e) => e.stopPropagation()}
-                className="col-start-1 row-start-1 w-full bg-black/70 text-white text-center text-lg md:text-xl py-2.5 px-12 rounded-2xl border-2 border-transparent hover:border-white/20 focus:border-brand-500 focus:bg-black/90 focus:outline-none transition-colors shadow-lg backdrop-blur-sm"
-              />
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deleteSubtitle(activeSub.id);
-                }}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-white/50 hover:text-white hover:bg-red-500/80 rounded-full opacity-0 group-hover/textarea:opacity-100 transition-all"
-                title="Delete Subtitle"
-              >
-                <Trash2 size={18} />
-              </button>
-            </div>
-          </div>
-        )}
       </div>
-      <HybridTimeline
-        isPlaying={isPlaying}
-        onPlayPause={handlePlayPause}
-        onStepFrame={handleStepFrame}
-        onSeek={handleSeek}
-        volume={previewVolume}
-        onVolumeChange={setPreviewVolume}
-        currentTimeOverride={currentTime}
-        durationOverride={duration}
+      <ActiveSubtitleEditor
+        activeSub={activeSub}
+        text={localText}
+        onChange={handleTextChange}
+        onFocus={() => {
+          saveHistory();
+          setIsFocused(true);
+        }}
+        onBlur={() => setIsFocused(false)}
+        onDelete={() => {
+          if (activeSub) deleteSubtitle(activeSub.id);
+        }}
       />
+      <div className="shrink-0">
+        <Timeline
+          isPlaying={isPlaying}
+          onPlayPause={handlePlayPause}
+          onStepFrame={handleStepFrame}
+          onSeek={handleSeek}
+          volume={previewVolume}
+          onVolumeChange={setPreviewVolume}
+          currentTimeOverride={currentTime}
+          durationOverride={duration}
+          activeEditId={isFocused && activeSub ? activeSub.id : null}
+        />
+      </div>
     </div>
   );
 };

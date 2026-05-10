@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { VideoCanvas } from './components/VideoCanvas';
 import { FilterPreview } from './components/FilterPreview';
 import { WelcomeScreen } from './components/WelcomeScreen';
-import { HybridTimeline } from './components/HybridTimeline';
+import { Timeline } from '../timeline/components/Timeline';
 import { PreviewMode } from './components/PreviewMode';
 import { GlobalProgress } from '../../components/GlobalProgress';
 import { useVideoStore } from '../../store/videoStore';
@@ -56,7 +56,7 @@ export const EditorPanel = () => {
             <FilterPreview />
           </div>
           <div className="shrink-0">
-            <HybridTimeline />
+            <Timeline />
           </div>
         </>
       )}
