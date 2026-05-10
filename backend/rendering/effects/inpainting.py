@@ -9,6 +9,7 @@ from rendering.geometry import calculate_text_roi
 logger = logging.getLogger(__name__)
 
 def generate_text_mask(frame: np.ndarray, roi: Tuple[int, int, int, int], font_size_px: int) -> np.ndarray:
+    """Generate a binary mask for the text region."""
     bx, by, bw, bh = roi
     pad = max(5, int(font_size_px * 0.2))
     h, w = frame.shape[:2]
@@ -45,6 +46,8 @@ def generate_text_mask(frame: np.ndarray, roi: Tuple[int, int, int, int], font_s
     return local_mask
 
 class InpaintEffect:
+    """Applies inpainting effect to subtitle regions."""
+    
     def __init__(self, blur_settings: Dict[str, Any]) -> None:
         self.blur_settings = blur_settings
         self.font_size_px = int(blur_settings.get('font_size', 21))
@@ -59,11 +62,13 @@ class InpaintEffect:
         total_frames: int,
         video_path: str,
     ) -> None:
+        """Prepare inpainting regions and clear buffers."""
         if self.blur_settings.get('mode', 'hybrid') != 'hybrid':
             self.frame_inpaint_map.clear()
             return
 
         self.frame_inpaint_map.clear()
+
         for sub in subtitles:
             text = sub.get('text', '').strip()
             if not text:
@@ -81,10 +86,10 @@ class InpaintEffect:
                 self.frame_inpaint_map[f_idx].append((roi, sub_id))
 
         total_entries = sum(len(v) for v in self.frame_inpaint_map.values())
-        logger.info("InpaintEffect prepared %d frame-region entries across %d frames",
-                    total_entries, len(self.frame_inpaint_map))
+        logger.info("InpaintEffect prepared %d frame-region entries across %d frames", total_entries, len(self.frame_inpaint_map))
 
     def apply(self, frame: np.ndarray, frame_index: int) -> np.ndarray:
+        """Apply inpainting to the frame."""
         if frame_index not in self.frame_inpaint_map:
             return frame
 
@@ -104,8 +109,28 @@ class InpaintEffect:
             roi_expanded = frame[y1:y2, x1:x2].copy()
             mask = generate_text_mask(frame, (bx, by, bw, bh), self.font_size_px)
 
-            inpaint_radius = max(5, int(self.font_size_px * 0.3))
-            inpainted = cv2.inpaint(roi_expanded, mask, inpaint_radius, cv2.INPAINT_NS)
+            pre_dilate_k = max(3, int(self.font_size_px * 0.15))
+            if pre_dilate_k % 2 == 0:
+                pre_dilate_k += 1
+            dilate_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (pre_dilate_k, pre_dilate_k))
+            
+            dilated_bg = cv2.dilate(roi_expanded, dilate_kernel)
+            roi_prepared = np.where(mask[..., None] > 0, dilated_bg, roi_expanded)
+
+            scale = 0.5
+            small_w, small_h = int(roi_prepared.shape[1] * scale), int(roi_prepared.shape[0] * scale)
+            
+            if small_w > 0 and small_h > 0:
+                small_roi = cv2.resize(roi_prepared, (small_w, small_h), interpolation=cv2.INTER_LINEAR)
+                small_mask = cv2.resize(mask, (small_w, small_h), interpolation=cv2.INTER_NEAREST)
+                
+                inpaint_radius = max(3, int((self.font_size_px * 0.3) * scale))
+                small_inpainted = cv2.inpaint(small_roi, small_mask, inpaint_radius, cv2.INPAINT_NS)
+                
+                inpainted = cv2.resize(small_inpainted, (roi_expanded.shape[1], roi_expanded.shape[0]), interpolation=cv2.INTER_LINEAR)
+            else:
+                inpaint_radius = max(3, int(self.font_size_px * 0.3))
+                inpainted = cv2.inpaint(roi_prepared, mask, inpaint_radius, cv2.INPAINT_NS)
 
             smooth_k = max(11, int(self.font_size_px * 0.8))
             if smooth_k % 2 == 0:
@@ -128,4 +153,7 @@ class InpaintEffect:
         return frame
 
     def get_debug_info(self) -> Dict[str, Any]:
-        return {"inpaint_regions": len(self.frame_inpaint_map)}
+        """Return debug metadata."""
+        return {
+            "inpaint_regions": len(self.frame_inpaint_map)
+        }
