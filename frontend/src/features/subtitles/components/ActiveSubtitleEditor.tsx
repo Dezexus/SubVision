@@ -11,6 +11,9 @@ interface Props {
   onDelete: () => void;
 }
 
+/**
+ * Editor for the active subtitle with increased font size and vertical centering.
+ */
 export const ActiveSubtitleEditor = ({ activeSub, text, onChange, onFocus, onBlur, onDelete }: Props) => {
   if (!activeSub) {
     return (
@@ -24,15 +27,16 @@ export const ActiveSubtitleEditor = ({ activeSub, text, onChange, onFocus, onBlu
 
   return (
     <div className="shrink-0 h-[126px] w-full bg-bg-main border border-border-main rounded-xl p-3 shadow-xl flex transition-colors duration-300">
-      <div className="flex-1 relative flex items-center group/editor">
+      <div className="flex-1 relative flex items-center justify-center group/editor">
         <textarea
           value={text}
           onChange={onChange}
           onFocus={onFocus}
           onBlur={onBlur}
           onKeyDown={(e) => e.stopPropagation()}
-          className="w-full h-full bg-bg-panel border border-border-strong rounded-lg p-3 text-txt-main text-xl text-center resize-none focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-colors shadow-inner scrollbar-hide"
+          className="w-full h-auto bg-bg-main border-none rounded-lg p-3 text-txt-main text-2xl text-center resize-none focus:outline-none focus:ring-0 transition-colors scrollbar-hide"
           placeholder="Enter subtitle text..."
+          rows={1}
         />
         <button
           onClick={onDelete}
