@@ -18,7 +18,7 @@ PRESETS_DELTAS: dict[str, dict[str, Any]] = {
     "⚖️ Balance": {
         "label": "Balance",
         "desc": "Fast & accurate",
-        "config": {"step": 5, "min_conf": 80, "denoise_strength": 3, "scale_factor": 2.0}
+        "config": {"step": 5, "min_conf": 80, "denoise_strength": 0, "scale_factor": 1.0}
     }
 }
 
@@ -34,6 +34,7 @@ SUPPORTED_LANGUAGES: list[dict[str, str]] = [
 ]
 
 def get_preset_config(preset_name: str) -> ConfigType:
+    """Merge default config with preset specific deltas."""
     config = DEFAULT_CONFIG.copy()
     preset_data = PRESETS_DELTAS.get(preset_name)
     if preset_data:
@@ -41,6 +42,7 @@ def get_preset_config(preset_name: str) -> ConfigType:
     return config
 
 def get_all_presets() -> list[dict[str, Any]]:
+    """Return a list of all available presets with their full configurations."""
     presets_list = []
     for preset_id, preset_data in PRESETS_DELTAS.items():
         full_config = DEFAULT_CONFIG.copy()
@@ -54,4 +56,5 @@ def get_all_presets() -> list[dict[str, Any]]:
     return presets_list
 
 def get_supported_languages() -> list[dict[str, str]]:
+    """Return a list of supported languages for OCR."""
     return SUPPORTED_LANGUAGES
