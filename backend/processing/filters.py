@@ -5,13 +5,17 @@ from core.filters import apply_scaling, apply_sharpening, denoise_frame
 from core.motion import detect_change_absolute
 
 class ImagePipeline:
+    """Pipeline for processing video frames and extracting ROIs."""
+    
     def __init__(self, roi: list[int], config: dict[str, Any]) -> None:
         self.roi = roi
         self.config = config
         self.last_raw_roi: Any = None
         self.skipped_count = 0
+        self.max_continuous_skips = 10
 
     def get_roi(self, frame: np.ndarray) -> np.ndarray:
+        """Extract Region of Interest from the given frame."""
         if self.roi and len(self.roi) == 4 and self.roi[2] > 0:
             x, y, w_roi, h_roi = self.roi
             h, w = frame.shape[:2]
@@ -21,6 +25,7 @@ class ImagePipeline:
         return frame
 
     def process(self, frame: np.ndarray) -> tuple[np.ndarray | None, bool]:
+        """Process the frame and determine if it should be skipped."""
         frame_roi = self.get_roi(frame)
 
         if frame_roi.size == 0:
@@ -30,9 +35,11 @@ class ImagePipeline:
 
         if self.last_raw_roi is not None:
             has_changed = detect_change_absolute(frame_roi, self.last_raw_roi)
-            if not has_changed:
+            if not has_changed and self.skipped_count < self.max_continuous_skips:
                 self.skipped_count += 1
                 skipped = True
+            else:
+                self.skipped_count = 0
 
         if not skipped:
             self.last_raw_roi = frame_roi.copy()
@@ -43,6 +50,7 @@ class ImagePipeline:
         return self.apply_filters(frame), False
 
     def apply_filters(self, frame: np.ndarray) -> np.ndarray | None:
+        """Apply configured filters to the extracted ROI."""
         frame_roi = self.get_roi(frame)
         if frame_roi.size == 0:
             return None
