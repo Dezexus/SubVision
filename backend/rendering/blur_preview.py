@@ -7,6 +7,7 @@ from rendering.effects.inpainting import generate_text_mask
 from core.video_io import extract_frame_cv2
 
 def generate_blur_preview(video_path: str, frame_index: int, settings: Dict[str, Any], text: str) -> np.ndarray | None:
+    """Generate a single frame with blur/inpaint effects applied for UI preview."""
     cached = extract_frame_cv2(video_path, frame_index)
     if cached is None:
         return None
@@ -52,4 +53,6 @@ def generate_blur_preview(video_path: str, frame_index: int, settings: Dict[str,
             frame[y1:y2, x1:x2] = blended.astype(np.uint8)
 
     blur_roi = calculate_blur_roi(text, width, height, settings)
-    return apply_blur_to_frame(frame, blur_roi, settings)
+    text_roi = calculate_text_roi(text, width, height, settings)
+    
+    return apply_blur_to_frame(frame, blur_roi, settings, 1.0, text_roi)

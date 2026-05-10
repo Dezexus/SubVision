@@ -3,12 +3,12 @@ from typing import Tuple, Dict, Any, Optional, List
 import cv2
 import numpy as np
 from core.gpu_utils import has_cuda
-from rendering.effects.interface import Effect
 from rendering.geometry import calculate_blur_roi, calculate_text_roi
 
 logger = logging.getLogger(__name__)
 
-def _apply_cuda_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original_roi: np.ndarray, sigma: int, feather: int, alpha: float, text_mask: Optional[np.ndarray] = None) -> np.ndarray:
+def _apply_cuda_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original_roi: np.ndarray, sigma: int, feather: int, alpha: float, inner_roi: Optional[Tuple[int, int, int, int]] = None) -> np.ndarray:
+    """Apply GPU-accelerated box blur with adaptive masking."""
     bx, by, bw, bh = roi
     h, w = frame.shape[:2]
     gpu_frame = cv2.cuda_GpuMat()
@@ -25,7 +25,7 @@ def _apply_cuda_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original
     else:
         processed_roi = gpu_roi.clone()
 
-    if feather > 0 or alpha < 1.0 or text_mask is not None:
+    if feather > 0 or alpha < 1.0:
         safe_feather_w = int(bw * 0.45)
         safe_feather_h = int(bh * 0.45)
         eff_feather = min(feather, safe_feather_w, safe_feather_h)
@@ -34,19 +34,27 @@ def _apply_cuda_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original
             mask = np.ones((bh, bw), dtype=np.float32)
         else:
             mask = np.zeros((bh, bw), dtype=np.float32)
-            pt1_x = eff_feather if bx > 0 else 0
-            pt1_y = eff_feather if by > 0 else 0
-            pt2_x = bw - eff_feather if (bx + bw) < w else bw
-            pt2_y = bh - eff_feather if (by + bh) < h else bh
+            
+            if inner_roi is not None:
+                ix, iy, iw, ih = inner_roi
+                rx, ry = max(0, ix - bx), max(0, iy - by)
+                
+                pt1_x = max(0, rx - (eff_feather // 2))
+                pt1_y = max(0, ry - (eff_feather // 2))
+                pt2_x = min(bw, rx + iw + (eff_feather // 2))
+                pt2_y = min(bh, ry + ih + (eff_feather // 2))
+            else:
+                pt1_x = eff_feather if bx > 0 else 0
+                pt1_y = eff_feather if by > 0 else 0
+                pt2_x = bw - eff_feather if (bx + bw) < w else bw
+                pt2_y = bh - eff_feather if (by + bh) < h else bh
+
             cv2.rectangle(mask, (pt1_x, pt1_y), (pt2_x, pt2_y), 1.0, -1)
+            
             mask_ksize_val = eff_feather + (1 if eff_feather % 2 == 0 else 0)
             if mask_ksize_val % 2 == 0:
                 mask_ksize_val += 1
             mask = cv2.GaussianBlur(mask, (mask_ksize_val, mask_ksize_val), 0)
-
-        if text_mask is not None:
-            text_mask_blurred = cv2.GaussianBlur(text_mask.astype(np.float32), (eff_feather * 2 + 1, eff_feather * 2 + 1), 0)
-            mask = mask * (1.0 - text_mask_blurred / 255.0)
 
         mask *= alpha
         gpu_mask = cv2.cuda_GpuMat()
@@ -74,7 +82,8 @@ def _apply_cuda_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original
 
     return gpu_frame.download()
 
-def _apply_cpu_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original_roi: np.ndarray, sigma: int, feather: int, alpha: float, text_mask: Optional[np.ndarray] = None) -> np.ndarray:
+def _apply_cpu_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original_roi: np.ndarray, sigma: int, feather: int, alpha: float, inner_roi: Optional[Tuple[int, int, int, int]] = None) -> np.ndarray:
+    """Apply CPU-based box blur with adaptive masking."""
     bx, by, bw, bh = roi
     h, w = frame.shape[:2]
     roi_img = frame[by:by+bh, bx:bx+bw]
@@ -87,7 +96,7 @@ def _apply_cpu_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original_
     else:
         processed_roi = roi_img.copy()
 
-    if feather > 0 or alpha < 1.0 or text_mask is not None:
+    if feather > 0 or alpha < 1.0:
         safe_feather_w = int(bw * 0.45)
         safe_feather_h = int(bh * 0.45)
         eff_feather = min(feather, safe_feather_w, safe_feather_h)
@@ -96,19 +105,27 @@ def _apply_cpu_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original_
             mask = np.ones((bh, bw), dtype=np.float32)
         else:
             mask = np.zeros((bh, bw), dtype=np.float32)
-            pt1_x = eff_feather if bx > 0 else 0
-            pt1_y = eff_feather if by > 0 else 0
-            pt2_x = bw - eff_feather if (bx + bw) < w else bw
-            pt2_y = bh - eff_feather if (by + bh) < h else bh
+            
+            if inner_roi is not None:
+                ix, iy, iw, ih = inner_roi
+                rx, ry = max(0, ix - bx), max(0, iy - by)
+                
+                pt1_x = max(0, rx - (eff_feather // 2))
+                pt1_y = max(0, ry - (eff_feather // 2))
+                pt2_x = min(bw, rx + iw + (eff_feather // 2))
+                pt2_y = min(bh, ry + ih + (eff_feather // 2))
+            else:
+                pt1_x = eff_feather if bx > 0 else 0
+                pt1_y = eff_feather if by > 0 else 0
+                pt2_x = bw - eff_feather if (bx + bw) < w else bw
+                pt2_y = bh - eff_feather if (by + bh) < h else bh
+
             cv2.rectangle(mask, (pt1_x, pt1_y), (pt2_x, pt2_y), 1.0, -1)
+            
             mask_ksize_val = eff_feather + (1 if eff_feather % 2 == 0 else 0)
             if mask_ksize_val % 2 == 0:
                 mask_ksize_val += 1
             mask = cv2.GaussianBlur(mask, (mask_ksize_val, mask_ksize_val), 0)
-
-        if text_mask is not None:
-            text_mask_blurred = cv2.GaussianBlur(text_mask.astype(np.float32), (eff_feather * 2 + 1, eff_feather * 2 + 1), 0)
-            mask = mask * (1.0 - text_mask_blurred / 255.0)
 
         mask_3ch = cv2.merge([mask, mask, mask])
         alpha_mask = mask_3ch * alpha
@@ -123,7 +140,8 @@ def _apply_cpu_blur(frame: np.ndarray, roi: Tuple[int, int, int, int], original_
 
     return frame
 
-def apply_blur_to_frame(frame: np.ndarray, roi: Tuple[int, int, int, int], settings: Dict[str, Any], alpha: float = 1.0) -> np.ndarray:
+def apply_blur_to_frame(frame: np.ndarray, roi: Tuple[int, int, int, int], settings: Dict[str, Any], alpha: float = 1.0, inner_roi: Optional[Tuple[int, int, int, int]] = None) -> np.ndarray:
+    """Entry point for applying blur, delegating to GPU or CPU implementation."""
     bx, by, bw, bh = roi
     if bw <= 0 or bh <= 0 or alpha <= 0.0:
         return frame
@@ -135,40 +153,14 @@ def apply_blur_to_frame(frame: np.ndarray, roi: Tuple[int, int, int, int], setti
 
     if has_cuda():
         try:
-            return _apply_cuda_blur(frame, roi, original_roi, sigma, feather, alpha)
+            return _apply_cuda_blur(frame, roi, original_roi, sigma, feather, alpha, inner_roi)
         except cv2.error:
             pass
 
-    return _apply_cpu_blur(frame, roi, original_roi, sigma, feather, alpha)
-
-def apply_blur_around_text(frame: np.ndarray, blur_roi: Tuple[int, int, int, int], text_roi: Tuple[int, int, int, int], settings: Dict[str, Any], alpha: float = 1.0) -> np.ndarray:
-    bx, by, bw, bh = blur_roi
-    if bw <= 0 or bh <= 0 or alpha <= 0.0:
-        return frame
-
-    original_roi = frame[by:by+bh, bx:bx+bw].copy()
-
-    sigma = int(settings.get('sigma', 5))
-    feather = int(settings.get('feather', 30))
-
-    text_mask = None
-    if text_roi[2] > 0 and text_roi[3] > 0:
-        tx, ty, tw, th = text_roi
-        mask = np.zeros((bh, bw), dtype=np.uint8)
-        rx = tx - bx
-        ry = ty - by
-        cv2.rectangle(mask, (rx, ry), (rx + tw - 1, ry + th - 1), 255, -1)
-        text_mask = mask
-
-    if has_cuda():
-        try:
-            return _apply_cuda_blur(frame, blur_roi, original_roi, sigma, feather, alpha, text_mask)
-        except cv2.error:
-            pass
-
-    return _apply_cpu_blur(frame, blur_roi, original_roi, sigma, feather, alpha, text_mask)
+    return _apply_cpu_blur(frame, roi, original_roi, sigma, feather, alpha, inner_roi)
 
 class BlurEffect:
+    """Applies temporal blur regions around identified text areas across video frames."""
     def __init__(self, blur_settings: Dict[str, Any]) -> None:
         self.blur_settings = blur_settings
         self.frame_blur_map: Dict[int, List[Tuple[Tuple[int, int, int, int], Tuple[int, int, int, int]]]] = {}
@@ -182,6 +174,7 @@ class BlurEffect:
         total_frames: int,
         video_path: str,
     ) -> None:
+        """Pre-calculate bounding boxes for all frames."""
         self.frame_blur_map.clear()
         blur_dict = self.blur_settings
         roi_count = 0
@@ -202,12 +195,14 @@ class BlurEffect:
                     roi_count, len(self.frame_blur_map))
 
     def apply(self, frame: np.ndarray, frame_index: int) -> np.ndarray:
+        """Apply pre-calculated blur regions to a specific frame."""
         if frame_index not in self.frame_blur_map:
             return frame
 
         for blur_roi, text_roi in self.frame_blur_map[frame_index]:
-            frame = apply_blur_around_text(frame, blur_roi, text_roi, self.blur_settings)
+            frame = apply_blur_to_frame(frame, blur_roi, self.blur_settings, 1.0, text_roi)
         return frame
 
     def get_debug_info(self) -> Dict[str, Any]:
+        """Return effect metadata for debugging."""
         return {"blur_regions": len(self.frame_blur_map)}
