@@ -59,15 +59,17 @@ def calculate_text_roi(text: str, width: int, height: int, settings: Dict[str, A
     return final_x, final_y, final_w, final_h
 
 def calculate_blur_roi(text: str, width: int, height: int, settings: Dict[str, Any]) -> Tuple[int, int, int, int]:
-    """Calculate the coordinates of the adaptive blur region (red area)."""
+    """Calculate the coordinates of the adaptive blur region (red area) preventing sharp edges."""
     if not text:
         return 0, 0, 0, 0
 
     font_size_px = int(settings.get('font_size', 21))
     tx, ty, tw, th = calculate_text_roi(text, width, height, settings)
 
-    pad_x = int(font_size_px * 0.8)
-    pad_y = int(font_size_px * 0.3) + 4
+    feather = int(settings.get('feather', 30))
+
+    pad_x = int(font_size_px * 0.8) + feather
+    pad_y = int(font_size_px * 0.3) + 4 + feather
 
     left = tx - pad_x
     top = ty - pad_y
