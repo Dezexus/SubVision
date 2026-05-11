@@ -4,28 +4,26 @@
 import React, { useState, useEffect } from 'react';
 import { Play, Square, RefreshCw, ChevronLeft, ChevronRight, Settings2, AlertTriangle } from 'lucide-react';
 import { useVideoStore } from '../../../store/videoStore';
-import { useTaskStore } from '../../../store/taskStore';
+import { useProcessingStore } from '../../../store/processingStore';
 import { useBlurStore } from '../../../store/blurStore';
 import { useConfigStore } from '../../../store/configStore';
 import { GlassPanel } from '../../../components/ui/GlassPanel';
 import { Button } from '../../../components/ui/Button';
+import { useStartOcr } from '../../../commands/useStartOcr';
+import { useStopOcr } from '../../../commands/useStopOcr';
 import { PresetSelector } from './PresetSelector';
 import { LanguageSelector } from './LanguageSelector';
 import { BlurControlPanel } from '../../blur';
-import { useStartOcr } from '../hooks/useStartOcr';
-import { useStopOcr } from '../hooks/useStopOcr';
 
 export const SettingsPanel = () => {
   const metadata = useVideoStore((s) => s.metadata);
   const clientId = useVideoStore((s) => s.clientId);
   const roi = useVideoStore((s) => s.roi);
-  const resetProject = useVideoStore((s) => s.resetProject);
-  
-  const isProcessing = useTaskStore((s) => s.isProcessing);
-  const activeOcrJobId = useTaskStore((s) => s.activeOcrJobId);
-  const activeBlurJobId = useTaskStore((s) => s.activeBlurJobId);
-  
+  const isProcessing = useProcessingStore((s) => s.isProcessing);
+  const activeOcrJobId = useProcessingStore((s) => s.activeOcrJobId);
+  const activeBlurJobId = useProcessingStore((s) => s.activeBlurJobId);
   const isBlurMode = useBlurStore((s) => s.isBlurMode);
+  const resetProject = useVideoStore((s) => s.resetProject);
   const config = useConfigStore((s) => s.config);
 
   const [isCollapsed, setIsCollapsed] = useState(false);

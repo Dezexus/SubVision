@@ -5,25 +5,24 @@ import React from 'react';
 import { Download, ScanFace, ArrowLeft, Upload, FileVideo, Play, EyeOff, Undo, Redo, Scissors } from 'lucide-react';
 import { GlassPanel } from '../../../components/ui/GlassPanel';
 import { Button } from '../../../components/ui/Button';
-import { SubtitleList, useExportSrt, useImportSrt } from '../../subtitles';
-import { useStartBlurRender } from '../../blur';
+import { SubtitleList } from '../../subtitles';
 import { useVideoStore } from '../../../store/videoStore';
-import { useSubtitleStore } from '../../../store/subtitleStore';
-import { useTaskStore } from '../../../store/taskStore';
+import { useProcessingStore } from '../../../store/processingStore';
 import { useBlurStore } from '../../../store/blurStore';
+import { useExportSrt } from '../../../commands/useExportSrt';
+import { useImportSrt } from '../../../commands/useImportSrt';
+import { useStartBlurRender } from '../../../commands/useStartBlurRender';
 
 export const ResultsPanel = () => {
   const metadata = useVideoStore((s) => s.metadata);
   const clientId = useVideoStore((s) => s.clientId);
-  
-  const subtitles = useSubtitleStore((s) => s.subtitles);
-  const pastSubtitles = useSubtitleStore((s) => s.pastSubtitles);
-  const futureSubtitles = useSubtitleStore((s) => s.futureSubtitles);
-  const undo = useSubtitleStore((s) => s.undo);
-  const redo = useSubtitleStore((s) => s.redo);
-  
-  const isProcessing = useTaskStore((s) => s.isProcessing);
-  const renderedVideoUrl = useTaskStore((s) => s.renderedVideoUrl);
+  const isProcessing = useProcessingStore((s) => s.isProcessing);
+  const subtitles = useProcessingStore((s) => s.subtitles);
+  const pastSubtitles = useProcessingStore((s) => s.pastSubtitles);
+  const futureSubtitles = useProcessingStore((s) => s.futureSubtitles);
+  const undo = useProcessingStore((s) => s.undo);
+  const redo = useProcessingStore((s) => s.redo);
+  const renderedVideoUrl = useProcessingStore((s) => s.renderedVideoUrl);
 
   const isBlurMode = useBlurStore((s) => s.isBlurMode);
   const setBlurMode = useBlurStore((s) => s.setBlurMode);
