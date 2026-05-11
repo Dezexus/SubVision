@@ -1,6 +1,10 @@
+/**
+ * WebSocket hook for listening to backend processing events and updating task/subtitle stores.
+ */
 import { useEffect, useState } from 'react';
 import useWebSocket from 'react-use-websocket';
-import { useProcessingStore } from '../store/processingStore';
+import { useTaskStore } from '../store/taskStore';
+import { useSubtitleStore } from '../store/subtitleStore';
 import { API_BASE } from '../services/api';
 import { getClientId } from '../utils/clientId';
 
@@ -14,15 +18,16 @@ const SOCKET_URL = getSocketUrl();
 
 export const useProcessingSocket = (providedClientId?: string | null) => {
   const [clientId] = useState(() => providedClientId || getClientId());
+  
+  const activeOcrJobId = useTaskStore((s) => s.activeOcrJobId);
+  const activeBlurJobId = useTaskStore((s) => s.activeBlurJobId);
+  const addLog = useTaskStore((s) => s.addLog);
+  const updateProgress = useTaskStore((s) => s.updateProgress);
+  const setProcessing = useTaskStore((s) => s.setProcessing);
+  const setRenderedVideoUrl = useTaskStore((s) => s.setRenderedVideoUrl);
 
-  const activeOcrJobId = useProcessingStore((s) => s.activeOcrJobId);
-  const activeBlurJobId = useProcessingStore((s) => s.activeBlurJobId);
-  const addLog = useProcessingStore((s) => s.addLog);
-  const updateProgress = useProcessingStore((s) => s.updateProgress);
-  const addSubtitle = useProcessingStore((s) => s.addSubtitle);
-  const updateSubtitle = useProcessingStore((s) => s.updateSubtitle);
-  const setProcessing = useProcessingStore((s) => s.setProcessing);
-  const setRenderedVideoUrl = useProcessingStore((s) => s.setRenderedVideoUrl);
+  const addSubtitle = useSubtitleStore((s) => s.addSubtitle);
+  const updateSubtitle = useSubtitleStore((s) => s.updateSubtitle);
 
   const { lastJsonMessage } = useWebSocket(
     clientId ? `${SOCKET_URL}/${clientId}` : null,
@@ -51,8 +56,8 @@ export const useProcessingSocket = (providedClientId?: string | null) => {
       }
     }
 
-    const isProcessing = useProcessingStore.getState().isProcessing;
-    const stoppedJobId = useProcessingStore.getState().stoppedJobId;
+    const isProcessing = useTaskStore.getState().isProcessing;
+    const stoppedJobId = useTaskStore.getState().stoppedJobId;
 
     if (msg.type !== 'finish') {
       if (!isProcessing && stoppedJobId) {
@@ -87,5 +92,8 @@ export const useProcessingSocket = (providedClientId?: string | null) => {
         }
         break;
     }
-  }, [lastJsonMessage, activeOcrJobId, activeBlurJobId, addLog, updateProgress, addSubtitle, updateSubtitle, setProcessing, setRenderedVideoUrl]);
+  }, [
+    lastJsonMessage, activeOcrJobId, activeBlurJobId, addLog, 
+    updateProgress, addSubtitle, updateSubtitle, setProcessing, setRenderedVideoUrl
+  ]);
 };

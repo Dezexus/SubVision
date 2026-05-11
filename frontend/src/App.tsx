@@ -1,5 +1,5 @@
 /**
- * Main application component managing the layout and global state initialization.
+ * Main application component managing the layout, global state initialization, and shortcuts.
  */
 import React, { useEffect } from 'react';
 import { SettingsPanel } from './features/settings';
@@ -9,7 +9,7 @@ import { ToastContainer } from './components/ui/ToastContainer';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SessionRecoveryModal } from './components/SessionRecoveryModal';
 import { useVideoStore } from './store/videoStore';
-import { useProcessingStore } from './store/processingStore';
+import { useSubtitleStore } from './store/subtitleStore';
 import { useProcessingSocket } from './hooks/useProcessingSocket';
 
 function App() {
@@ -18,9 +18,11 @@ function App() {
   const file = useVideoStore((s) => s.file);
   const filename = useVideoStore((s) => s.filename);
   const metadata = useVideoStore((s) => s.metadata);
-  const undo = useProcessingStore((s) => s.undo);
-  const redo = useProcessingStore((s) => s.redo);
-  const restoreFromStorage = useProcessingStore((s) => s.restoreFromStorage);
+  
+  const undo = useSubtitleStore((s) => s.undo);
+  const redo = useSubtitleStore((s) => s.redo);
+  const restoreFromStorage = useSubtitleStore((s) => s.restoreFromStorage);
+  
   const restoreVideoState = useVideoStore((s) => s.restoreVideoState);
 
   useEffect(() => {
