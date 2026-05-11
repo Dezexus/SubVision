@@ -1,13 +1,16 @@
+/**
+ * Hook to stop the active blur rendering process.
+ */
 import { useCallback } from 'react';
-import { api } from '../services/api';
-import { useProcessingStore } from '../store/processingStore';
+import { api } from '../../../services/api';
+import { useTaskStore } from '../../../store/taskStore';
 
-export function useStopBlurRender() {
-  const setProcessing = useProcessingStore((s) => s.setProcessing);
-  const addLog = useProcessingStore((s) => s.addLog);
-  const activeBlurJobId = useProcessingStore((s) => s.activeBlurJobId);
-  const setActiveBlurJobId = useProcessingStore((s) => s.setActiveBlurJobId);
-  const setStoppedJobId = useProcessingStore((s) => s.setStoppedJobId);
+export const useStopBlurRender = () => {
+  const setProcessing = useTaskStore((s) => s.setProcessing);
+  const addLog = useTaskStore((s) => s.addLog);
+  const activeBlurJobId = useTaskStore((s) => s.activeBlurJobId);
+  const setActiveBlurJobId = useTaskStore((s) => s.setActiveBlurJobId);
+  const setStoppedJobId = useTaskStore((s) => s.setStoppedJobId);
 
   const execute = useCallback(async () => {
     if (!activeBlurJobId) return;
@@ -24,4 +27,4 @@ export function useStopBlurRender() {
   }, [activeBlurJobId, setActiveBlurJobId, setProcessing, setStoppedJobId, addLog]);
 
   return { execute };
-}
+};

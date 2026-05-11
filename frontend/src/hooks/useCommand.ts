@@ -1,3 +1,6 @@
+/**
+ * Generic utility hook for managing async operations, loading states, and toast notifications.
+ */
 import { useState, useCallback } from 'react';
 import { useUIStore } from '../store/uiStore';
 
