@@ -1,14 +1,17 @@
+/**
+ * Displays the results panel containing the subtitle list and global editing actions.
+ */
 import React from 'react';
 import { Download, ScanFace, ArrowLeft, Upload, FileVideo, Play, EyeOff, Undo, Redo, Scissors } from 'lucide-react';
-import { GlassPanel } from '../../components/ui/GlassPanel';
-import { Button } from '../../components/ui/Button';
-import { SubtitleList } from './components/SubtitleList';
-import { useVideoStore } from '../../store/videoStore';
-import { useProcessingStore } from '../../store/processingStore';
-import { useBlurStore } from '../../store/blurStore';
-import { useExportSrt } from '../../commands/useExportSrt';
-import { useImportSrt } from '../../commands/useImportSrt';
-import { useStartBlurRender } from '../../commands/useStartBlurRender';
+import { GlassPanel } from '../../../components/ui/GlassPanel';
+import { Button } from '../../../components/ui/Button';
+import { SubtitleList } from '../../subtitles';
+import { useVideoStore } from '../../../store/videoStore';
+import { useProcessingStore } from '../../../store/processingStore';
+import { useBlurStore } from '../../../store/blurStore';
+import { useExportSrt } from '../../../commands/useExportSrt';
+import { useImportSrt } from '../../../commands/useImportSrt';
+import { useStartBlurRender } from '../../../commands/useStartBlurRender';
 
 export const ResultsPanel = () => {
   const metadata = useVideoStore((s) => s.metadata);
@@ -27,7 +30,7 @@ export const ResultsPanel = () => {
 
   const isPreviewMode = useVideoStore((s) => s.isPreviewMode);
   const setPreviewMode = useVideoStore((s) => s.setPreviewMode);
-
+  
   const { execute: exportSrt } = useExportSrt();
   const { execute: importSrt } = useImportSrt();
   const { execute: startBlurRender } = useStartBlurRender();
@@ -56,6 +59,7 @@ export const ResultsPanel = () => {
     const downloadLink = renderedVideoUrl.startsWith('http')
       ? renderedVideoUrl
       : `${import.meta.env.VITE_API_URL || 'http://localhost:7860'}${renderedVideoUrl}`;
+      
     const link = document.createElement('a');
     link.href = downloadLink;
     const safeName = metadata.filename.replace(/\.[^/.]+$/, "");
@@ -132,6 +136,7 @@ export const ResultsPanel = () => {
               >
                 {isPreviewMode ? 'CLOSE PREVIEW' : 'OPEN PREVIEW'}
               </Button>
+          
               <div className="grid grid-cols-2 gap-3">
                 <Button
                   variant="primary"

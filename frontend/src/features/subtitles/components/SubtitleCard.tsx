@@ -1,3 +1,6 @@
+/**
+ * Displays an individual subtitle item with editing, merging, and deletion capabilities.
+ */
 import React, { useState, useEffect } from 'react';
 import { Copy, Trash2, ArrowDownToLine } from 'lucide-react';
 import type { SubtitleItem } from '../../../types';
@@ -39,6 +42,7 @@ export const SubtitleCard = ({ item, index }: { item: SubtitleItem, index: numbe
         deleteSubtitle(item.id);
       }
     };
+   
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isHovered, item.id, deleteSubtitle]);

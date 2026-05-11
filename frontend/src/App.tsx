@@ -1,7 +1,10 @@
+/**
+ * Main application component managing the layout and global state initialization.
+ */
 import React, { useEffect } from 'react';
-import { SettingsPanel } from './features/settings/SettingsPanel';
-import { EditorPanel } from './features/editor/EditorPanel';
-import { ResultsPanel } from './features/results/ResultsPanel';
+import { SettingsPanel } from './features/settings';
+import { EditorPanel } from './features/editor';
+import { ResultsPanel } from './features/results';
 import { ToastContainer } from './components/ui/ToastContainer';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SessionRecoveryModal } from './components/SessionRecoveryModal';
@@ -15,7 +18,6 @@ function App() {
   const file = useVideoStore((s) => s.file);
   const filename = useVideoStore((s) => s.filename);
   const metadata = useVideoStore((s) => s.metadata);
-  
   const undo = useProcessingStore((s) => s.undo);
   const redo = useProcessingStore((s) => s.redo);
   const restoreFromStorage = useProcessingStore((s) => s.restoreFromStorage);

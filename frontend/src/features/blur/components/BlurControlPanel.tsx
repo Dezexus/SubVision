@@ -1,14 +1,17 @@
+/**
+ * Renders the control panel for configuring and starting the smart blur rendering process.
+ */
 import React, { useEffect, useRef } from 'react';
 import { Video, RotateCcw, Wand2, ScanLine, BoxSelect, Droplet, Loader2, CheckCircle } from 'lucide-react';
-import { useVideoStore } from '../../store/videoStore';
-import { useProcessingStore } from '../../store/processingStore';
-import { useBlurStore } from '../../store/blurStore';
-import { Slider } from '../../components/ui/Slider';
-import { Button } from '../../components/ui/Button';
-import { api } from '../../services/api';
-import { cn } from '../../utils/cn';
-import { useBlurPreview } from './hooks/useBlurPreview';
-import { useStartBlurRender } from '../../commands/useStartBlurRender';
+import { useVideoStore } from '../../../store/videoStore';
+import { useProcessingStore } from '../../../store/processingStore';
+import { useBlurStore } from '../../../store/blurStore';
+import { Slider } from '../../../components/ui/Slider';
+import { Button } from '../../../components/ui/Button';
+import { api } from '../../../services/api';
+import { cn } from '../../../utils/cn';
+import { useBlurPreview } from '../hooks/useBlurPreview';
+import { useStartBlurRender } from '../../../commands/useStartBlurRender';
 
 export const BlurControlPanel = () => {
   const metadata = useVideoStore((s) => s.metadata);
@@ -103,7 +106,7 @@ export const BlurControlPanel = () => {
             ) : (
                 <div className="w-32" />
             )}
-        </div>
+          </div>
 
           <div className="flex-none">
               <button
@@ -139,7 +142,7 @@ export const BlurControlPanel = () => {
               )}
             >
               HYBRID INPAINT
-            </button>
+             </button>
             <div 
               className={cn(
                 "absolute left-1 top-1 bottom-1 w-[calc(50%-4px)] bg-brand-500 rounded-md transition-transform duration-300 ease-out shadow-sm",
@@ -168,13 +171,13 @@ export const BlurControlPanel = () => {
               onChange={(e) => setBlurSettings({ font_size: Number(e.target.value) })}
             />
             <div className="grid grid-cols-2 gap-4 pt-2 border-t border-border-main/50">
-              <Slider
+               <Slider
                 label="Width Ratio"
                 min={0.5} max={3.0} step={0.05}
                 value={blurSettings.width_multiplier}
                 suffix="x"
                 onChange={(e) => setBlurSettings({ width_multiplier: Number(e.target.value) })}
-              />
+               />
               <Slider
                 label="Height Ratio"
                 min={0.5} max={3.0} step={0.05}
@@ -187,21 +190,21 @@ export const BlurControlPanel = () => {
         </div>
 
         <div className="bg-bg-panel border border-border-main rounded-xl p-4 shadow-sm">
-          <div className="flex items-center gap-2 text-xs font-bold text-txt-main tracking-wide mb-4">
+           <div className="flex items-center gap-2 text-xs font-bold text-txt-main tracking-wide mb-4">
             <Droplet size={16} className="text-brand-400" /> Appearance
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Slider
               label="Intensity (Sigma)"
               max={100}
-              value={blurSettings.sigma}
+               value={blurSettings.sigma}
               suffix="%"
               onChange={(e) => setBlurSettings({ sigma: Number(e.target.value) })}
             />
             <Slider
               label="Edge Softness"
               max={100}
-              value={blurSettings.feather}
+               value={blurSettings.feather}
               suffix="px"
               onChange={(e) => setBlurSettings({ feather: Number(e.target.value) })}
             />
@@ -210,7 +213,7 @@ export const BlurControlPanel = () => {
         
       </div>
       <div className="p-4 border-t border-border-main bg-bg-panel shrink-0">
-        <Button
+         <Button
           variant="primary"
           className="w-full py-3.5 text-sm font-bold tracking-wide shadow-lg"
           icon={<Video size={18} />}
@@ -220,7 +223,7 @@ export const BlurControlPanel = () => {
         >
           START RENDER
         </Button>
-      </div>
+       </div>
     </div>
   );
 };

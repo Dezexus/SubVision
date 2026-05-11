@@ -1,16 +1,19 @@
+/**
+ * Renders the settings panel for configuring OCR options and navigating to blur settings.
+ */
 import React, { useState, useEffect } from 'react';
 import { Play, Square, RefreshCw, ChevronLeft, ChevronRight, Settings2, AlertTriangle } from 'lucide-react';
-import { useVideoStore } from '../../store/videoStore';
-import { useProcessingStore } from '../../store/processingStore';
-import { useBlurStore } from '../../store/blurStore';
-import { useConfigStore } from '../../store/configStore';
-import { GlassPanel } from '../../components/ui/GlassPanel';
-import { Button } from '../../components/ui/Button';
-import { useStartOcr } from '../../commands/useStartOcr';
-import { useStopOcr } from '../../commands/useStopOcr';
-import { PresetSelector } from './components/PresetSelector';
-import { LanguageSelector } from './components/LanguageSelector';
-import { BlurControlPanel } from '../blur/BlurControlPanel';
+import { useVideoStore } from '../../../store/videoStore';
+import { useProcessingStore } from '../../../store/processingStore';
+import { useBlurStore } from '../../../store/blurStore';
+import { useConfigStore } from '../../../store/configStore';
+import { GlassPanel } from '../../../components/ui/GlassPanel';
+import { Button } from '../../../components/ui/Button';
+import { useStartOcr } from '../../../commands/useStartOcr';
+import { useStopOcr } from '../../../commands/useStopOcr';
+import { PresetSelector } from './PresetSelector';
+import { LanguageSelector } from './LanguageSelector';
+import { BlurControlPanel } from '../../blur';
 
 export const SettingsPanel = () => {
   const metadata = useVideoStore((s) => s.metadata);

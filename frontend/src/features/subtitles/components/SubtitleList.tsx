@@ -1,3 +1,6 @@
+/**
+ * Renders a virtualized list of subtitle cards that auto-scrolls with the active video frame.
+ */
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Unlock, FileText } from 'lucide-react';
@@ -10,7 +13,7 @@ export const SubtitleList = () => {
   const isProcessing = useProcessingStore((s) => s.isProcessing);
   const currentFrameIndex = useVideoStore((s) => s.currentFrameIndex);
   const metadata = useVideoStore((s) => s.metadata);
-  
+
   const parentRef = useRef<HTMLDivElement>(null);
   const lastActiveIndexRef = useRef<number>(-1);
 
@@ -56,7 +59,7 @@ export const SubtitleList = () => {
         </div>
         <h3 className="text-sm font-bold text-txt-main mb-1 tracking-wide">No Subtitles Yet</h3>
         <p className="text-xs text-txt-subtle max-w-[220px] leading-relaxed">
-          Start the OCR process or import an existing .SRT file to begin editing.
+           Start the OCR process or import an existing .SRT file to begin editing.
         </p>
       </div>
     );

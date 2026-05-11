@@ -1,8 +1,11 @@
+/**
+ * Renders the preview mode interface, integrating the video player, active subtitle editor, and timeline.
+ */
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useVideoStore } from '../../../store/videoStore';
 import { useProcessingStore } from '../../../store/processingStore';
-import { Timeline } from '../../timeline/components/Timeline';
-import { ActiveSubtitleEditor } from '../../subtitles/components/ActiveSubtitleEditor';
+import { Timeline } from '../../timeline';
+import { ActiveSubtitleEditor } from '../../subtitles';
 import { API_BASE } from '../../../services/api';
 import type { SubtitleItem } from '../../../types';
 
@@ -14,7 +17,6 @@ export const PreviewMode = () => {
   const setCurrentFrame = useVideoStore((s) => s.setCurrentFrame);
   const previewVolume = useVideoStore((s) => s.previewVolume);
   const setPreviewVolume = useVideoStore((s) => s.setPreviewVolume);
-
   const subtitles = useProcessingStore((s) => s.subtitles);
   const updateSubtitle = useProcessingStore((s) => s.updateSubtitle);
   const deleteSubtitle = useProcessingStore((s) => s.deleteSubtitle);
@@ -23,7 +25,6 @@ export const PreviewMode = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const animationFrameRef = useRef<number>();
   const lastThrottleTimeRef = useRef<number>(0);
-
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);

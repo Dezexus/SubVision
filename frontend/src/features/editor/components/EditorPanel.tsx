@@ -1,11 +1,14 @@
+/**
+ * Main editor panel managing the video canvas, filter preview, and timeline components.
+ */
 import React, { useEffect } from 'react';
-import { VideoCanvas } from './components/VideoCanvas';
-import { FilterPreview } from './components/FilterPreview';
-import { WelcomeScreen } from './components/WelcomeScreen';
-import { Timeline } from '../timeline/components/Timeline';
-import { PreviewMode } from './components/PreviewMode';
-import { GlobalProgress } from '../../components/GlobalProgress';
-import { useVideoStore } from '../../store/videoStore';
+import { VideoCanvas } from './VideoCanvas';
+import { FilterPreview } from './FilterPreview';
+import { WelcomeScreen } from './WelcomeScreen';
+import { Timeline } from '../../timeline';
+import { PreviewMode } from './PreviewMode';
+import { GlobalProgress } from '../../../components/GlobalProgress';
+import { useVideoStore } from '../../../store/videoStore';
 
 export const EditorPanel = () => {
   const file = useVideoStore((s) => s.file);
