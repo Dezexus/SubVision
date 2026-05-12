@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { getClientId } from '../utils/clientId';
+import { getClientId } from '../shared/lib';
 import type { VideoMetadata } from '../types';
 
 interface VideoState {
@@ -34,6 +34,9 @@ interface VideoState {
   resetProject: () => void;
 }
 
+/**
+ * Zustand store for managing video file state, metadata, and core playback metrics.
+ */
 export const useVideoStore = create<VideoState>()((set, get) => ({
   file: null,
   filename: null,

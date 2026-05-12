@@ -1,12 +1,9 @@
-/**
- * WebSocket hook for listening to backend processing events and updating task/subtitle stores.
- */
 import { useEffect, useState } from 'react';
 import useWebSocket from 'react-use-websocket';
 import { useTaskStore } from '../store/taskStore';
 import { useSubtitleStore } from '../store/subtitleStore';
 import { API_BASE } from '../services/api';
-import { getClientId } from '../utils/clientId';
+import { getClientId } from '../shared/lib';
 
 const getSocketUrl = () => {
   const url = new URL(API_BASE);
@@ -16,6 +13,9 @@ const getSocketUrl = () => {
 
 const SOCKET_URL = getSocketUrl();
 
+/**
+ * WebSocket hook for listening to backend processing events and updating task/subtitle stores.
+ */
 export const useProcessingSocket = (providedClientId?: string | null) => {
   const [clientId] = useState(() => providedClientId || getClientId());
   
@@ -25,7 +25,7 @@ export const useProcessingSocket = (providedClientId?: string | null) => {
   const updateProgress = useTaskStore((s) => s.updateProgress);
   const setProcessing = useTaskStore((s) => s.setProcessing);
   const setRenderedVideoUrl = useTaskStore((s) => s.setRenderedVideoUrl);
-
+  
   const addSubtitle = useSubtitleStore((s) => s.addSubtitle);
   const updateSubtitle = useSubtitleStore((s) => s.updateSubtitle);
 
