@@ -1,5 +1,5 @@
 import React from 'react';
-import { cn } from '../../utils/cn';
+import { cn } from '../../shared/lib';
 
 interface SwitchProps {
   checked: boolean;
@@ -7,6 +7,9 @@ interface SwitchProps {
   label?: string;
 }
 
+/**
+ * Interactive toggle switch component for boolean settings.
+ */
 export const Switch = ({ checked, onChange, label }: SwitchProps) => {
   return (
     <div
