@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Globe } from 'lucide-react';
 import { Slider, Switch } from '../../../shared/ui';
-import { api } from '../../../shared/api';
+import { useLanguagesQuery } from '../queries/useLanguagesQuery';
 
 interface Props {
   config: any;
@@ -13,21 +13,7 @@ interface Props {
  * Advanced settings component for configuring OCR parameters and processing behavior.
  */
 export const AdvancedSettings = ({ config, setConfig, defaultConfig }: Props) => {
-  const [availableLanguages, setAvailableLanguages] = useState<any[]>([]);
-
-  useEffect(() => {
-    const fetchLanguages = async () => {
-      try {
-        const data = await api.getLanguages();
-        setAvailableLanguages(data);
-      } catch (error) {
-        console.error(error);
-      }
-    };
-    if (availableLanguages.length === 0) {
-      fetchLanguages();
-    }
-  }, [availableLanguages]);
+  const { data: availableLanguages = [] } = useLanguagesQuery();
 
   return (
     <div className="space-y-5">

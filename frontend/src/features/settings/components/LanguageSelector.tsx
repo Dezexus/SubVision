@@ -1,26 +1,14 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Globe, ChevronDown, Check } from 'lucide-react';
-import { api } from '../../../shared/api';
 import { useConfigStore } from '../../../store/configStore';
+import { useLanguagesQuery } from '../queries/useLanguagesQuery';
 
 export const LanguageSelector: React.FC = () => {
   const config = useConfigStore((s) => s.config);
   const setConfig = useConfigStore((s) => s.setConfig);
-  const [availableLanguages, setAvailableLanguages] = useState<{code: string, name: string}[]>([]);
+  const { data: availableLanguages = [] } = useLanguagesQuery();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const fetchLanguages = async () => {
-      try {
-        const data = await api.getLanguages();
-        setAvailableLanguages(data);
-      } catch (error) {
-        console.error('Failed to fetch languages:', error);
-      }
-    };
-    fetchLanguages();
-  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getClientId } from '../shared/lib';
 import { useProcessingStore } from '../store/processingStore';
 import { useVideoStore } from '../store/videoStore';
@@ -9,31 +10,30 @@ import { Button } from '../shared/ui';
  * Modal component to recover or cancel an active background session job.
  */
 export const SessionRecoveryModal: React.FC = () => {
-  const [activeJob, setActiveJob] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [isCancelling, setIsCancelling] = useState<boolean>(false);
+  const queryClient = useQueryClient();
+  const clientId = getClientId();
+  const [isHidden, setIsHidden] = useState(false);
 
-  useEffect(() => {
-    const checkStatus = async () => {
-      const clientId = getClientId();
-      if (!clientId) {
-        setLoading(false);
-        return;
-      }
-      
-      try {
-        const data = await api.getSessionStatus(clientId);
-        if (data.has_active_job && data.job_id) {
-          setActiveJob(data.job_id);
-        }
-      } catch (error) {
-        console.error('Failed to check session status:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    checkStatus();
-  }, []);
+  const { data, isLoading } = useQuery({
+    queryKey: ['sessionStatus', clientId],
+    queryFn: () => api.getSessionStatus(clientId as string),
+    enabled: !!clientId,
+    retry: false
+  });
+
+  const activeJob = data?.has_active_job ? data.job_id : null;
+
+  const cancelMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeJob || !clientId) return;
+      await api.cancelSessionJob(activeJob, clientId);
+    },
+    onSuccess: () => {
+      useProcessingStore.getState().reset();
+      useVideoStore.getState().reset();
+      queryClient.invalidateQueries({ queryKey: ['sessionStatus'] });
+    }
+  });
 
   const handleContinue = () => {
     if (activeJob) {
@@ -45,27 +45,10 @@ export const SessionRecoveryModal: React.FC = () => {
         stoppedJobId: null
       });
     }
-    setActiveJob(null);
+    setIsHidden(true);
   };
 
-  const handleCancel = async () => {
-    if (!activeJob) return;
-    setIsCancelling(true);
-    const clientId = getClientId();
-    try {
-      await api.cancelSessionJob(activeJob, clientId);
-      useProcessingStore.getState().reset();
-      useVideoStore.getState().reset();
-    } catch (error) {
-      console.error('Failed to cancel job:', error);
-    } finally {
-      setActiveJob(null);
-      setIsCancelling(false);
-      setLoading(false);
-    }
-  };
-
-  if (loading || !activeJob) return null;
+  if (isLoading || !activeJob || cancelMutation.isSuccess || isHidden) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm transition-opacity">
@@ -97,16 +80,16 @@ export const SessionRecoveryModal: React.FC = () => {
           <div className="flex flex-col-reverse sm:flex-row gap-3 sm:gap-4">
             <Button 
               variant="secondary"
-              onClick={handleCancel} 
-              disabled={isCancelling}
+              onClick={() => cancelMutation.mutate()} 
+              disabled={cancelMutation.isPending}
               className="flex-1 py-3"
             >
-              {isCancelling ? 'Stopping...' : 'Cancel Task'}
+              {cancelMutation.isPending ? 'Stopping...' : 'Cancel Task'}
             </Button>
             <Button 
               variant="primary"
               onClick={handleContinue}
-              disabled={isCancelling}
+              disabled={cancelMutation.isPending}
               className="flex-1 py-3"
             >
               Reconnect
