@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import useWebSocket from 'react-use-websocket';
-import { useTaskStore } from '../store/taskStore';
-import { useSubtitleStore } from '../store/subtitleStore';
+import { useProcessingStore } from '../store/processingStore';
 import { API_BASE } from '../shared/api';
 import { getClientId } from '../shared/lib';
 
@@ -14,18 +13,20 @@ const getSocketUrl = () => {
 const SOCKET_URL = getSocketUrl();
 
 /**
- * WebSocket hook for listening to backend processing events and updating task/subtitle stores.
+ * WebSocket hook for listening to backend processing events.
  */
 export const useProcessingSocket = (providedClientId?: string | null) => {
   const [clientId] = useState(() => providedClientId || getClientId());
-  const activeOcrJobId = useTaskStore((s) => s.activeOcrJobId);
-  const activeBlurJobId = useTaskStore((s) => s.activeBlurJobId);
-  const addLog = useTaskStore((s) => s.addLog);
-  const updateProgress = useTaskStore((s) => s.updateProgress);
-  const setProcessing = useTaskStore((s) => s.setProcessing);
-  const setRenderedVideoUrl = useTaskStore((s) => s.setRenderedVideoUrl);
-  const addSubtitle = useSubtitleStore((s) => s.addSubtitle);
-  const updateSubtitle = useSubtitleStore((s) => s.updateSubtitle);
+  
+  const activeOcrJobId = useProcessingStore((s) => s.activeOcrJobId);
+  const activeBlurJobId = useProcessingStore((s) => s.activeBlurJobId);
+  const addLog = useProcessingStore((s) => s.addLog);
+  const updateProgress = useProcessingStore((s) => s.updateProgress);
+  const setProcessing = useProcessingStore((s) => s.setProcessing);
+  const setRenderedVideoUrl = useProcessingStore((s) => s.setRenderedVideoUrl);
+  
+  const addSubtitle = useProcessingStore((s) => s.addSubtitle);
+  const updateSubtitle = useProcessingStore((s) => s.updateSubtitle);
 
   const { lastJsonMessage } = useWebSocket(
     clientId ? `${SOCKET_URL}/${clientId}` : null,
@@ -54,8 +55,8 @@ export const useProcessingSocket = (providedClientId?: string | null) => {
       }
     }
 
-    const isProcessing = useTaskStore.getState().isProcessing;
-    const stoppedJobId = useTaskStore.getState().stoppedJobId;
+    const isProcessing = useProcessingStore.getState().isProcessing;
+    const stoppedJobId = useProcessingStore.getState().stoppedJobId;
 
     if (msg.type !== 'finish') {
       if (!isProcessing && stoppedJobId) {
@@ -73,7 +74,7 @@ export const useProcessingSocket = (providedClientId?: string | null) => {
       case 'subtitle_new':
         addSubtitle(msg.item);
         break;
-       case 'subtitle_update':
+      case 'subtitle_update':
         updateSubtitle(msg.item);
         break;
       case 'finish':

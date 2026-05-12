@@ -6,11 +6,11 @@ import { ToastContainer } from './shared/ui';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SessionRecoveryModal } from './components/SessionRecoveryModal';
 import { useVideoStore } from './store/videoStore';
-import { useSubtitleStore } from './store/subtitleStore';
+import { useProcessingStore } from './store/processingStore';
 import { useProcessingSocket } from './hooks/useProcessingSocket';
 
 /**
- * Main application component managing the layout, global state initialization, and shortcuts.
+ * Main application component.
  */
 function App() {
   const initializeClientId = useVideoStore((s) => s.initializeClientId);
@@ -19,9 +19,9 @@ function App() {
   const filename = useVideoStore((s) => s.filename);
   const metadata = useVideoStore((s) => s.metadata);
   
-  const undo = useSubtitleStore((s) => s.undo);
-  const redo = useSubtitleStore((s) => s.redo);
-  const restoreFromStorage = useSubtitleStore((s) => s.restoreFromStorage);
+  const undo = useProcessingStore((s) => s.undo);
+  const redo = useProcessingStore((s) => s.redo);
+  const restoreFromStorage = useProcessingStore((s) => s.restoreFromStorage);
   
   const restoreVideoState = useVideoStore((s) => s.restoreVideoState);
 
