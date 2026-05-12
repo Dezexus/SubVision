@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Video, RotateCcw, Wand2, ScanLine, BoxSelect, Droplet, Loader2, CheckCircle } from 'lucide-react';
+import { Video, RotateCcw, Wand2, ScanLine, Droplet, Loader2 } from 'lucide-react';
 import { useVideoStore } from '../../../store/videoStore';
 import { useProcessingStore } from '../../../store/processingStore';
 import { useBlurStore } from '../../../store/blurStore';
@@ -7,7 +7,7 @@ import { Slider, Button } from '../../../shared/ui';
 import { api } from '../../../shared/api';
 import { cn } from '../../../shared/lib';
 import { useBlurPreview } from '../hooks/useBlurPreview';
-import { useStartBlurRender } from '../../../commands/useStartBlurRender';
+import { useStartBlurRender } from '../mutations/useStartBlurRender';
 
 /**
  * Renders the control panel for configuring and starting the smart blur rendering process.
@@ -19,11 +19,8 @@ export const BlurControlPanel = () => {
   const roi = useVideoStore((s) => s.roi);
 
   const isProcessing = useProcessingStore((s) => s.isProcessing);
-  const setProcessing = useProcessingStore((s) => s.setProcessing);
   const updateProgress = useProcessingStore((s) => s.updateProgress);
-  const addLog = useProcessingStore((s) => s.addLog);
   const subtitles = useProcessingStore((s) => s.subtitles);
-  const setActiveBlurJobId = useProcessingStore((s) => s.setActiveBlurJobId);
 
   const blurSettings = useBlurStore((s) => s.blurSettings);
   const defaultBlurSettings = useBlurStore((s) => s.defaultBlurSettings);
@@ -59,23 +56,15 @@ export const BlurControlPanel = () => {
     }
   }, [roi, metadata, videoHeight, setBlurSettings]);
 
-  const handleRender = async () => {
+  const handleRender = () => {
     if (!metadata || !clientId) return;
-    setProcessing(true);
     updateProgress(0, metadata.total_frames, "Starting...");
-    addLog('--- Starting Smart Render ---');
-    try {
-      const { job_id } = await startBlurRender({
-        filename: metadata.filename,
-        client_id: clientId,
-        subtitles: subtitles,
-        blur_settings: blurSettings,
-      });
-      setActiveBlurJobId(job_id);
-    } catch (e) {
-      addLog('Error: Render failed to start.');
-      setProcessing(false);
-    }
+    startBlurRender({
+      filename: metadata.filename,
+      client_id: clientId,
+      subtitles: subtitles,
+      blur_settings: blurSettings,
+    });
   };
 
   const handleReset = () => {
@@ -94,6 +83,7 @@ export const BlurControlPanel = () => {
   return (
     <div className="flex flex-col h-full bg-bg-main relative">
       <div className="flex-1 overflow-y-auto p-4 space-y-5 scrollbar-hide">
+        
         <div className="w-full bg-bg-panel p-2 rounded-xl border border-border-main shadow-sm flex items-center relative overflow-hidden">
           <div className="flex-1 flex items-center">
             {isPreviewUpdating ? (
@@ -105,6 +95,7 @@ export const BlurControlPanel = () => {
                 <div className="w-32" />
             )}
           </div>
+
           <div className="flex-none">
               <button
                 onClick={handleReset}
@@ -207,6 +198,7 @@ export const BlurControlPanel = () => {
             />
           </div>
         </div>
+        
       </div>
       <div className="p-4 border-t border-border-main bg-bg-panel shrink-0">
          <Button

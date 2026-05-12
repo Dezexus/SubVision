@@ -5,9 +5,9 @@ import { SubtitleList } from '../../subtitles';
 import { useVideoStore } from '../../../store/videoStore';
 import { useProcessingStore } from '../../../store/processingStore';
 import { useBlurStore } from '../../../store/blurStore';
-import { useExportSrt } from '../../../commands/useExportSrt';
-import { useImportSrt } from '../../../commands/useImportSrt';
-import { useStartBlurRender } from '../../../commands/useStartBlurRender';
+import { useExportSrt } from '../mutations/useExportSrt';
+import { useImportSrt } from '../mutations/useImportSrt';
+import { useStartBlurRender } from '../../blur/mutations/useStartBlurRender';
 
 /**
  * Displays the results panel containing the subtitle list and global editing actions.
@@ -29,6 +29,7 @@ export const ResultsPanel = () => {
 
   const isPreviewMode = useVideoStore((s) => s.isPreviewMode);
   const setPreviewMode = useVideoStore((s) => s.setPreviewMode);
+
   const { execute: exportSrt } = useExportSrt();
   const { execute: importSrt } = useImportSrt();
   const { execute: startBlurRender } = useStartBlurRender();
@@ -133,7 +134,7 @@ export const ResultsPanel = () => {
               >
                 {isPreviewMode ? 'CLOSE PREVIEW' : 'OPEN PREVIEW'}
               </Button>
-          
+
               <div className="grid grid-cols-2 gap-3">
                 <Button
                   variant="primary"
@@ -144,7 +145,7 @@ export const ResultsPanel = () => {
                 >
                   EXPORT SRT
                 </Button>
-              
+
                 <Button
                   variant="secondary"
                   className="py-3 h-11 text-xs font-semibold shadow-md bg-purple-600/10 hover:bg-purple-600/20 text-purple-300 border-purple-500/30 transition-colors"

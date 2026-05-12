@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
-import { useProcessingStore } from '../store/processingStore';
-import { useVideoStore } from '../store/videoStore';
-import { useUIStore } from '../store/uiStore';
+import { useProcessingStore } from '../../../store/processingStore';
+import { useVideoStore } from '../../../store/videoStore';
+import { useUIStore } from '../../../store/uiStore';
 
 const formatSrtTime = (seconds: number) => {
   const date = new Date(0);
@@ -11,6 +11,9 @@ const formatSrtTime = (seconds: number) => {
   return iso.replace('.', ',');
 };
 
+/**
+ * Hook to export subtitles to an SRT file format.
+ */
 export function useExportSrt() {
   const subtitles = useProcessingStore((s) => s.subtitles);
   const metadata = useVideoStore((s) => s.metadata);

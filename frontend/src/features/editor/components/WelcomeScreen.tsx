@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Upload, AlertCircle, Loader2, Video, FileText, Wand2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '../../../shared/lib';
-import { useUploadVideo } from '../../../commands/useUploadVideo';
+import { useUploadVideo } from '../mutations/useUploadVideo';
 import { useVideoStore } from '../../../store/videoStore';
 import { api } from '../../../shared/api';
 

@@ -1,7 +1,10 @@
-import { useCallback } from 'react';
-import { api } from '../shared/api';
-import { useProcessingStore } from '../store/processingStore';
+import { useMutation } from '@tanstack/react-query';
+import { api } from '../../../shared/api';
+import { useProcessingStore } from '../../../store/processingStore';
 
+/**
+ * Mutation hook for stopping an active blur render process.
+ */
 export function useStopBlurRender() {
   const setProcessing = useProcessingStore((s) => s.setProcessing);
   const addLog = useProcessingStore((s) => s.addLog);
@@ -9,19 +12,22 @@ export function useStopBlurRender() {
   const setActiveBlurJobId = useProcessingStore((s) => s.setActiveBlurJobId);
   const setStoppedJobId = useProcessingStore((s) => s.setStoppedJobId);
 
-  const execute = useCallback(async () => {
-    if (!activeBlurJobId) return;
-    try {
+  const mutation = useMutation({
+    mutationFn: async () => {
+      if (!activeBlurJobId) return;
       setStoppedJobId(activeBlurJobId);
       setProcessing(false);
       await api.stopProcessing(activeBlurJobId);
+    },
+    onSuccess: () => {
       addLog('--- Render stopped by user ---');
-    } catch (e) {
+      setActiveBlurJobId(null);
+    },
+    onError: (e) => {
       console.error('Failed to send stop signal', e);
-    } finally {
       setActiveBlurJobId(null);
     }
-  }, [activeBlurJobId, setActiveBlurJobId, setProcessing, setStoppedJobId, addLog]);
+  });
 
-  return { execute };
+  return { execute: mutation.mutateAsync };
 }

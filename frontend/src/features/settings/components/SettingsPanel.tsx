@@ -5,11 +5,11 @@ import { useProcessingStore } from '../../../store/processingStore';
 import { useBlurStore } from '../../../store/blurStore';
 import { useConfigStore } from '../../../store/configStore';
 import { GlassPanel, Button } from '../../../shared/ui';
-import { useStartOcr } from '../../../commands/useStartOcr';
-import { useStopOcr } from '../../../commands/useStopOcr';
 import { PresetSelector } from './PresetSelector';
 import { LanguageSelector } from './LanguageSelector';
 import { BlurControlPanel } from '../../blur';
+import { useStartOcr } from '../mutations/useStartOcr';
+import { useStopOcr } from '../mutations/useStopOcr';
 
 /**
  * Renders the settings panel for configuring OCR options and navigating to blur settings.
@@ -81,7 +81,7 @@ export const SettingsPanel = () => {
               onClick={handleReset}
               className={`p-2 rounded transition-colors flex items-center gap-2 ${
                 confirmReset 
-                  ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' 
+                 ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' 
                   : 'hover:bg-bg-surface text-txt-dim hover:text-txt-main'
               }`}
               title={confirmReset ? "Click again to confirm" : "New Project"}
