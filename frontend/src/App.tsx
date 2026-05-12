@@ -1,17 +1,17 @@
-/**
- * Main application component managing the layout, global state initialization, and shortcuts.
- */
 import React, { useEffect } from 'react';
 import { SettingsPanel } from './features/settings';
 import { EditorPanel } from './features/editor';
 import { ResultsPanel } from './features/results';
-import { ToastContainer } from './components/ui/ToastContainer';
+import { ToastContainer } from './shared/ui';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SessionRecoveryModal } from './components/SessionRecoveryModal';
 import { useVideoStore } from './store/videoStore';
 import { useSubtitleStore } from './store/subtitleStore';
 import { useProcessingSocket } from './hooks/useProcessingSocket';
 
+/**
+ * Main application component managing the layout, global state initialization, and shortcuts.
+ */
 function App() {
   const initializeClientId = useVideoStore((s) => s.initializeClientId);
   const clientId = useVideoStore((s) => s.clientId);
