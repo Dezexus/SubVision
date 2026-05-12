@@ -1,15 +1,14 @@
-/**
- * Displays an individual subtitle item with editing, merging, and deletion capabilities.
- */
 import React, { useState, useEffect } from 'react';
 import { Copy, Trash2, ArrowDownToLine } from 'lucide-react';
 import type { SubtitleItem } from '../../../types';
 import { useProcessingStore } from '../../../store/processingStore';
 import { useVideoStore } from '../../../store/videoStore';
 import { useUIStore } from '../../../store/uiStore';
-import { cn } from '../../../utils/cn';
-import { formatTimeDisplay } from '../../../utils/format';
+import { cn, formatTimeDisplay } from '../../../shared/lib';
 
+/**
+ * Displays an individual subtitle item with editing, merging, and deletion capabilities.
+ */
 export const SubtitleCard = ({ item, index }: { item: SubtitleItem, index: number }) => {
   const updateSubtitle = useProcessingStore((s) => s.updateSubtitle);
   const deleteSubtitle = useProcessingStore((s) => s.deleteSubtitle);

@@ -1,11 +1,14 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Upload, AlertCircle, Loader2, Video, FileText, Wand2 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { cn } from '../../../utils/cn';
+import { cn } from '../../../shared/lib';
 import { useUploadVideo } from '../../../commands/useUploadVideo';
 import { useVideoStore } from '../../../store/videoStore';
 import { api } from '../../../services/api';
 
+/**
+ * Initial screen displaying the drag-and-drop zone for video uploads.
+ */
 export const WelcomeScreen = () => {
   const allowedExtensions = useVideoStore((s) => s.allowedExtensions);
   const setAllowedExtensions = useVideoStore((s) => s.setAllowedExtensions);

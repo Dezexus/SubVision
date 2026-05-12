@@ -2,8 +2,11 @@ import React from 'react';
 import { Clock, Activity, CheckCircle2 } from 'lucide-react';
 import { useProcessingStore } from '../store/processingStore';
 import { useVideoStore } from '../store/videoStore';
-import { cn } from '../utils/cn';
+import { cn } from '../shared/lib';
 
+/**
+ * Global progress bar indicating the status of background processing tasks.
+ */
 export const GlobalProgress = () => {
   const progress = useProcessingStore((s) => s.progress);
   const isProcessing = useProcessingStore((s) => s.isProcessing);
@@ -26,6 +29,7 @@ export const GlobalProgress = () => {
         ) : percentage === 100 ? (
           <CheckCircle2 size={16} className="text-green-500" />
         ) : null}
+       
         <span className={cn(
           "text-sm font-bold tracking-wide uppercase",
           isProcessing ? "text-brand-400" : percentage === 100 ? "text-green-500" : "text-txt-subtle"

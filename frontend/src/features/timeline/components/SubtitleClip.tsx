@@ -1,5 +1,5 @@
 import React from 'react';
-import { cn } from '../../../utils/cn';
+import { cn } from '../../../shared/lib';
 import type { ProcessedSubtitle } from '../utils/timelineUtils';
 
 interface Props {
@@ -13,6 +13,9 @@ interface Props {
   onMouseEnter: () => void;
 }
 
+/**
+ * Renders an individual subtitle block on the timeline track.
+ */
 export const SubtitleClip = ({
   sub,
   isActive,
@@ -34,7 +37,7 @@ export const SubtitleClip = ({
   else if (sub.conf > 0.85) colorClass = "bg-emerald-500/20 border-emerald-500/40 text-emerald-200";
   else if (sub.conf < 0.6) colorClass = "bg-rose-500/20 border-rose-500/40 text-rose-200";
   else colorClass = "bg-amber-500/20 border-amber-500/40 text-amber-200";
-
+  
   if (isActive) colorClass += " ring-1 ring-white/30 brightness-125";
   if (isBeingEdited) colorClass += " ring-2 ring-brand-500 animate-pulse z-20";
 

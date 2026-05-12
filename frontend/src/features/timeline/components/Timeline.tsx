@@ -1,13 +1,12 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useVideoStore } from '../../../store/videoStore';
 import { useProcessingStore } from '../../../store/processingStore';
-import { formatTimeDisplay } from '../../../utils/format';
 import { calculateTracks, type ProcessedSubtitle } from '../utils/timelineUtils';
 import { useTimelineZoom } from '../hooks/useTimelineZoom';
 import { useSubtitleDrag } from '../hooks/useSubtitleDrag';
 import { TimelineHeader } from './TimelineHeader';
 import { SubtitleClip } from './SubtitleClip';
-import { cn } from '../../../utils/cn';
+import { cn, formatTimeDisplay } from '../../../shared/lib';
 
 interface TimelineProps {
   isPlaying?: boolean;
@@ -21,6 +20,9 @@ interface TimelineProps {
   activeEditId?: number | null;
 }
 
+/**
+ * Core interactive timeline component handling zooming, scrolling, and track visualization.
+ */
 export const Timeline: React.FC<TimelineProps> = ({
   isPlaying: isPlayingProp,
   onPlayPause,
@@ -36,7 +38,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   const currentFrameIndex = useVideoStore((s) => s.currentFrameIndex);
   const setCurrentFrame = useVideoStore((s) => s.setCurrentFrame);
   const subtitles = useProcessingStore((s) => s.subtitles);
-
+  
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -103,7 +105,7 @@ export const Timeline: React.FC<TimelineProps> = ({
     const rect = scrollContainerRef.current.getBoundingClientRect();
     const percent = (e.clientX - rect.left + scrollContainerRef.current.scrollLeft) / scrollContainerRef.current.scrollWidth;
     const targetTime = percent * exactDuration;
-
+    
     if (isPreviewMode && onSeek) onSeek(Math.max(0, Math.min(exactDuration, targetTime)));
     else setCurrentFrame(Math.min(Math.max(0, Math.round(percent * (metadata?.total_frames || 0))), (metadata?.total_frames || 1) - 1));
   };

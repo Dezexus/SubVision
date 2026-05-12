@@ -3,7 +3,7 @@ import {
   ChevronLeft, ChevronRight, Clock, ZoomIn, ZoomOut, 
   Play, Pause, Volume2, Magnet 
 } from 'lucide-react';
-import { cn } from '../../../utils/cn';
+import { cn } from '../../../shared/lib';
 
 interface Props {
   currentTimeDisplay: string;
@@ -21,6 +21,9 @@ interface Props {
   onVolumeChange?: (vol: number) => void;
 }
 
+/**
+ * Top control bar for the timeline containing playback, zoom, and snapping toggles.
+ */
 export const TimelineHeader = ({
   currentTimeDisplay,
   totalTimeDisplay,
