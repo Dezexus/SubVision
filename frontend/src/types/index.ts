@@ -1,3 +1,7 @@
+/**
+ * Core TypeScript type definitions and interfaces for the application.
+ */
+
 export interface VideoMetadata {
   filename: string;
   original_filename: string;
