@@ -1,34 +1,18 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Upload, AlertCircle, Loader2, Video, FileText, Wand2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '../../../shared/lib';
 import { useUploadVideo } from '../mutations/useUploadVideo';
-import { useVideoStore } from '../../../store/videoStore';
-import { api } from '../../../shared/api';
+import { useAllowedExtensionsQuery } from '../queries/useAllowedExtensionsQuery';
 
 /**
  * Initial screen displaying the drag-and-drop zone for video uploads.
  */
 export const WelcomeScreen = () => {
-  const allowedExtensions = useVideoStore((s) => s.allowedExtensions);
-  const setAllowedExtensions = useVideoStore((s) => s.setAllowedExtensions);
+  const { data: allowedExtensions = [] } = useAllowedExtensionsQuery();
   const { execute, isLoading, progress } = useUploadVideo();
   const [isDragging, setIsDragging] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchExtensions = async () => {
-      try {
-        const data = await api.getAllowedExtensions();
-        setAllowedExtensions(data);
-      } catch (error) {
-        console.error(error);
-      }
-    };
-    if (allowedExtensions.length === 0) {
-      fetchExtensions();
-    }
-  }, [allowedExtensions, setAllowedExtensions]);
 
   const exts = allowedExtensions.length > 0 ? allowedExtensions : ['.mp4', '.mkv', '.avi', '.mov', '.webm'];
   const acceptString = `video/*,${exts.join(',')}`;

@@ -4,10 +4,10 @@ import { useVideoStore } from '../../../store/videoStore';
 import { useProcessingStore } from '../../../store/processingStore';
 import { useBlurStore } from '../../../store/blurStore';
 import { Slider, Button } from '../../../shared/ui';
-import { api } from '../../../shared/api';
 import { cn } from '../../../shared/lib';
 import { useBlurPreview } from '../hooks/useBlurPreview';
 import { useStartBlurRender } from '../mutations/useStartBlurRender';
+import { useDefaultBlurSettingsQuery } from '../queries/useDefaultBlurSettingsQuery';
 
 /**
  * Renders the control panel for configuring and starting the smart blur rendering process.
@@ -23,31 +23,24 @@ export const BlurControlPanel = () => {
   const subtitles = useProcessingStore((s) => s.subtitles);
 
   const blurSettings = useBlurStore((s) => s.blurSettings);
-  const defaultBlurSettings = useBlurStore((s) => s.defaultBlurSettings);
   const setBlurSettings = useBlurStore((s) => s.setBlurSettings);
-  const setDefaultBlurSettings = useBlurStore((s) => s.setDefaultBlurSettings);
   const setBlurPreviewUrl = useBlurStore((s) => s.setBlurPreviewUrl);
 
   const userAdjustedY = useRef(false);
+  const initialized = useRef(false);
+
+  const { data: defaultBlurSettings } = useDefaultBlurSettingsQuery();
   const { isPreviewUpdating } = useBlurPreview(metadata, blurSettings, subtitles, currentFrameIndex, setBlurPreviewUrl);
   const { execute: startBlurRender } = useStartBlurRender();
 
   const videoHeight = metadata?.height || 1080;
 
   useEffect(() => {
-    const fetchDefaults = async () => {
-      try {
-        const defaults = await api.getDefaultBlurSettings();
-        setDefaultBlurSettings(defaults);
-        setBlurSettings(defaults);
-      } catch (error) {
-        console.error(error);
-      }
-    };
-    if (!defaultBlurSettings) {
-      fetchDefaults();
+    if (defaultBlurSettings && !initialized.current) {
+      setBlurSettings(defaultBlurSettings);
+      initialized.current = true;
     }
-  }, [defaultBlurSettings, setDefaultBlurSettings, setBlurSettings]);
+  }, [defaultBlurSettings, setBlurSettings]);
 
   useEffect(() => {
     if (metadata && !userAdjustedY.current && roi[1] > 0) {

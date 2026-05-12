@@ -6,6 +6,7 @@ import { useBlurStore } from '../../../store/blurStore';
 import { api } from '../../../shared/api';
 import { useUIStore } from '../../../store/uiStore';
 import { clearFrameCache } from '../hooks/useVideoFrame';
+import { useAllowedExtensionsQuery } from '../queries/useAllowedExtensionsQuery';
 
 /**
  * Mutation hook for uploading a video file and initializing the project state.
@@ -17,7 +18,7 @@ export function useUploadVideo() {
   const resetProcessing = useProcessingStore((s) => s.reset);
   const resetBlur = useBlurStore((s) => s.reset);
   const addToast = useUIStore((s) => s.addToast);
-  const allowedExtensions = useVideoStore((s) => s.allowedExtensions);
+  const { data: allowedExtensions = [] } = useAllowedExtensionsQuery();
 
   const mutation = useMutation({
     mutationFn: async (file: File) => {
