@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Globe, ChevronDown, Check } from 'lucide-react';
-import { api } from '../../../services/api';
+import { api } from '../../../shared/api';
 import { useConfigStore } from '../../../store/configStore';
 
 export const LanguageSelector: React.FC = () => {
@@ -43,7 +43,7 @@ export const LanguageSelector: React.FC = () => {
         <button
           onClick={() => setIsOpen(!isOpen)}
           className={`w-full flex items-center justify-between bg-bg-input text-txt-main border rounded-md py-2.5 px-3 text-sm transition-all focus:outline-none ${
-            isOpen ? 'border-brand-500 ring-1 ring-brand-500' : 'border-border-strong hover:border-border-hover'
+             isOpen ? 'border-brand-500 ring-1 ring-brand-500' : 'border-border-strong hover:border-border-hover'
           }`}
         >
           <span className="truncate">{selectedLang.name}</span>
@@ -66,7 +66,7 @@ export const LanguageSelector: React.FC = () => {
                 <span className="truncate">{lang.name}</span>
                 {config.languages === lang.code && <Check size={14} className="text-brand-500 flex-shrink-0" />}
               </button>
-            ))}
+             ))}
           </div>
         )}
       </div>

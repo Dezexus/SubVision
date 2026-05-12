@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { getClientId } from '../shared/lib';
 import { useProcessingStore } from '../store/processingStore';
 import { useVideoStore } from '../store/videoStore';
-import { api } from '../services/api';
+import { api } from '../shared/api';
 import { Button } from '../shared/ui';
 
 /**
@@ -70,9 +70,7 @@ export const SessionRecoveryModal: React.FC = () => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm transition-opacity">
       <div className="relative w-full max-w-lg mx-4 overflow-hidden rounded-xl bg-bg-panel shadow-panel border border-border-main sm:mx-auto animate-in fade-in zoom-in-95 duration-200">
-        
         <div className="absolute inset-x-0 top-0 h-1 bg-brand-500" />
-        
         <div className="p-6 sm:p-8">
           <div className="mb-6 flex items-start gap-4">
             <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-bg-surface border border-border-strong shadow-sm">
@@ -90,14 +88,12 @@ export const SessionRecoveryModal: React.FC = () => {
               <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-brand-400">Session Recovery</p>
             </div>
           </div>
-
           <div className="mb-8">
             <p className="text-sm text-txt-muted leading-relaxed">
               A background task from your previous session is still running on the server.
               You can reconnect to monitor its progress or cancel it to start a new project.
             </p>
           </div>
-
           <div className="flex flex-col-reverse sm:flex-row gap-3 sm:gap-4">
             <Button 
               variant="secondary"

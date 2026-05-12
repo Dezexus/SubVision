@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { api } from '../services/api';
+import { api } from '../shared/api';
 import { useProcessingStore } from '../store/processingStore';
 
 export function useStopBlurRender() {

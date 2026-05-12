@@ -1,0 +1,80 @@
+import axios from 'axios';
+import { API_URL } from './config';
+import type { ProcessConfig, RenderConfig, SubtitleItem, BlurSettings, Preset, Language } from '../../types';
+
+export const processApi = {
+  registerSession: async (): Promise<{ client_id: string }> => {
+    const response = await axios.post(`${API_URL}/session/register`);
+    return response.data;
+  },
+
+  getPresets: async (): Promise<Preset[]> => {
+    const response = await axios.get(`${API_URL}/process/presets`);
+    return response.data;
+  },
+
+  getLanguages: async (): Promise<Language[]> => {
+    const response = await axios.get(`${API_URL}/process/languages`);
+    return response.data;
+  },
+
+  getDefaultBlurSettings: async (): Promise<BlurSettings> => {
+    const response = await axios.get(`${API_URL}/process/blur-defaults`);
+    return response.data;
+  },
+
+  getDefaultProcessConfig: async (): Promise<Partial<ProcessConfig>> => {
+    const response = await axios.get(`${API_URL}/process/process-defaults`);
+    return response.data;
+  },
+
+  getBlurPreview: async (config: {
+    filename: string;
+    frame_index: number;
+    blur_settings: BlurSettings;
+    subtitle_text: string;
+  }, signal?: AbortSignal) => {
+    const response = await axios.post(`${API_URL}/process/preview_blur`, config, {
+      responseType: 'blob',
+      signal
+    });
+    return URL.createObjectURL(response.data);
+  },
+
+  startProcessing: async (config: ProcessConfig) => {
+    const response = await axios.post<{ status: string; job_id: string }>(
+      `${API_URL}/process/start`, config
+    );
+    return response.data;
+  },
+
+  stopProcessing: async (jobId: string) => {
+    await axios.post(`${API_URL}/process/stop`, { job_id: jobId });
+  },
+
+  importSrt: async (file: File): Promise<SubtitleItem[]> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await axios.post<SubtitleItem[]>(`${API_URL}/process/import_srt`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+
+  renderBlurVideo: async (config: RenderConfig) => {
+    const response = await axios.post<{ status: string; job_id: string }>(
+      `${API_URL}/process/render_blur`, config
+    );
+    return response.data;
+  },
+
+  getSessionStatus: async (clientId: string): Promise<{ has_active_job: boolean; job_id: string | null }> => {
+    const response = await axios.get(`${API_URL}/session/status/${clientId}`);
+    return response.data;
+  },
+
+  cancelSessionJob: async (jobId: string, clientId: string): Promise<{ status: string }> => {
+    const response = await axios.post(`${API_URL}/session/jobs/${jobId}/cancel`, { client_id: clientId });
+    return response.data;
+  }
+};

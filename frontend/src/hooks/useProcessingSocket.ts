@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import useWebSocket from 'react-use-websocket';
 import { useTaskStore } from '../store/taskStore';
 import { useSubtitleStore } from '../store/subtitleStore';
-import { API_BASE } from '../services/api';
+import { API_BASE } from '../shared/api';
 import { getClientId } from '../shared/lib';
 
 const getSocketUrl = () => {
@@ -18,14 +18,12 @@ const SOCKET_URL = getSocketUrl();
  */
 export const useProcessingSocket = (providedClientId?: string | null) => {
   const [clientId] = useState(() => providedClientId || getClientId());
-  
   const activeOcrJobId = useTaskStore((s) => s.activeOcrJobId);
   const activeBlurJobId = useTaskStore((s) => s.activeBlurJobId);
   const addLog = useTaskStore((s) => s.addLog);
   const updateProgress = useTaskStore((s) => s.updateProgress);
   const setProcessing = useTaskStore((s) => s.setProcessing);
   const setRenderedVideoUrl = useTaskStore((s) => s.setRenderedVideoUrl);
-  
   const addSubtitle = useSubtitleStore((s) => s.addSubtitle);
   const updateSubtitle = useSubtitleStore((s) => s.updateSubtitle);
 
@@ -75,7 +73,7 @@ export const useProcessingSocket = (providedClientId?: string | null) => {
       case 'subtitle_new':
         addSubtitle(msg.item);
         break;
-      case 'subtitle_update':
+       case 'subtitle_update':
         updateSubtitle(msg.item);
         break;
       case 'finish':

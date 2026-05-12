@@ -2,13 +2,14 @@ import { useState, useCallback } from 'react';
 import { useVideoStore } from '../store/videoStore';
 import { useProcessingStore } from '../store/processingStore';
 import { useBlurStore } from '../store/blurStore';
-import { api } from '../services/api';
+import { api } from '../shared/api';
 import { useUIStore } from '../store/uiStore';
 import { clearFrameCache } from '../features/editor/hooks/useVideoFrame';
 
 export function useUploadVideo() {
   const [isLoading, setIsLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+
   const setMetadata = useVideoStore((s) => s.setMetadata);
   const setFile = useVideoStore((s) => s.setFile);
   const resetProcessing = useProcessingStore((s) => s.reset);

@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { cn } from '../../../shared/lib';
 import { useUploadVideo } from '../../../commands/useUploadVideo';
 import { useVideoStore } from '../../../store/videoStore';
-import { api } from '../../../services/api';
+import { api } from '../../../shared/api';
 
 /**
  * Initial screen displaying the drag-and-drop zone for video uploads.
@@ -99,7 +99,7 @@ export const WelcomeScreen = () => {
           </p>
         </motion.div>
 
-        <motion.div
+         <motion.div
           variants={itemVariants}
           className={cn(
             "w-full aspect-video rounded-xl border-2 border-dashed flex flex-col items-center justify-center transition-all duration-200 relative overflow-hidden group cursor-pointer",
@@ -120,13 +120,13 @@ export const WelcomeScreen = () => {
           <label htmlFor="central-upload" className={cn(
             "flex flex-col items-center gap-5 w-full h-full justify-center absolute inset-0 cursor-pointer",
             isLoading && "cursor-wait"
-          )}>
+           )}>
             <div className={cn(
               "w-16 h-16 rounded-full flex items-center justify-center transition-transform duration-200",
               isLoading
                 ? "bg-bg-panel"
                 : "bg-bg-input group-hover:bg-brand-500 group-hover:text-white text-txt-muted shadow-sm group-hover:shadow-md group-hover:-translate-y-1"
-            )}>
+             )}>
               {isLoading ? (
                 <Loader2 size={28} className="animate-spin text-brand-500" />
               ) : (
@@ -134,7 +134,7 @@ export const WelcomeScreen = () => {
               )}
             </div>
             <div className="text-center space-y-1.5 px-4 relative z-10">
-              <h2 className="text-lg font-medium text-txt-main">
+               <h2 className="text-lg font-medium text-txt-main">
                 {isLoading ? (progress === 100 ? 'Processing...' : `Uploading ${progress}%...`) : 'Select or drop video'}
               </h2>
               <p className={cn("text-xs", isLoading ? "text-amber-500 animate-pulse font-medium" : "text-txt-subtle")}>

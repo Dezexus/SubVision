@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { api } from '../../../services/api';
+import { api } from '../../../shared/api';
 import type { VideoMetadata, BlurSettings, SubtitleItem } from '../../../types';
 
 const MAX_BLUR_CACHE = 30;

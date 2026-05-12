@@ -4,7 +4,7 @@ import { useVideoStore } from '../../../store/videoStore';
 import { useProcessingStore } from '../../../store/processingStore';
 import { useBlurStore } from '../../../store/blurStore';
 import { Slider, Button } from '../../../shared/ui';
-import { api } from '../../../services/api';
+import { api } from '../../../shared/api';
 import { cn } from '../../../shared/lib';
 import { useBlurPreview } from '../hooks/useBlurPreview';
 import { useStartBlurRender } from '../../../commands/useStartBlurRender';
@@ -94,7 +94,6 @@ export const BlurControlPanel = () => {
   return (
     <div className="flex flex-col h-full bg-bg-main relative">
       <div className="flex-1 overflow-y-auto p-4 space-y-5 scrollbar-hide">
-        
         <div className="w-full bg-bg-panel p-2 rounded-xl border border-border-main shadow-sm flex items-center relative overflow-hidden">
           <div className="flex-1 flex items-center">
             {isPreviewUpdating ? (
@@ -106,7 +105,6 @@ export const BlurControlPanel = () => {
                 <div className="w-32" />
             )}
           </div>
-
           <div className="flex-none">
               <button
                 onClick={handleReset}
@@ -170,13 +168,13 @@ export const BlurControlPanel = () => {
               onChange={(e) => setBlurSettings({ font_size: Number(e.target.value) })}
             />
             <div className="grid grid-cols-2 gap-4 pt-2 border-t border-border-main/50">
-              <Slider
+               <Slider
                 label="Width Ratio"
                 min={0.5} max={3.0} step={0.05}
                 value={blurSettings.width_multiplier}
                 suffix="x"
                 onChange={(e) => setBlurSettings({ width_multiplier: Number(e.target.value) })}
-              />
+               />
               <Slider
                 label="Height Ratio"
                 min={0.5} max={3.0} step={0.05}
@@ -189,30 +187,29 @@ export const BlurControlPanel = () => {
         </div>
 
         <div className="bg-bg-panel border border-border-main rounded-xl p-4 shadow-sm">
-          <div className="flex items-center gap-2 text-xs font-bold text-txt-main tracking-wide mb-4">
+           <div className="flex items-center gap-2 text-xs font-bold text-txt-main tracking-wide mb-4">
             <Droplet size={16} className="text-brand-400" /> Appearance
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Slider
               label="Intensity (Sigma)"
               max={100}
-              value={blurSettings.sigma}
+               value={blurSettings.sigma}
               suffix="%"
               onChange={(e) => setBlurSettings({ sigma: Number(e.target.value) })}
             />
             <Slider
               label="Edge Softness"
               max={100}
-              value={blurSettings.feather}
+               value={blurSettings.feather}
               suffix="px"
               onChange={(e) => setBlurSettings({ feather: Number(e.target.value) })}
             />
           </div>
         </div>
-        
       </div>
       <div className="p-4 border-t border-border-main bg-bg-panel shrink-0">
-        <Button
+         <Button
           variant="primary"
           className="w-full py-3.5 text-sm font-bold tracking-wide shadow-lg"
           icon={<Video size={18} />}
@@ -222,7 +219,7 @@ export const BlurControlPanel = () => {
         >
           START RENDER
         </Button>
-       </div>
+     </div>
     </div>
   );
 };

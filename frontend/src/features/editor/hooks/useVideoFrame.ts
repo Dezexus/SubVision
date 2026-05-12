@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { api } from '../../../services/api';
+import { api } from '../../../shared/api';
 import type { VideoMetadata } from '../../../types';
 import { useUIStore } from '../../../store/uiStore';
 
@@ -46,7 +46,7 @@ export const useVideoFrame = (metadata: VideoMetadata | null, currentFrameIndex:
     }
 
     if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
+       clearTimeout(debounceTimerRef.current);
     }
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -66,12 +66,10 @@ export const useVideoFrame = (metadata: VideoMetadata | null, currentFrameIndex:
 
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
-
       setIsLoading(true);
 
       try {
         const url = await api.getFrameBlob(metadata.filename, currentFrameIndex, abortController.signal);
-
         if (isActive && url) {
           if (frameCache.size >= MAX_FRAME_CACHE) {
             const firstKey = frameCache.keys().next().value;

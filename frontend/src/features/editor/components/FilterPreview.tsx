@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Cpu, Loader2, ScanLine } from 'lucide-react';
 import { useVideoStore } from '../../../store/videoStore';
 import { useConfigStore } from '../../../store/configStore';
-import { api } from '../../../services/api';
+import { api } from '../../../shared/api';
 
 const MAX_FILTER_CACHE = 30;
 const filterCache = new Map<string, string>();
@@ -38,7 +38,7 @@ export const FilterPreview = () => {
       setPreviewUrl(url);
       setLoading(false);
       return;
-    }
+     }
 
     const timer = setTimeout(async () => {
       setLoading(true);
@@ -51,7 +51,7 @@ export const FilterPreview = () => {
         });
 
         if (isActive) {
-          if (filterCache.size >= MAX_FILTER_CACHE) {
+           if (filterCache.size >= MAX_FILTER_CACHE) {
             const firstKey = filterCache.keys().next().value;
             if (firstKey) {
               const oldUrl = filterCache.get(firstKey);
@@ -86,7 +86,7 @@ export const FilterPreview = () => {
           <ScanLine size={20} className="mb-2 opacity-50" />
           <span className="text-xs font-medium tracking-wide">
             Draw a selection box on the video to preview the algorithm
-          </span>
+           </span>
         </div>
       ) : (
         <div className="flex gap-4 w-full h-full items-center">
@@ -105,21 +105,22 @@ export const FilterPreview = () => {
                 <span className="text-txt-main font-mono">{roi?.[2]}x{roi?.[3]}</span>
               </div>
             </div>
-          </div>
+           </div>
 
           <div className="flex-1 bg-black rounded border border-border-main overflow-hidden flex items-center justify-center relative h-full">
             {loading && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
                 <Loader2 className="animate-spin text-brand-500" size={20} />
               </div>
-            )}
-            {previewUrl ? (
+             )}
+            {previewUrl ?
+            (
               <img src={previewUrl} alt="Algorithm View" className="h-full w-auto object-contain" />
             ) : (
               <div className="flex flex-col items-center gap-1 text-txt-subtle">
                 <ScanLine size={16} />
                 <span className="text-[9px]">NO SIGNAL</span>
-              </div>
+               </div>
             )}
           </div>
         </div>

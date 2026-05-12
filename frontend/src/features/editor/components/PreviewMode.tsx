@@ -6,7 +6,7 @@ import { useVideoStore } from '../../../store/videoStore';
 import { useProcessingStore } from '../../../store/processingStore';
 import { Timeline } from '../../timeline';
 import { ActiveSubtitleEditor } from '../../subtitles';
-import { API_BASE } from '../../../services/api';
+import { API_BASE } from '../../../shared/api';
 import type { SubtitleItem } from '../../../types';
 
 const THROTTLE_INTERVAL = 100;
@@ -25,6 +25,7 @@ export const PreviewMode = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const animationFrameRef = useRef<number>();
   const lastThrottleTimeRef = useRef<number>(0);
+
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -54,7 +55,7 @@ export const PreviewMode = () => {
         if (time >= subtitles[i].start && time <= subtitles[i].end) {
           setActiveSub(subtitles[i]);
           return;
-        }
+         }
       }
       setActiveSub(null);
     },
@@ -114,7 +115,7 @@ export const PreviewMode = () => {
     }
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-    };
+     };
   }, [isPlaying, updateActiveSubtitle, syncCurrentFrame]);
 
   useEffect(() => {
@@ -128,7 +129,7 @@ export const PreviewMode = () => {
         setVideoUrl(url);
         return () => setVideoUrl(null);
       }
-    }
+     }
   }, [file, metadata]);
 
   const handleStepFrame = useCallback(
@@ -139,7 +140,7 @@ export const PreviewMode = () => {
         const currentFrame = Math.round(video.currentTime * metadata.fps);
         let newTime = (currentFrame + frames) / metadata.fps;
         newTime = Math.max(0, Math.min(video.duration || 0, newTime));
-        video.currentTime = newTime + 0.0001;
+         video.currentTime = newTime + 0.0001;
         setCurrentTime(newTime);
         syncCurrentFrame(newTime);
       }
@@ -212,7 +213,7 @@ export const PreviewMode = () => {
         }}
       />
       <div className="shrink-0">
-        <Timeline
+         <Timeline
           isPlaying={isPlaying}
           onPlayPause={handlePlayPause}
           onStepFrame={handleStepFrame}
