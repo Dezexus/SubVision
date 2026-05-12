@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { getClientId } from '../utils/clientId';
+import { getClientId } from '../shared/lib';
 import { useProcessingStore } from '../store/processingStore';
 import { useVideoStore } from '../store/videoStore';
 import { api } from '../services/api';
-import { Button } from './ui/Button';
+import { Button } from '../shared/ui';
 
+/**
+ * Modal component to recover or cancel an active background session job.
+ */
 export const SessionRecoveryModal: React.FC = () => {
   const [activeJob, setActiveJob] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -90,7 +93,8 @@ export const SessionRecoveryModal: React.FC = () => {
 
           <div className="mb-8">
             <p className="text-sm text-txt-muted leading-relaxed">
-              A background task from your previous session is still running on the server. You can reconnect to monitor its progress or cancel it to start a new project.
+              A background task from your previous session is still running on the server.
+              You can reconnect to monitor its progress or cancel it to start a new project.
             </p>
           </div>
 

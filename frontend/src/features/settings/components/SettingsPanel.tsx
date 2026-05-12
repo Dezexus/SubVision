@@ -1,20 +1,19 @@
-/**
- * Renders the settings panel for configuring OCR options and navigating to blur settings.
- */
 import React, { useState, useEffect } from 'react';
 import { Play, Square, RefreshCw, ChevronLeft, ChevronRight, Settings2, AlertTriangle } from 'lucide-react';
 import { useVideoStore } from '../../../store/videoStore';
 import { useProcessingStore } from '../../../store/processingStore';
 import { useBlurStore } from '../../../store/blurStore';
 import { useConfigStore } from '../../../store/configStore';
-import { GlassPanel } from '../../../components/ui/GlassPanel';
-import { Button } from '../../../components/ui/Button';
+import { GlassPanel, Button } from '../../../shared/ui';
 import { useStartOcr } from '../../../commands/useStartOcr';
 import { useStopOcr } from '../../../commands/useStopOcr';
 import { PresetSelector } from './PresetSelector';
 import { LanguageSelector } from './LanguageSelector';
 import { BlurControlPanel } from '../../blur';
 
+/**
+ * Renders the settings panel for configuring OCR options and navigating to blur settings.
+ */
 export const SettingsPanel = () => {
   const metadata = useVideoStore((s) => s.metadata);
   const clientId = useVideoStore((s) => s.clientId);
@@ -75,6 +74,7 @@ export const SettingsPanel = () => {
             {isBlurMode ? 'Blur Settings' : 'Project Settings'}
           </h2>
         )}
+    
         <div className={`flex items-center gap-1 ${isCollapsed ? 'mx-auto' : ''}`}>
           {!isCollapsed && (
             <button

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Globe } from 'lucide-react';
-import { Slider } from '../../../components/ui/Slider';
-import { Switch } from '../../../components/ui/Switch';
+import { Slider, Switch } from '../../../shared/ui';
 import { api } from '../../../services/api';
 
 interface Props {
@@ -10,6 +9,9 @@ interface Props {
   defaultConfig: any;
 }
 
+/**
+ * Advanced settings component for configuring OCR parameters and processing behavior.
+ */
 export const AdvancedSettings = ({ config, setConfig, defaultConfig }: Props) => {
   const [availableLanguages, setAvailableLanguages] = useState<any[]>([]);
 

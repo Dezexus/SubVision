@@ -1,10 +1,6 @@
-/**
- * Displays the results panel containing the subtitle list and global editing actions.
- */
 import React from 'react';
 import { Download, ScanFace, ArrowLeft, Upload, FileVideo, Play, EyeOff, Undo, Redo, Scissors } from 'lucide-react';
-import { GlassPanel } from '../../../components/ui/GlassPanel';
-import { Button } from '../../../components/ui/Button';
+import { GlassPanel, Button } from '../../../shared/ui';
 import { SubtitleList } from '../../subtitles';
 import { useVideoStore } from '../../../store/videoStore';
 import { useProcessingStore } from '../../../store/processingStore';
@@ -13,6 +9,9 @@ import { useExportSrt } from '../../../commands/useExportSrt';
 import { useImportSrt } from '../../../commands/useImportSrt';
 import { useStartBlurRender } from '../../../commands/useStartBlurRender';
 
+/**
+ * Displays the results panel containing the subtitle list and global editing actions.
+ */
 export const ResultsPanel = () => {
   const metadata = useVideoStore((s) => s.metadata);
   const clientId = useVideoStore((s) => s.clientId);
@@ -30,7 +29,6 @@ export const ResultsPanel = () => {
 
   const isPreviewMode = useVideoStore((s) => s.isPreviewMode);
   const setPreviewMode = useVideoStore((s) => s.setPreviewMode);
-  
   const { execute: exportSrt } = useExportSrt();
   const { execute: importSrt } = useImportSrt();
   const { execute: startBlurRender } = useStartBlurRender();
@@ -59,7 +57,6 @@ export const ResultsPanel = () => {
     const downloadLink = renderedVideoUrl.startsWith('http')
       ? renderedVideoUrl
       : `${import.meta.env.VITE_API_URL || 'http://localhost:7860'}${renderedVideoUrl}`;
-      
     const link = document.createElement('a');
     link.href = downloadLink;
     const safeName = metadata.filename.replace(/\.[^/.]+$/, "");
@@ -147,6 +144,7 @@ export const ResultsPanel = () => {
                 >
                   EXPORT SRT
                 </Button>
+              
                 <Button
                   variant="secondary"
                   className="py-3 h-11 text-xs font-semibold shadow-md bg-purple-600/10 hover:bg-purple-600/20 text-purple-300 border-purple-500/30 transition-colors"
