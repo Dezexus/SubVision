@@ -2,6 +2,7 @@
  * Renders the preview mode interface, integrating the video player, active subtitle editor, and timeline.
  */
 import React, { useRef, useState, useEffect, useCallback } from 'react';
+import { Play, Pause } from 'lucide-react';
 import { useVideoStore } from '../../../store/videoStore';
 import { useProcessingStore } from '../../../store/processingStore';
 import { Timeline } from '../../timeline';
@@ -17,6 +18,7 @@ export const PreviewMode = () => {
   const setCurrentFrame = useVideoStore((s) => s.setCurrentFrame);
   const previewVolume = useVideoStore((s) => s.previewVolume);
   const setPreviewVolume = useVideoStore((s) => s.setPreviewVolume);
+  
   const subtitles = useProcessingStore((s) => s.subtitles);
   const updateSubtitle = useProcessingStore((s) => s.updateSubtitle);
   const deleteSubtitle = useProcessingStore((s) => s.deleteSubtitle);
@@ -25,7 +27,8 @@ export const PreviewMode = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const animationFrameRef = useRef<number>();
   const lastThrottleTimeRef = useRef<number>(0);
-
+  const prevTimeRef = useRef<number>(0);
+  
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -33,8 +36,19 @@ export const PreviewMode = () => {
   const [activeSub, setActiveSub] = useState<SubtitleItem | null | undefined>(null);
   const [localText, setLocalText] = useState('');
   const [isFocused, setIsFocused] = useState(false);
+  const [isAutoPauseEnabled, setIsAutoPauseEnabled] = useState(true);
 
   const prevActiveSubIdRef = useRef<number | null>(null);
+  const activeSubRef = useRef<SubtitleItem | null | undefined>(null);
+  const autoPauseRef = useRef<boolean>(isAutoPauseEnabled);
+
+  useEffect(() => {
+    activeSubRef.current = activeSub;
+  }, [activeSub]);
+
+  useEffect(() => {
+    autoPauseRef.current = isAutoPauseEnabled;
+  }, [isAutoPauseEnabled]);
 
   useEffect(() => {
     if (activeSub && activeSub.id !== prevActiveSubIdRef.current) {
@@ -55,7 +69,7 @@ export const PreviewMode = () => {
         if (time >= subtitles[i].start && time <= subtitles[i].end) {
           setActiveSub(subtitles[i]);
           return;
-         }
+        }
       }
       setActiveSub(null);
     },
@@ -103,7 +117,19 @@ export const PreviewMode = () => {
           const now = performance.now();
           if (now - lastThrottleTimeRef.current >= THROTTLE_INTERVAL) {
             lastThrottleTimeRef.current = now;
-            const time = video.currentTime;
+            let time = video.currentTime;
+            
+            if (autoPauseRef.current && activeSubRef.current) {
+              const midpoint = activeSubRef.current.start + (activeSubRef.current.end - activeSubRef.current.start) / 2;
+              if (time >= midpoint && prevTimeRef.current < midpoint) {
+                video.pause();
+                setIsPlaying(false);
+                time = midpoint;
+                video.currentTime = time;
+              }
+            }
+            
+            prevTimeRef.current = time;
             setCurrentTime(time);
             updateActiveSubtitle(time);
             syncCurrentFrame(time);
@@ -115,7 +141,7 @@ export const PreviewMode = () => {
     }
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-     };
+    };
   }, [isPlaying, updateActiveSubtitle, syncCurrentFrame]);
 
   useEffect(() => {
@@ -140,9 +166,10 @@ export const PreviewMode = () => {
         const currentFrame = Math.round(video.currentTime * metadata.fps);
         let newTime = (currentFrame + frames) / metadata.fps;
         newTime = Math.max(0, Math.min(video.duration || 0, newTime));
-         video.currentTime = newTime + 0.0001;
+        video.currentTime = newTime + 0.0001;
         setCurrentTime(newTime);
         syncCurrentFrame(newTime);
+        prevTimeRef.current = newTime;
       }
     },
     [metadata, syncCurrentFrame]
@@ -156,6 +183,7 @@ export const PreviewMode = () => {
         setCurrentTime(time);
         updateActiveSubtitle(time);
         syncCurrentFrame(time);
+        prevTimeRef.current = time;
       }
     },
     [updateActiveSubtitle, syncCurrentFrame]
@@ -185,7 +213,7 @@ export const PreviewMode = () => {
 
   return (
     <div className="w-full h-full flex flex-col gap-4">
-      <div className="relative w-full flex-1 bg-black flex items-center justify-center rounded-xl border border-border-main overflow-hidden shadow-2xl">
+      <div className="relative w-full flex-1 bg-black flex items-center justify-center rounded-xl border border-border-main overflow-hidden shadow-2xl group/preview">
         {videoUrl && (
           <video
             ref={videoRef}
@@ -198,6 +226,18 @@ export const PreviewMode = () => {
             className="w-full h-full object-contain"
           />
         )}
+        <button
+          onClick={() => setIsAutoPauseEnabled(!isAutoPauseEnabled)}
+          className={`absolute top-4 left-4 z-50 px-3 py-1.5 rounded-md bg-black/60 backdrop-blur-sm border transition-colors flex items-center gap-2 text-xs font-bold uppercase opacity-0 group-hover/preview:opacity-100 ${
+            isAutoPauseEnabled
+              ? 'border-brand-500/50 text-brand-400'
+              : 'border-white/10 text-white/50 hover:text-white'
+          }`}
+          title="Toggle Auto-Pause at Subtitle Center"
+        >
+          {isAutoPauseEnabled ? <Pause size={14} /> : <Play size={14} />}
+          Auto-Pause
+        </button>
       </div>
       <ActiveSubtitleEditor
         activeSub={activeSub}
@@ -213,7 +253,7 @@ export const PreviewMode = () => {
         }}
       />
       <div className="shrink-0">
-         <Timeline
+        <Timeline
           isPlaying={isPlaying}
           onPlayPause={handlePlayPause}
           onStepFrame={handleStepFrame}
