@@ -2,14 +2,10 @@ from typing import Any
 import cv2
 import numpy as np
 from core.gpu_utils import ensure_gpu, ensure_cpu, has_cuda
-from core.constants import (
-    MOTION_BLUR_KSIZE,
-    MOTION_DIFF_THRESH,
-    MOTION_PIXEL_COUNT_THRESH
-)
+from core.constants import MOTION_BLUR_KSIZE, MOTION_MSE_THRESH
 
 def detect_change_absolute(img1: Any, img2: Any) -> bool:
-    """Detect significant visual changes between two frames."""
+    """Detect visual changes between frames using Mean Squared Error."""
     if img1 is None or img2 is None:
         return True
     try:
@@ -33,10 +29,15 @@ def detect_change_absolute(img1: Any, img2: Any) -> bool:
             filter_gauss = cv2.cuda.createGaussianFilter(cv2.CV_8UC1, cv2.CV_8UC1, MOTION_BLUR_KSIZE, 0)
             b1 = filter_gauss.apply(g1)
             b2 = filter_gauss.apply(g2)
+            
             diff = cv2.cuda.absdiff(b1, b2)
-            _, thresh = cv2.cuda.threshold(diff, MOTION_DIFF_THRESH, 255, cv2.THRESH_BINARY)
-            count = cv2.cuda.countNonZero(thresh)
-            return count > MOTION_PIXEL_COUNT_THRESH
+            diff_f = cv2.cuda_GpuMat()
+            diff.convertTo(cv2.CV_32FC1, diff_f)
+            sq_diff = cv2.cuda.multiply(diff_f, diff_f)
+            sum_sq = cv2.cuda.calcSum(sq_diff)[0]
+            pixels = size1[0] * size1[1]
+            mse = sum_sq / pixels if pixels > 0 else 0
+            return mse > MOTION_MSE_THRESH
         except cv2.error:
             pass
 
@@ -46,7 +47,9 @@ def detect_change_absolute(img1: Any, img2: Any) -> bool:
     g2 = cv2.cvtColor(c2, cv2.COLOR_BGR2GRAY)
     b1 = cv2.GaussianBlur(g1, MOTION_BLUR_KSIZE, 0)
     b2 = cv2.GaussianBlur(g2, MOTION_BLUR_KSIZE, 0)
+    
     diff = cv2.absdiff(b1, b2)
-    _, thresh = cv2.threshold(diff, MOTION_DIFF_THRESH, 255, cv2.THRESH_BINARY)
-    count = cv2.countNonZero(thresh)
-    return count > MOTION_PIXEL_COUNT_THRESH
+    diff_f = diff.astype(np.float32)
+    sq_diff = diff_f ** 2
+    mse = np.mean(sq_diff)
+    return mse > MOTION_MSE_THRESH

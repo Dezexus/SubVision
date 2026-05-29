@@ -1,7 +1,7 @@
 from typing import Any
 import numpy as np
 import cv2
-from core.filters import apply_scaling, apply_sharpening, denoise_frame
+from core.filters import apply_scaling, denoise_frame
 from core.motion import detect_change_absolute
 
 class ImagePipeline:
@@ -59,5 +59,4 @@ class ImagePipeline:
         scale_factor = float(self.config.get("scale_factor", 2.0))
 
         denoised = denoise_frame(frame_roi, strength=denoise_str)
-        scaled = apply_scaling(denoised, scale_factor=scale_factor)
-        return apply_sharpening(scaled)
+        return apply_scaling(denoised, scale_factor=scale_factor)

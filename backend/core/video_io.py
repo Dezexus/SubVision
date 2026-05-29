@@ -5,7 +5,7 @@ import json
 from typing import Optional, Tuple, Dict, Any, NamedTuple
 import cv2
 import numpy as np
-from core.filters import apply_sharpening, denoise_frame
+from core.filters import denoise_frame
 
 HW_DISABLED_CODECS = frozenset({"av1", "vp9"})
 
@@ -189,7 +189,7 @@ def extract_frame_cv2(video_path: str, frame_index: int, dar: Optional[float] = 
             cmd = [
                 "ffmpeg", "-y", "-ss", str(timestamp), "-i", video_path,
                 "-frames:v", "1", "-f", "image2", "-vcodec", "mjpeg", "pipe:1"
-            ]
+             ]
             result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=30.0)
             if result.returncode == 0 and result.stdout:
                  image_array = np.asarray(bytearray(result.stdout), dtype=np.uint8)
@@ -319,7 +319,4 @@ def generate_video_preview(
     processed = denoised
     if scale_factor > 1.0 and processed is not None:
         processed = cv2.resize(processed, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC)
-    final = apply_sharpening(processed)
-    if final is None:
-        return None
-    return final
+    return processed
