@@ -5,8 +5,6 @@ import tempfile
 import time
 from typing import List
 
-import cv2
-
 from rendering.transcoder import FFmpegTranscoder
 from rendering.interfaces import Reporter, Storage, CancellationToken
 from rendering.models import RenderTaskConfig
@@ -23,6 +21,7 @@ async def render_blur_pipeline(
     reporter: Reporter,
     cancellation: CancellationToken,
 ) -> str:
+    """Executes the complete blur rendering pipeline."""
     filename = task_config.filename
     safe_filename = os.path.basename(filename)
     output_filename = f"blurred_{safe_filename}"
@@ -66,8 +65,8 @@ async def render_blur_pipeline(
 
         base_name, ext = os.path.splitext(final_output_path)
         temp_video_path = f"{base_name}_temp{ext}"
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        writer = AsyncVideoWriter(temp_video_path, fourcc, fps, (width, height))
+        
+        writer = AsyncVideoWriter(temp_video_path, fps, (width, height), task_config.blur_settings.encoder)
 
         frame_idx = 0
         try:
@@ -95,7 +94,7 @@ async def render_blur_pipeline(
         if await cancellation.is_cancelled():
             raise TaskCancelledError("User cancelled after writing")
 
-        await reporter.log("Transcoding audio and video...")
+        await reporter.log("Muxing audio and finalizing video...")
         await FFmpegTranscoder.transcode_with_audio(
             temp_video_path,
             local_video_path,

@@ -7,8 +7,11 @@ from rendering.interfaces import CancellationToken
 logger = logging.getLogger(__name__)
 
 class FFmpegTranscoder:
+    """Handles video multiplexing and asynchronous command execution."""
+    
     @staticmethod
     async def run_cmd(cmd: List[str], cancel: Optional[CancellationToken] = None) -> None:
+        """Executes an FFmpeg command asynchronously with cancellation support."""
         process = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
         )
@@ -49,41 +52,26 @@ class FFmpegTranscoder:
         encoder: str = "auto",
         cancel: Optional[CancellationToken] = None
     ) -> str:
-        logger.info("Transcoding to H.264...")
+        """Muxes the generated video with the original audio without re-encoding the video stream."""
+        logger.info("Muxing video with original audio...")
 
-        base_cmd = [
+        cmd = [
             "ffmpeg", "-y",
             "-i", temp_video,
             "-i", original_video,
             "-map", "0:v:0",
             "-map", "1:a:0?",
+            "-c:v", "copy",
+            "-c:a", "aac",
             "-shortest"
         ]
 
         if dar is not None:
-            base_cmd.extend(["-aspect", f"{dar:.6f}"])
+            cmd.extend(["-aspect", f"{dar:.6f}"])
 
-        nvenc_params = ["-c:v", "h264_nvenc", "-preset", "p4", "-cq", "23", "-pix_fmt", "yuv420p"]
-        x264_params = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p"]
-
-        async def try_encode(video_params, audio_codec):
-            cmd = base_cmd + video_params + ["-c:a", audio_codec, output_path]
-            await FFmpegTranscoder.run_cmd(cmd, cancel=cancel)
-
-        if encoder == "nvenc":
-            await try_encode(nvenc_params, "copy")
-        elif encoder == "libx264":
-            await try_encode(x264_params, "aac")
-        else:
-            try:
-                await try_encode(nvenc_params, "copy")
-            except RuntimeError:
-                try:
-                    logger.warning("NVENC audio copy failed, falling back to AAC with NVENC...")
-                    await try_encode(nvenc_params, "aac")
-                except RuntimeError:
-                    logger.warning("NVENC encoding failed, falling back to software libx264...")
-                    await try_encode(x264_params, "aac")
+        cmd.append(output_path)
+        
+        await FFmpegTranscoder.run_cmd(cmd, cancel=cancel)
 
         if os.path.exists(temp_video):
             os.remove(temp_video)
