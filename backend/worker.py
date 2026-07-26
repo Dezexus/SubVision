@@ -33,18 +33,24 @@ class RedisCancellationToken:
     def __init__(self, job_id: str) -> None:
         self._job_id = job_id
         self._sync_redis = redis.Redis.from_url(settings.redis_url)
+        self._last_check = 0.0
+        self._cached_result = False
 
     async def is_cancelled(self) -> bool:
         """Asynchronous check for the rendering pipeline."""
         return self.is_cancelled_sync()
 
     def is_cancelled_sync(self) -> bool:
-        """Synchronous check for the OCR pipeline thread."""
-        try:
-            return bool(self._sync_redis.exists(f"job:{self._job_id}:cancel"))
-        except Exception as e:
-            logging.error(f"Sync cancel check failed for {self._job_id}: {e}")
-            return False
+        """Synchronous check for the pipeline thread."""
+        now = time.time()
+        if now - self._last_check > 1.0:
+            try:
+                self._cached_result = bool(self._sync_redis.exists(f"job:{self._job_id}:cancel"))
+            except Exception as e:
+                logging.error(f"Sync cancel check failed for {self._job_id}: {e}")
+                self._cached_result = False
+            self._last_check = now
+        return self._cached_result
 
     def __call__(self) -> bool:
         """Support for legacy functional checks."""
@@ -79,7 +85,6 @@ class ProgressReporter:
                 await self._redis.publish(f"ws_{self._client_id}", json.dumps(payload))
             except Exception:
                 pass
-        
         if not self._loop.is_closed():
             asyncio.run_coroutine_threadsafe(do_send(), self._loop)
 
@@ -156,36 +161,40 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
         await redis_conn.srem(f"pending_jobs:{safe_filename}", job_id)
 
 class RedisReporter:
-    """Reporter class for the blur rendering process with async support."""
-    def __init__(self, client_id: str, job_id: str, redis_conn: aioredis.Redis, cancel_token: RedisCancellationToken = None) -> None:
+    """Synchronous reporter for the blur rendering process with thread safety."""
+    def __init__(self, client_id: str, job_id: str, redis_conn: aioredis.Redis, loop: asyncio.AbstractEventLoop, cancel_token: RedisCancellationToken = None) -> None:
         self._client_id = client_id
         self._job_id = job_id
         self._redis = redis_conn
+        self._loop = loop
         self._cancel_token = cancel_token
 
-    async def _check_cancel(self) -> None:
-        """Asynchronously check for cancellation."""
-        if self._cancel_token and await self._cancel_token.is_cancelled():
+    def _check_cancel(self) -> None:
+        """Synchronously check for cancellation."""
+        if self._cancel_token and self._cancel_token.is_cancelled_sync():
             raise TaskCancelledError("Job cancelled by user.")
 
-    async def _send(self, payload: dict) -> None:
+    def _send(self, payload: dict) -> None:
         payload['job_id'] = self._job_id
-        try:
-            await self._redis.publish(f"ws_{self._client_id}", json.dumps(payload))
-        except Exception:
-            pass
+        async def do_send():
+            try:
+                await self._redis.publish(f"ws_{self._client_id}", json.dumps(payload))
+            except Exception:
+                pass
+        if not self._loop.is_closed():
+            asyncio.run_coroutine_threadsafe(do_send(), self._loop)
 
-    async def log(self, message: str) -> None:
-        await self._check_cancel()
-        await self._send({"type": "log", "message": message})
+    def log(self, message: str) -> None:
+        self._check_cancel()
+        self._send({"type": "log", "message": message})
 
-    async def progress(self, current: int, total: int, eta: str) -> None:
-        await self._check_cancel()
-        await self._send({"type": "progress", "current": current, "total": total, "eta": eta})
+    def progress(self, current: int, total: int, eta: str) -> None:
+        self._check_cancel()
+        self._send({"type": "progress", "current": current, "total": total, "eta": eta})
 
-    async def done(self, total: int) -> None:
-        await self._check_cancel()
-        await self._send({"type": "progress", "current": total, "total": total, "eta": "00:00"})
+    def done(self, total: int) -> None:
+        self._check_cancel()
+        self._send({"type": "progress", "current": total, "total": total, "eta": "00:00"})
 
 class StorageAdapter:
     """Adapter for storage manager operations."""
@@ -216,9 +225,10 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
     client_id = config['client_id']
     job_id = ctx.get('job_id', 'unknown')
     redis_conn: aioredis.Redis = ctx['redis']
+    loop = asyncio.get_running_loop()
 
     cancellation = RedisCancellationToken(job_id)
-    reporter = RedisReporter(client_id, job_id, redis_conn, cancellation)
+    reporter = RedisReporter(client_id, job_id, redis_conn, loop, cancellation)
     storage = StorageAdapter()
 
     task_config = RenderTaskConfig(**config)
@@ -228,7 +238,7 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
         local_video_path = os.path.join(tempfile.gettempdir(), safe_filename)
         dl_ok = await storage.download(safe_filename, local_video_path)
         if not dl_ok:
-            await reporter.log("Error: source video missing")
+            reporter.log("Error: source video missing")
             await redis_conn.publish(f"ws_{client_id}", json.dumps({
                 "type": "finish",
                 "success": False,

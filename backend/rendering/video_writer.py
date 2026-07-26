@@ -44,14 +44,24 @@ class AsyncVideoWriter:
                 if self._process.stdin:
                     self._process.stdin.write(frame.tobytes())
             except queue.Empty:
+                if self._process.poll() is not None:
+                    self._running = False
                 continue
 
     def write(self, frame: np.ndarray):
         """Queues a new frame for FFmpeg processing."""
-        if self._process.returncode is not None:
+        if self._process.poll() is not None:
             raise RuntimeError("FFmpeg process died unexpectedly")
         if self._running:
-            self._queue.put(frame)
+            while True:
+                try:
+                    self._queue.put(frame, timeout=1.0)
+                    break
+                except queue.Full:
+                    if self._process.poll() is not None:
+                        raise RuntimeError("FFmpeg process died unexpectedly during write")
+                    if not self._running:
+                        break
 
     def close(self):
         """Safely closes the writer stream and waits for the FFmpeg process to finish."""

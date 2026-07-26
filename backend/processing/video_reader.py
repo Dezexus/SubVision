@@ -18,11 +18,7 @@ class VideoProvider:
         self.fps = meta["fps"]
         self.total_frames = meta["total_frames"]
 
-        logger.info("Video %s: %dx%d, %.2f fps, %d frames",
-                     video_path, self.width, self.height, self.fps, self.total_frames)
-
-    def __iter__(self) -> Iterator[tuple[int, float, Any]]:
-        yield from iter_frames_ffmpeg(
+        self._generator = iter_frames_ffmpeg(
             video_path=self.video_path,
             step=self.step,
             fps=self.fps,
@@ -32,5 +28,12 @@ class VideoProvider:
             use_hwaccel=self.use_hwaccel
         )
 
+        logger.info("Video %s: %dx%d, %.2f fps, %d frames",
+                     video_path, self.width, self.height, self.fps, self.total_frames)
+
+    def __iter__(self) -> Iterator[tuple[int, float, Any]]:
+        return self._generator
+
     def release(self) -> None:
-        pass
+        if self._generator:
+            self._generator.close()

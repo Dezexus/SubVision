@@ -15,6 +15,36 @@ from core.video_io import get_video_dar, get_video_metadata, iter_frames_ffmpeg
 
 logger = logging.getLogger(__name__)
 
+def _process_frames_sync(
+    local_video_path: str,
+    total_frames: int,
+    fps: float,
+    width: int,
+    height: int,
+    effects: List[Effect],
+    writer: AsyncVideoWriter,
+    reporter: Reporter,
+    cancellation: CancellationToken
+) -> int:
+    frame_idx = 0
+    for f_idx, _, frame in iter_frames_ffmpeg(local_video_path, step=1, fps=fps, total=total_frames, width=width, height=height, use_hwaccel=True):
+        if cancellation.is_cancelled_sync():
+            raise TaskCancelledError("User cancelled during frame writing")
+
+        for effect in effects:
+            frame = effect.apply(frame, f_idx)
+
+        writer.write(frame)
+
+        if frame_idx > 0 and frame_idx % 25 == 0:
+            reporter.progress(frame_idx, total_frames, "N/A")
+
+        frame_idx += 1
+
+    reporter.progress(total_frames, total_frames, "00:00")
+    reporter.done(total_frames)
+    return frame_idx
+
 async def render_blur_pipeline(
     task_config: RenderTaskConfig,
     storage: Storage,
@@ -32,7 +62,7 @@ async def render_blur_pipeline(
         local_video_path = os.path.join(tmpdir, safe_filename)
         final_output_path = os.path.join(tmpdir, output_filename)
 
-        await reporter.log("Downloading video from storage...")
+        reporter.log("Downloading video from storage...")
         dl_start = time.time()
         dl_ok = await storage.download(safe_filename, local_video_path)
         dl_time = time.time() - dl_start
@@ -41,7 +71,7 @@ async def render_blur_pipeline(
         if not dl_ok:
             raise FileNotFoundError(f"Source video file '{safe_filename}' not found in storage.")
 
-        if await cancellation.is_cancelled():
+        if cancellation.is_cancelled_sync():
             raise TaskCancelledError("User cancelled before processing")
 
         dar = await asyncio.to_thread(get_video_dar, local_video_path)
@@ -68,33 +98,28 @@ async def render_blur_pipeline(
         
         writer = AsyncVideoWriter(temp_video_path, fps, (width, height), task_config.blur_settings.encoder)
 
-        frame_idx = 0
         try:
-            for f_idx, _, frame in iter_frames_ffmpeg(local_video_path, step=1, fps=fps, total=total_frames, width=width, height=height, use_hwaccel=True):
-                if await cancellation.is_cancelled():
-                    raise TaskCancelledError("User cancelled during frame writing")
-
-                for effect in effects:
-                    frame = effect.apply(frame, f_idx)
-
-                writer.write(frame)
-
-                if frame_idx > 0 and frame_idx % 25 == 0:
-                    await reporter.progress(frame_idx, total_frames, "N/A")
-
-                frame_idx += 1
-
-            await reporter.progress(total_frames, total_frames, "00:00")
-            await reporter.done(total_frames)
+            frame_idx = await asyncio.to_thread(
+                _process_frames_sync,
+                local_video_path,
+                total_frames,
+                fps,
+                width,
+                height,
+                effects,
+                writer,
+                reporter,
+                cancellation
+            )
         finally:
-            writer.close()
+            await asyncio.to_thread(writer.close)
 
         logger.info(f"Frame writing completed ({frame_idx} frames)")
 
-        if await cancellation.is_cancelled():
+        if cancellation.is_cancelled_sync():
             raise TaskCancelledError("User cancelled after writing")
 
-        await reporter.log("Muxing audio and finalizing video...")
+        reporter.log("Muxing audio and finalizing video...")
         await FFmpegTranscoder.transcode_with_audio(
             temp_video_path,
             local_video_path,
@@ -104,7 +129,7 @@ async def render_blur_pipeline(
             cancel=cancellation
         )
 
-        await reporter.log("Uploading result...")
+        reporter.log("Uploading result...")
         up_ok = await storage.upload(final_output_path, output_filename)
         if not up_ok:
             raise RuntimeError("Failed to upload the final rendered video to storage.")

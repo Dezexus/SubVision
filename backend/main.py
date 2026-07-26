@@ -20,7 +20,6 @@ from core.config import settings
 
 logger = logging.getLogger(__name__)
 
-
 async def cleanup_loop():
     while True:
         await asyncio.sleep(3600)
@@ -29,36 +28,31 @@ async def cleanup_loop():
             continue
         now = time.time()
         for entry in temp_root.iterdir():
-            if entry.is_dir():
-                try:
-                    mtime = entry.stat().st_mtime
-                    if now - mtime > 3600:
+            try:
+                mtime = entry.stat().st_mtime
+                if now - mtime > 3600:
+                    if entry.is_dir():
                         shutil.rmtree(entry, ignore_errors=True)
-                        logger.info("Cleaned up stale upload: %s", entry)
-                except Exception as e:
-                    logger.warning("Could not clean up %s: %s", entry, e)
-
+                    elif entry.is_file():
+                        entry.unlink(missing_ok=True)
+                    logger.info("Cleaned up stale upload: %s", entry)
+            except Exception as e:
+                logger.warning("Could not clean up %s: %s", entry, e)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     app.state.arq_pool = await create_pool(redis_settings)
-
     app.state.redis = aioredis.from_url(settings.redis_url)
-
     cleanup_task = asyncio.create_task(cleanup_loop())
-
     yield
-
     cleanup_task.cancel()
     try:
         await cleanup_task
     except asyncio.CancelledError:
         pass
-
     await app.state.arq_pool.close()
     await app.state.redis.aclose()
-
 
 app = FastAPI(title="SubVision API", version="1.0.0", lifespan=lifespan)
 
@@ -78,7 +72,6 @@ app.include_router(session.router, prefix="/api/session", tags=["Session"])
 
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
-
 @app.get("/health")
 async def health_check():
     redis_up = False
@@ -91,20 +84,15 @@ async def health_check():
         pass
     return {"status": "ok", "redis": redis_up}
 
-
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
     redis_client = websocket.app.state.redis
-    
     await connection_manager.connect(websocket, client_id)
-
     pubsub = None
     reader_task = None
-
     try:
         pubsub = redis_client.pubsub()
         await pubsub.subscribe(f"ws_{client_id}")
-
         async def redis_reader():
             try:
                 async for message in pubsub.listen():
@@ -117,9 +105,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
                 pass
             except Exception as e:
                 logger.error(f"Redis reader error for {client_id}: {e}")
-
         reader_task = asyncio.create_task(redis_reader())
-
         while True:
             data = await asyncio.wait_for(websocket.receive_text(), timeout=120.0)
             try:
@@ -128,7 +114,6 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
                     await connection_manager.send_json(client_id, {"type": "pong"})
             except ValidationError:
                 pass
-
     except (WebSocketDisconnect, asyncio.TimeoutError):
         pass
     except Exception as e:

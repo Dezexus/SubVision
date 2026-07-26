@@ -17,7 +17,7 @@ class FFmpegTranscoder:
         )
         try:
             while True:
-                if cancel and await cancel.is_cancelled():
+                if cancel and cancel.is_cancelled_sync():
                     process.terminate()
                     try:
                         await asyncio.wait_for(process.wait(), timeout=2.0)
