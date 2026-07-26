@@ -29,7 +29,7 @@ EXPOSE 8000
 WORKDIR /app/backend
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
 
-FROM nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04 AS worker
+FROM nvidia/cuda:12.6.2-cudnn-runtime-ubuntu22.04 AS worker
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -56,7 +56,7 @@ COPY backend/requirements-worker.txt .
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --upgrade pip nuitka \
- && python -m pip install paddlepaddle-gpu==3.3.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu123/ \
+ && python -m pip install paddlepaddle-gpu==3.3.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/ \
  && python -m pip install -r requirements.txt \
  && python -m pip install -r requirements-worker.txt
 
