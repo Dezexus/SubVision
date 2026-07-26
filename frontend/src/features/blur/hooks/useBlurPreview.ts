@@ -6,6 +6,77 @@ import type { VideoMetadata, BlurSettings, SubtitleItem } from '../../../types';
 const MAX_BLUR_CACHE = 30;
 const blurCache = new Map<string, string>();
 
+const estimateTextWidth = (text: string, fontSizePx: number, multiplier: number): number => {
+  let width = 0.0;
+  for (const char of text) {
+    if (/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af\uff00-\uffef]/.test(char)) width += 1.1;
+    else if (/[mwWM@OQG]/.test(char)) width += 0.95;
+    else if (/[A-Z]/.test(char)) width += 0.8;
+    else if (/[0-9]/.test(char)) width += 0.65;
+    else if (/[il1.,!I|:;tfj]/.test(char)) width += 0.35;
+    else width += 0.65;
+  }
+  return Math.ceil(width * fontSizePx * multiplier);
+};
+
+const generateLocalPreview = async (
+  filename: string,
+  frameIndex: number,
+  metadata: VideoMetadata,
+  settings: BlurSettings,
+  text: string,
+  signal: AbortSignal
+): Promise<string> => {
+  const frameUrl = await api.getFrameBlob(filename, frameIndex, signal);
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return reject('No 2d context');
+      
+      ctx.drawImage(img, 0, 0);
+      
+      if (text && settings.sigma > 0) {
+        const fontSizePx = settings.font_size;
+        const widthMult = settings.width_multiplier || 1.0;
+        const heightMult = settings.height_multiplier || 1.0;
+        
+        const textW = estimateTextWidth(text, fontSizePx, widthMult);
+        const textH = (fontSizePx + 4) * heightMult;
+        
+        const x = (img.width - textW) / 2;
+        const y = settings.y - textH;
+        
+        const feather = settings.feather || 30;
+        const padX = fontSizePx * 0.8 + feather;
+        const padY = fontSizePx * 0.3 + 4 + feather;
+        
+        const bx = Math.max(0, x - padX);
+        const by = Math.max(0, y - padY);
+        const bw = Math.min(img.width - bx, textW + padX * 2);
+        const bh = Math.min(img.height - by, textH + padY * 2);
+        
+        ctx.save();
+        ctx.filter = `blur(${settings.sigma}px)`;
+        ctx.drawImage(canvas, bx, by, bw, bh, bx, by, bw, bh);
+        ctx.restore();
+      }
+      
+      URL.revokeObjectURL(frameUrl);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(frameUrl);
+      reject('Image load failed');
+    };
+    img.src = frameUrl;
+  });
+};
+
 export const useBlurPreview = (
   metadata: VideoMetadata | null,
   blurSettings: BlurSettings,
@@ -57,12 +128,17 @@ export const useBlurPreview = (
       abortControllerRef.current = abortController;
 
       try {
-        const url = await api.getBlurPreview({
-          filename: metadata.filename,
-          frame_index: currentFrameIndex,
-          blur_settings: blurSettings,
-          subtitle_text: text
-        }, abortController.signal);
+        let url: string;
+        if (blurSettings.mode === 'blur') {
+          url = await generateLocalPreview(metadata.filename, currentFrameIndex, metadata, blurSettings, text, abortController.signal);
+        } else {
+          url = await api.getBlurPreview({
+            filename: metadata.filename,
+            frame_index: currentFrameIndex,
+            blur_settings: blurSettings,
+            subtitle_text: text
+          }, abortController.signal);
+        }
 
         if (isActive) {
           if (blurCache.size >= MAX_BLUR_CACHE) {

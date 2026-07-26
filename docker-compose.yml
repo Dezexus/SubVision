@@ -1,12 +1,12 @@
 services:
   redis:
-    image: redis:7-alpine
-    container_name: subvision_redis
+    image: valkey/valkey:8-alpine
+    container_name: subvision_valkey
     restart: unless-stopped
     expose:
       - "6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "valkey-cli", "ping"]
       interval: 1s
       timeout: 3s
       retries: 30

@@ -1,7 +1,36 @@
 import queue
 import threading
 import subprocess
+import shutil
 import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
+
+def get_encoder_args() -> list[str]:
+    """Auto-detect optimal hardware encoder. Tailored for Turing architecture (RTX 2060)."""
+    if shutil.which("nvidia-smi"):
+        try:
+            out = subprocess.check_output(["nvidia-smi", "-L"], text=True)
+            if "RTX" in out or "GTX" in out:
+                logger.info("NVIDIA GPU detected. Using NVENC with Turing presets.")
+                return ["-c:v", "h264_nvenc", "-preset", "p6", "-tune", "hq", "-cq", "23", "-pix_fmt", "yuv420p"]
+        except Exception:
+            pass
+            
+    try:
+        out = subprocess.check_output(["ffmpeg", "-encoders"], stderr=subprocess.DEVNULL, text=True)
+        if "h264_nvenc" in out:
+            return ["-c:v", "h264_nvenc", "-preset", "p6", "-cq", "23", "-pix_fmt", "yuv420p"]
+        if "h264_amf" in out:
+            return ["-c:v", "h264_amf", "-quality", "quality"]
+        if "h264_qsv" in out:
+            return ["-c:v", "h264_qsv", "-preset", "veryslow"]
+    except Exception:
+        pass
+        
+    logger.info("Hardware encoder not found. Falling back to CPU.")
+    return ["-c:v", "libx264", "-preset", "medium", "-crf", "21", "-pix_fmt", "yuv420p"]
 
 class AsyncVideoWriter:
     """Writes video frames asynchronously using an FFmpeg pipe to preserve high quality."""
@@ -20,7 +49,9 @@ class AsyncVideoWriter:
             "-an"
         ]
         
-        if encoder == "nvenc":
+        if encoder == "auto":
+            cmd.extend(get_encoder_args())
+        elif encoder == "nvenc":
             cmd.extend(["-c:v", "h264_nvenc", "-preset", "p6", "-cq", "23", "-pix_fmt", "yuv420p"])
         else:
             cmd.extend(["-c:v", "libx264", "-preset", "medium", "-crf", "21", "-pix_fmt", "yuv420p"])
