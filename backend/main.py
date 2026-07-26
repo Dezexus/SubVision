@@ -125,5 +125,6 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
         if pubsub:
             try:
                 await pubsub.unsubscribe(f"ws_{client_id}")
+                await pubsub.close()
             except Exception:
                 pass

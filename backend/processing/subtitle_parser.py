@@ -4,7 +4,7 @@ def parse_srt(content: str) -> list[dict]:
     """Parse SRT content into a list of subtitle dictionaries with automatic time offset correction."""
     content = content.replace('\r\n', '\n').replace('\r', '\n')
 
-    pattern = re.compile(r'(\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n((?:(?!\n\n).)*)', re.DOTALL)
+    pattern = re.compile(r'(\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n(.*?)(?=\n\n|\Z)', re.DOTALL)
     tag_pattern = re.compile(r'<[^>]+>')
 
     matches = pattern.findall(content + '\n\n')

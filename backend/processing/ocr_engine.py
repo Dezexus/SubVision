@@ -121,5 +121,6 @@ def get_paddle_engine(lang: str = "en", use_gpu: bool = True) -> PaddleWrapper:
     if key not in _engines:
         with _engine_lock:
             if key not in _engines:
+                _engines.clear()
                 _engines[key] = PaddleWrapper(lang=lang, use_gpu=use_gpu)
     return _engines[key]

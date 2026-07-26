@@ -179,7 +179,8 @@ def extract_frame_cv2(video_path: str, frame_index: int, dar: Optional[float] = 
             if total > 0 and frame_index >= total:
                  safe_index = int(total - 1)
 
-            ok, frame = _try_read(cap, safe_index, fps)
+            if safe_index < 100:
+                ok, frame = _try_read(cap, safe_index, fps)
         finally:
             cap.release()
 
@@ -197,7 +198,8 @@ def extract_frame_cv2(video_path: str, frame_index: int, dar: Optional[float] = 
                  if decoded is not None:
                      frame = decoded
                      ok = True
-                     height, width = frame.shape[:2]
+                     if height == 0 or width == 0:
+                         height, width = frame.shape[:2]
         except Exception as e:
              logging.getLogger(__name__).warning(f"FFmpeg fallback failed: {e}")
 
