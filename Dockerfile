@@ -39,7 +39,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends software-proper
     && add-apt-repository ppa:deadsnakes/ppa \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
-    python3.12 python3.12-dev python3.12-venv python3.12-distutils \
+    python3.12 python3.12-dev python3.12-venv \
     gcc g++ patchelf ffmpeg libgl1 libglib2.0-0 libgomp1 libsm6 libxext6 wget tzdata libdav1d5 \
     && ln -sf /usr/bin/python3.12 /usr/bin/python \
     && ln -sf /usr/bin/python3.12 /usr/bin/python3 \
