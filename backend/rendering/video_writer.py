@@ -1,103 +1,111 @@
-import queue
 import threading
-import subprocess
-import shutil
+import queue
+import av
 import numpy as np
 import logging
+from typing import Tuple
 
 logger = logging.getLogger(__name__)
 
-def get_encoder_args() -> list[str]:
-    """Auto-detect optimal hardware encoder. Tailored for Turing architecture (RTX 2060)."""
-    if shutil.which("nvidia-smi"):
-        try:
-            out = subprocess.check_output(["nvidia-smi", "-L"], text=True)
-            if "RTX" in out or "GTX" in out:
-                logger.info("NVIDIA GPU detected. Using NVENC with Turing presets.")
-                return ["-c:v", "h264_nvenc", "-preset", "p6", "-tune", "hq", "-cq", "23", "-pix_fmt", "yuv420p"]
-        except Exception:
-            pass
-            
-    try:
-        out = subprocess.check_output(["ffmpeg", "-encoders"], stderr=subprocess.DEVNULL, text=True)
-        if "h264_nvenc" in out:
-            return ["-c:v", "h264_nvenc", "-preset", "p6", "-cq", "23", "-pix_fmt", "yuv420p"]
-        if "h264_amf" in out:
-            return ["-c:v", "h264_amf", "-quality", "quality"]
-        if "h264_qsv" in out:
-            return ["-c:v", "h264_qsv", "-preset", "veryslow"]
-    except Exception:
-        pass
-        
-    logger.info("Hardware encoder not found. Falling back to CPU.")
-    return ["-c:v", "libx264", "-preset", "medium", "-crf", "21", "-pix_fmt", "yuv420p"]
-
 class AsyncVideoWriter:
-    """Writes video frames asynchronously using an FFmpeg pipe to preserve high quality."""
-    def __init__(self, path: str, fps: float, size: tuple[int, int], encoder: str = "auto"):
-        self._queue = queue.Queue(maxsize=50)
+    """Writes video frames and muxes audio asynchronously using PyAV NVENC."""
+    def __init__(self, path: str, fps: float, size: Tuple[int, int], encoder: str = "auto", audio_source: str = ""):
+        self.path = path
+        self._queue = queue.Queue(maxsize=100)
         self._running = True
+        self.audio_source = audio_source
+        self.container = av.open(path, 'w')
         
-        cmd = [
-            "ffmpeg", "-y",
-            "-f", "rawvideo",
-            "-vcodec", "rawvideo",
-            "-s", f"{size[0]}x{size[1]}",
-            "-pix_fmt", "bgr24",
-            "-r", str(fps),
-            "-i", "-",
-            "-an"
-        ]
+        selected_encoder = "h264_nvenc" if encoder in ["auto", "nvenc"] else "libx264"
+        self.stream = self.container.add_stream(selected_encoder, rate=fps)
+        self.stream.width = size[0]
+        self.stream.height = size[1]
+        self.stream.pix_fmt = 'yuv420p'
         
-        if encoder == "auto":
-            cmd.extend(get_encoder_args())
-        elif encoder == "nvenc":
-            cmd.extend(["-c:v", "h264_nvenc", "-preset", "p6", "-cq", "23", "-pix_fmt", "yuv420p"])
+        if selected_encoder == "h264_nvenc":
+            self.stream.options = {'preset': 'p6', 'tune': 'hq', 'cq': '23'}
         else:
-            cmd.extend(["-c:v", "libx264", "-preset", "medium", "-crf", "21", "-pix_fmt", "yuv420p"])
+            self.stream.options = {'preset': 'medium', 'crf': '21'}
             
-        cmd.append(path)
+        self.src_container = None
+        self.src_audio = None
+        self.out_audio = None
+        self.audio_iter = None
         
-        self._process = subprocess.Popen(
-            cmd, 
-            stdin=subprocess.PIPE, 
-            stdout=subprocess.DEVNULL, 
-            stderr=subprocess.DEVNULL
-        )
+        if self.audio_source:
+            try:
+                self.src_container = av.open(self.audio_source)
+                audio_streams = [s for s in self.src_container.streams if s.type == 'audio']
+                if audio_streams:
+                    self.src_audio = audio_streams[0]
+                    self.out_audio = self.container.add_stream(template=self.src_audio)
+                    self.audio_iter = self.src_container.demux(self.src_audio)
+            except Exception as e:
+                logger.error(f"Failed to initialize audio source: {e}")
         
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
+    def _mux_audio_up_to(self, target_time: float):
+        """Mux audio packets up to the given target time."""
+        if not self.audio_iter or not self.out_audio:
+            return
+        try:
+            while True:
+                packet = next(self.audio_iter)
+                if packet.dts is None:
+                    continue
+                packet.stream = self.out_audio
+                self.container.mux(packet)
+                pkt_time = packet.dts * self.src_audio.time_base
+                if pkt_time >= target_time:
+                    break
+        except StopIteration:
+            self.audio_iter = None
+        except Exception as e:
+            logger.error(f"Error during audio muxing: {e}")
+            self.audio_iter = None
+
     def _run(self):
+        """Background thread for encoding and muxing."""
         while self._running or not self._queue.empty():
             try:
                 frame = self._queue.get(timeout=0.1)
-                if self._process.stdin:
-                    self._process.stdin.write(frame.tobytes())
+                if frame is None:
+                    break
+                av_frame = av.VideoFrame.from_ndarray(frame, format='bgr24')
+                for packet in self.stream.encode(av_frame):
+                    self.container.mux(packet)
+                    if self.src_audio and packet.dts is not None:
+                        self._mux_audio_up_to(float(packet.dts * packet.time_base))
             except queue.Empty:
-                if self._process.poll() is not None:
-                    self._running = False
                 continue
+            except Exception as e:
+                logger.error(f"Encoding error: {e}")
+                break
+        
+        try:
+            for packet in self.stream.encode():
+                self.container.mux(packet)
+                if self.src_audio and packet.dts is not None:
+                    self._mux_audio_up_to(float(packet.dts * packet.time_base))
+        except Exception:
+            pass
+
+        if self.src_audio:
+            self._mux_audio_up_to(float('inf'))
+            self.src_container.close()
+
+        self.container.close()
 
     def write(self, frame: np.ndarray):
-        """Queues a new frame for FFmpeg processing."""
-        if self._process.poll() is not None:
-            raise RuntimeError("FFmpeg process died unexpectedly")
-        if self._running:
-            while True:
-                try:
-                    self._queue.put(frame, timeout=1.0)
-                    break
-                except queue.Full:
-                    if self._process.poll() is not None:
-                        raise RuntimeError("FFmpeg process died unexpectedly during write")
-                    if not self._running:
-                        break
+        """Queues a new frame for encoding."""
+        if not self._running:
+            raise RuntimeError("Writer is closed")
+        self._queue.put(frame)
 
     def close(self):
-        """Safely closes the writer stream and waits for the FFmpeg process to finish."""
+        """Safely closes the writer stream."""
         self._running = False
+        self._queue.put(None)
         self._thread.join()
-        if self._process.stdin:
-            self._process.stdin.close()
-        self._process.wait()

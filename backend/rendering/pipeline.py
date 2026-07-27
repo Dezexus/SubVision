@@ -5,13 +5,12 @@ import tempfile
 import time
 from typing import List
 
-from rendering.transcoder import FFmpegTranscoder
 from rendering.interfaces import Reporter, Storage, CancellationToken
 from rendering.models import RenderTaskConfig
 from rendering.effects.interface import Effect
 from rendering.video_writer import AsyncVideoWriter
 from core.exceptions import TaskCancelledError
-from core.video_io import get_video_dar, get_video_metadata, iter_frames_ffmpeg
+from core.video_io import get_video_dar, get_video_metadata, iter_frames
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +25,9 @@ def _process_frames_sync(
     reporter: Reporter,
     cancellation: CancellationToken
 ) -> int:
+    """Synchronous core frame processing loop."""
     frame_idx = 0
-    for f_idx, _, frame in iter_frames_ffmpeg(local_video_path, step=1, fps=fps, total=total_frames, width=width, height=height, use_hwaccel=True):
+    for f_idx, _, frame in iter_frames(local_video_path, step=1, fps=fps, total=total_frames, width=width, height=height, use_hwaccel=True):
         if cancellation.is_cancelled_sync():
             raise TaskCancelledError("User cancelled during frame writing")
 
@@ -51,7 +51,7 @@ async def render_blur_pipeline(
     reporter: Reporter,
     cancellation: CancellationToken,
 ) -> str:
-    """Executes the complete blur rendering pipeline."""
+    """Executes the complete blur rendering pipeline using PyAV hardware acceleration."""
     filename = task_config.filename
     safe_filename = os.path.basename(filename)
     output_filename = f"blurred_{safe_filename}"
@@ -74,7 +74,6 @@ async def render_blur_pipeline(
         if cancellation.is_cancelled_sync():
             raise TaskCancelledError("User cancelled before processing")
 
-        dar = await asyncio.to_thread(get_video_dar, local_video_path)
         meta = await asyncio.to_thread(get_video_metadata, local_video_path)
         width = meta["width"]
         height = meta["height"]
@@ -93,10 +92,7 @@ async def render_blur_pipeline(
                 video_path=local_video_path,
             )
 
-        base_name, ext = os.path.splitext(final_output_path)
-        temp_video_path = f"{base_name}_temp{ext}"
-        
-        writer = AsyncVideoWriter(temp_video_path, fps, (width, height), task_config.blur_settings.encoder)
+        writer = AsyncVideoWriter(final_output_path, fps, (width, height), task_config.blur_settings.encoder, local_video_path)
 
         try:
             frame_idx = await asyncio.to_thread(
@@ -118,16 +114,6 @@ async def render_blur_pipeline(
 
         if cancellation.is_cancelled_sync():
             raise TaskCancelledError("User cancelled after writing")
-
-        reporter.log("Muxing audio and finalizing video...")
-        await FFmpegTranscoder.transcode_with_audio(
-            temp_video_path,
-            local_video_path,
-            final_output_path,
-            dar=dar,
-            encoder=task_config.blur_settings.encoder,
-            cancel=cancellation
-        )
 
         reporter.log("Uploading result...")
         up_ok = await storage.upload(final_output_path, output_filename)

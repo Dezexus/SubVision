@@ -2,10 +2,10 @@ fastapi
 uvicorn[standard]
 python-multipart
 websockets
-opencv-contrib-python
 numpy
 Pillow
 aioboto3
 pydantic-settings
 redis
 arq
+av

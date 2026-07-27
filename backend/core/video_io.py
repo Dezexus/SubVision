@@ -1,142 +1,45 @@
 import functools
-import logging
-import subprocess
-import json
-from typing import Optional, Tuple, Dict, Any, NamedTuple
+import av
 import cv2
 import numpy as np
-from core.filters import denoise_frame
-
-HW_DISABLED_CODECS = frozenset({"av1", "vp9"})
+from typing import Optional, Tuple, Dict, Any, NamedTuple
 
 class VideoInfo(NamedTuple):
+    """Preliminary video metadata struct."""
     frame: Optional[np.ndarray]
     total_frames: int
     corrected_width: int
 
-def get_video_codec(video_path: str) -> str:
-    """Extract video codec name using ffprobe."""
-    cmd = [
-        "ffprobe", "-v", "quiet", "-print_format", "json",
-        "-select_streams", "v:0",
-        "-show_entries", "stream=codec_name",
-        video_path
-    ]
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=30.0)
-        data = json.loads(result.stdout)
-        streams = data.get("streams", [])
-        codec = streams[0].get("codec_name", "unknown") if streams else "unknown"
-        return codec
-    except subprocess.TimeoutExpired:
-        logging.getLogger(__name__).warning(f"Timeout getting codec for {video_path}")
-        return "unknown"
-    except Exception as e:
-        logging.getLogger(__name__).warning(f"Failed to get codec for {video_path}: {e}")
-        return "unknown"
-
 def get_video_dar(video_path: str) -> Optional[float]:
-    """Calculate the Display Aspect Ratio (DAR) using ffprobe."""
-    cmd = [
-        "ffprobe", "-v", "quiet", "-print_format", "json",
-        "-select_streams", "v:0",
-        "-show_entries", "stream=width,height,sample_aspect_ratio",
-        video_path
-    ]
+    """Calculate the Display Aspect Ratio using PyAV."""
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=30.0)
-        data = json.loads(result.stdout)
-        stream = data.get("streams", [{}])[0]
-        width = int(stream.get("width", 1))
-        height = int(stream.get("height", 1))
-        sar = stream.get("sample_aspect_ratio", "1:1")
-        if sar == "N/A":
-            sar = "1:1"
-        sar_num, sar_den = map(int, sar.split(':'))
-        dar = (width / height) * (sar_num / sar_den)
-        return dar
-    except subprocess.TimeoutExpired:
-        logging.getLogger(__name__).warning(f"Timeout getting DAR for {video_path}")
+        with av.open(video_path) as container:
+            stream = container.streams.video[0]
+            if stream.display_aspect_ratio:
+                return float(stream.display_aspect_ratio)
+            if stream.sample_aspect_ratio and stream.width and stream.height:
+                return (stream.width / stream.height) * float(stream.sample_aspect_ratio)
+            return None
+    except Exception:
         return None
-    except Exception as e:
-        logging.getLogger(__name__).warning(f"Failed to get DAR for {video_path}: {e}")
-        return None
-
-def create_video_capture(video_path: str) -> cv2.VideoCapture:
-    """Create and configure a cv2.VideoCapture object based on codec compatibility."""
-    codec = get_video_codec(video_path)
-    if codec in HW_DISABLED_CODECS:
-        cap = cv2.VideoCapture(video_path)
-        ok, _ = cap.read()
-        if not ok:
-            cap.release()
-            cap = cv2.VideoCapture(video_path)
-        if cap.isOpened():
-            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-        return cap
-
-    cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY])
-    ok, _ = cap.read()
-
-    if not ok:
-        cap.release()
-        cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_NONE])
-        ok, _ = cap.read()
-
-    if not ok:
-        cap.release()
-        cap = cv2.VideoCapture(video_path)
-        cap.read()
-
-    if cap.isOpened():
-        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-
-    return cap
 
 def get_video_metadata(video_path: str) -> Dict[str, Any]:
-    """Retrieve essential video metadata using ffprobe."""
-    cmd = [
-        "ffprobe", "-v", "quiet", "-print_format", "json",
-        "-select_streams", "v:0",
-        "-show_entries", "stream=width,height,r_frame_rate,nb_frames,duration",
-        video_path
-    ]
+    """Retrieve essential video metadata using PyAV."""
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=30.0)
-        data = json.loads(result.stdout)
-    except subprocess.TimeoutExpired:
-        raise RuntimeError(f"Timeout extracting metadata from {video_path}")
+        with av.open(video_path) as container:
+            stream = container.streams.video[0]
+            fps = float(stream.average_rate) if stream.average_rate else 25.0
+            total_frames = stream.frames
+            if total_frames <= 0:
+                total_frames = int(float(stream.duration * stream.time_base) * fps)
+            return {
+                "width": stream.codec_context.width,
+                "height": stream.codec_context.height,
+                "fps": fps,
+                "total_frames": total_frames
+            }
     except Exception as e:
-        raise RuntimeError(f"Failed to extract metadata from {video_path}: {e}")
-
-    streams = data.get("streams", [])
-    if not streams:
-        raise RuntimeError("No video stream found")
-    stream = streams[0]
-    width = int(stream.get("width", 0))
-    height = int(stream.get("height", 0))
-    if width <= 0 or height <= 0:
-        raise RuntimeError("Invalid video dimensions")
-
-    r_frame_rate = stream.get("r_frame_rate", "25/1")
-    num, den = r_frame_rate.split("/")
-    fps = float(num) / float(den) if float(den) != 0 else 25.0
-
-    nb_frames = stream.get("nb_frames")
-    duration = stream.get("duration")
-    if nb_frames and int(nb_frames) > 0:
-        total_frames = int(nb_frames)
-    elif duration:
-        total_frames = int(float(duration) * fps)
-    else:
-        raise RuntimeError("Could not determine total frames")
-
-    return {
-        "width": width,
-        "height": height,
-        "fps": fps,
-        "total_frames": total_frames
-    }
+        raise RuntimeError(f"Metadata extraction failed: {e}")
 
 def _correct_sar(frame: np.ndarray, src_width: int, src_height: int, dar: float) -> np.ndarray:
     """Adjust frame dimensions to match the display aspect ratio."""
@@ -150,126 +53,65 @@ def _correct_sar(frame: np.ndarray, src_width: int, src_height: int, dar: float)
 
 @functools.lru_cache(maxsize=32)
 def extract_frame_cv2(video_path: str, frame_index: int, dar: Optional[float] = None) -> Optional[Tuple[np.ndarray, int]]:
-    """Extract a specific frame with OpenCV and fallback to FFmpeg."""
+    """Extract a specific frame using sequential decoding and PTS tracking."""
     if not video_path:
         return None
-
-    def _try_read(cap_obj, idx, fps_val):
-        cap_obj.set(cv2.CAP_PROP_POS_FRAMES, idx)
-        success, frm = cap_obj.read()
-        if not success and fps_val > 0:
-            cap_obj.set(cv2.CAP_PROP_POS_MSEC, (idx / fps_val) * 1000.0)
-            success, frm = cap_obj.read()
-        return success, frm
-
-    cap = create_video_capture(video_path)
-
-    ok, frame = False, None
-    fps = 25.0
-    safe_index = frame_index
-    width, height = 0, 0
-
-    if cap.isOpened():
-        try:
-            fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-            total = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-            if total > 0 and frame_index >= total:
-                 safe_index = int(total - 1)
-
-            if safe_index < 100:
-                ok, frame = _try_read(cap, safe_index, fps)
-        finally:
-            cap.release()
-
-    if not ok or frame is None:
-        try:
-            timestamp = safe_index / fps if fps > 0 else safe_index / 25.0
-            cmd = [
-                "ffmpeg", "-y", "-ss", str(timestamp), "-i", video_path,
-                "-frames:v", "1", "-f", "image2", "-vcodec", "mjpeg", "pipe:1"
-             ]
-            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=30.0)
-            if result.returncode == 0 and result.stdout:
-                 image_array = np.asarray(bytearray(result.stdout), dtype=np.uint8)
-                 decoded = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
-                 if decoded is not None:
-                     frame = decoded
-                     ok = True
-                     if height == 0 or width == 0:
-                         height, width = frame.shape[:2]
-        except Exception as e:
-             logging.getLogger(__name__).warning(f"FFmpeg fallback failed: {e}")
-
-    if ok and frame is not None:
-        if dar is None:
-            dar = get_video_dar(video_path)
-        if dar is not None and abs(dar - (width / height)) > 1e-3:
-            frame = _correct_sar(frame, width, height, dar)
-            new_width = int(round(height * dar))
-            return frame, new_width
-        return frame, width
-
+    try:
+        with av.open(video_path) as container:
+            stream = container.streams.video[0]
+            fps = float(stream.average_rate) if stream.average_rate else 25.0
+            target_timestamp = int((frame_index / fps) / stream.time_base)
+            container.seek(target_timestamp, stream=stream, backward=True)
+            
+            first = True
+            current_idx = 0
+            for frame in container.decode(stream):
+                if first:
+                    if frame.pts is not None:
+                        current_idx = int(round((frame.pts * float(stream.time_base)) * fps))
+                    else:
+                        current_idx = 0
+                    first = False
+                
+                if current_idx >= frame_index:
+                    img = frame.to_ndarray(format='bgr24')
+                    h, w = img.shape[:2]
+                    if dar is None:
+                        dar = get_video_dar(video_path)
+                    if dar is not None and abs(dar - (w / h)) > 1e-3:
+                        img = _correct_sar(img, w, h, dar)
+                        return img, int(round(h * dar))
+                    return img, w
+                current_idx += 1
+    except Exception:
+        pass
     return None
 
-def iter_frames_ffmpeg(video_path: str, step: int = 1, fps: float = 25.0, total: int = 0,
-                        width: int = 0, height: int = 0,
-                        use_hwaccel: bool = True):
-    """Yield video frames sequentially via an FFmpeg pipe."""
-    if total <= 0 or fps <= 0 or width <= 0 or height <= 0:
-        raise RuntimeError("Invalid video metadata for ffmpeg pipe")
-
-    cmd = ["ffmpeg"]
-    if use_hwaccel:
-        codec = get_video_codec(video_path)
-        if codec not in HW_DISABLED_CODECS:
-            cmd += ["-hwaccel", "auto"]
-    cmd += [
-        "-i", video_path,
-        "-f", "rawvideo",
-        "-pix_fmt", "bgr24",
-        "-vsync", "0",
-        "pipe:1"
-    ]
-
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-    frame_size = width * height * 3
-    frame_idx = 0
-    try:
-        while proc.poll() is None:
-            raw = proc.stdout.read(frame_size)
-            if len(raw) != frame_size:
-                break
+def iter_frames(video_path: str, step: int = 1, fps: float = 25.0, total: int = 0, width: int = 0, height: int = 0, use_hwaccel: bool = True):
+    """Yield video frames sequentially using PyAV."""
+    with av.open(video_path) as container:
+        stream = container.streams.video[0]
+        stream.thread_type = "AUTO"
+        frame_idx = 0
+        for frame in container.decode(stream):
             if frame_idx % step == 0:
-                arr = np.frombuffer(raw, np.uint8).reshape((height, width, 3))
+                img = frame.to_ndarray(format='bgr24')
                 timestamp = frame_idx / fps
-                yield frame_idx, timestamp, arr.copy()
+                yield frame_idx, timestamp, img
             frame_idx += 1
-    finally:
-        if proc.stdout:
-            proc.stdout.close()
-        proc.kill()
-        proc.wait()
 
 def get_video_info(video_path: str) -> VideoInfo:
     """Get preliminary video metadata and the first frame."""
     if not video_path:
         return VideoInfo(None, 1, 0)
-
     dar = get_video_dar(video_path)
     result = extract_frame_cv2(video_path, 0, dar=dar)
     if result is None:
         return VideoInfo(None, 1, 0)
-
     frame, corrected_width = result
-    cap = create_video_capture(video_path)
-    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    cap.release()
-
+    meta = get_video_metadata(video_path)
     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) if frame is not None else None
-    return VideoInfo(frame_rgb, total, corrected_width)
+    return VideoInfo(frame_rgb, meta["total_frames"], corrected_width)
 
 def get_frame_image(video_path: str, frame_index: int) -> np.ndarray | None:
     """Retrieve a single frame as an RGB numpy array."""
@@ -280,24 +122,16 @@ def get_frame_image(video_path: str, frame_index: int) -> np.ndarray | None:
     frame, _ = result
     return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-def generate_video_preview(
-    video_path: str,
-    frame_index: int,
-    roi_override: list[int] | None,
-    scale_factor: float,
-) -> np.ndarray | None:
+def generate_video_preview(video_path: str, frame_index: int, roi_override: list[int] | None, scale_factor: float) -> np.ndarray | None:
     """Generate a processed preview image applying ROI and filters."""
     if not video_path:
         return None
-
     dar = get_video_dar(video_path)
     result = extract_frame_cv2(video_path, frame_index, dar=dar)
     if result is None:
         return None
-
     frame_bgr, corrected_width = result
     original_height = frame_bgr.shape[0]
-
     if roi_override and len(roi_override) == 4 and roi_override[2] > 0 and roi_override[3] > 0:
         x, y, w, h = roi_override
         scale_x = corrected_width / frame_bgr.shape[1]
@@ -315,11 +149,9 @@ def generate_video_preview(
             frame_roi = frame_bgr
     else:
         frame_roi = frame_bgr
-
     if frame_roi.size == 0:
         return None
-
-    denoised = denoise_frame(frame_roi, strength=3.0)
+    denoised = cv2.cuda.fastNlMeansDenoisingColored(frame_roi, None, 3.0, 3.0, 7, 21) if cv2.cuda.getCudaEnabledDeviceCount() > 0 else cv2.fastNlMeansDenoisingColored(frame_roi, None, 3.0, 3.0, 7, 21)
     processed = denoised
     if scale_factor > 1.0 and processed is not None:
         processed = cv2.resize(processed, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC)

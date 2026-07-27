@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, status, Form, UploadFile, File, Re
 from fastapi.responses import StreamingResponse, FileResponse
 from io import BytesIO
 from pydantic import BaseModel
-from core.video_io import get_video_info, get_frame_image, generate_video_preview, get_video_dar
+from core.video_io import get_video_info, get_frame_image, generate_video_preview, get_video_dar, get_video_metadata
 from api.schemas import VideoMetadata, PreviewConfig
 from api.dependencies import get_video_path
 from core.storage import storage_manager
@@ -32,6 +32,7 @@ class UploadCompleteRequest(BaseModel):
 
 @router.get("/config")
 async def get_upload_config() -> Dict[str, Any]:
+    """Get configurations for uploading video files."""
     return {
         "chunk_size": settings.upload_chunk_size,
         "max_size": settings.max_upload_size,
@@ -40,10 +41,12 @@ async def get_upload_config() -> Dict[str, Any]:
 
 @router.get("/allowed-extensions")
 async def get_allowed_extensions() -> List[str]:
+    """Get list of supported video extensions."""
     return list(ALLOWED_VIDEO_EXTENSIONS)
 
 @router.post("/upload/init")
 async def init_upload(req: UploadInitRequest, request: Request) -> Dict[str, Any]:
+    """Initialize a chunked file upload session."""
     ext = os.path.splitext(req.filename)[1].lower()
     if ext not in ALLOWED_VIDEO_EXTENSIONS:
         raise HTTPException(
@@ -61,6 +64,7 @@ async def upload_local_chunk(
     part_number: int = Form(...),
     file: UploadFile = File(...)
 ) -> Dict[str, Any]:
+    """Process and save an incoming chunk of video data."""
     data = await file.read()
     offset = (part_number - 1) * settings.upload_chunk_size
     success = await storage_manager.save_chunk(upload_id, data, offset)
@@ -70,6 +74,7 @@ async def upload_local_chunk(
 
 @router.post("/upload/complete")
 async def complete_upload(req: UploadCompleteRequest, request: Request) -> VideoMetadata:
+    """Finalize the video upload and extract preliminary metadata."""
     safe_filename = req.filename
     redis_conn = request.app.state.redis
     orig_bytes = await redis_conn.get(f"session:{safe_filename}")
@@ -82,26 +87,28 @@ async def complete_upload(req: UploadCompleteRequest, request: Request) -> Video
         
     video_path = get_video_path(safe_filename)
     info = await asyncio.to_thread(get_video_info, video_path)
+    
     if info.frame is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid video format or unsupported codec."
+            detail="Invalid video format, corrupted file, or unsupported codec."
         )
-    total_frames = info.total_frames
-    corrected_width = info.corrected_width
-    height = info.frame.shape[0]
-    cap = cv2.VideoCapture(video_path)
-    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-    duration = total_frames / fps
-    cap.release()
+        
+    meta = await asyncio.to_thread(get_video_metadata, video_path)
     dar = await asyncio.to_thread(get_video_dar, video_path)
+    
+    height = info.frame.shape[0]
     if dar is None:
-        dar = corrected_width / height
+        dar = info.corrected_width / height
+        
+    fps = meta.get("fps", 25.0)
+    duration = meta["total_frames"] / fps if fps > 0 else 0
+    
     return VideoMetadata(
         filename=safe_filename,
         original_filename=original_name,
-        total_frames=total_frames,
-        width=corrected_width,
+        total_frames=meta["total_frames"],
+        width=info.corrected_width,
         height=height,
         fps=fps,
         duration=duration,
@@ -110,6 +117,7 @@ async def complete_upload(req: UploadCompleteRequest, request: Request) -> Video
 
 @router.delete("/delete/{filename}")
 async def delete_video(filename: str, request: Request):
+    """Delete a video file and abort any related processing jobs."""
     safe_filename = validate_filename(filename)
     redis_conn = request.app.state.redis
     pending_jobs_key = f"pending_jobs:{safe_filename}"
@@ -135,6 +143,7 @@ async def delete_video(filename: str, request: Request):
 
 @router.get("/download/{filename}")
 async def download_file(filename: str):
+    """Serve a completed video file for download."""
     safe_filename = validate_filename(filename)
     file_path = os.path.join(settings.cache_dir, safe_filename)
     if not os.path.exists(file_path):
@@ -148,6 +157,7 @@ async def download_file(filename: str):
 
 @router.get("/frame/{filename}/{frame_index}")
 async def get_frame(filename: str, frame_index: int):
+    """Extract and stream a specific frame from the video."""
     safe_filename = validate_filename(filename)
     video_path = get_video_path(safe_filename)
     image = await asyncio.to_thread(get_frame_image, video_path, frame_index)
@@ -159,6 +169,7 @@ async def get_frame(filename: str, frame_index: int):
 
 @router.post("/preview")
 async def get_preview(config: PreviewConfig):
+    """Generate and stream a preview frame with algorithm filters applied."""
     video_path = get_video_path(config.filename)
     preview_image = await asyncio.to_thread(
         generate_video_preview,

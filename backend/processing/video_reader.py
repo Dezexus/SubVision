@@ -2,11 +2,12 @@ from collections.abc import Iterator
 from typing import Any
 import logging
 
-from core.video_io import get_video_metadata, iter_frames_ffmpeg
+from core.video_io import get_video_metadata, iter_frames
 
 logger = logging.getLogger(__name__)
 
 class VideoProvider:
+    """Provides an iterable stream of video frames using PyAV."""
     def __init__(self, video_path: str, step: int = 1, use_hwaccel: bool = True) -> None:
         self.video_path = video_path
         self.step = step
@@ -18,7 +19,7 @@ class VideoProvider:
         self.fps = meta["fps"]
         self.total_frames = meta["total_frames"]
 
-        self._generator = iter_frames_ffmpeg(
+        self._generator = iter_frames(
             video_path=self.video_path,
             step=self.step,
             fps=self.fps,
@@ -35,5 +36,6 @@ class VideoProvider:
         return self._generator
 
     def release(self) -> None:
+        """Release underlying resources."""
         if self._generator:
             self._generator.close()
