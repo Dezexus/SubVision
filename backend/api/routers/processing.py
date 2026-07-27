@@ -1,6 +1,7 @@
 import logging
 import uuid
 import os
+import asyncio
 from fastapi import APIRouter, HTTPException, UploadFile, File, Request, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from io import BytesIO
@@ -13,28 +14,32 @@ from api.dependencies import get_video_path
 from rendering.blur_preview import generate_blur_preview
 from processing.subtitle_parser import parse_srt
 from processing.presets import get_all_presets, get_supported_languages, get_preset_config
-from core.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 class StopRequest(BaseModel):
+    """Model for stop request."""
     job_id: str
 
 @router.get("/presets")
 async def get_presets():
+    """Get all presets."""
     return get_all_presets()
 
 @router.get("/languages")
 async def get_languages():
+    """Get all languages."""
     return get_supported_languages()
 
 @router.get("/blur-defaults")
 async def get_blur_defaults():
+    """Get default blur settings."""
     return BlurSettings().model_dump()
 
 @router.get("/process-defaults")
 async def get_process_defaults():
+    """Get default process configuration."""
     config = get_preset_config("⚖️ Balance")
     config["preset"] = "⚖️ Balance"
     config["languages"] = "en"
@@ -42,6 +47,7 @@ async def get_process_defaults():
 
 @router.post("/start")
 async def start_process(config: ProcessConfig, request: Request):
+    """Start OCR process."""
     try:
         pool = request.app.state.arq_pool
         job_id = f"ocr_{config.client_id}_{uuid.uuid4().hex[:8]}"
@@ -55,10 +61,11 @@ async def start_process(config: ProcessConfig, request: Request):
         
         return {"status": "queued", "job_id": job_id}
     except Exception as e:
-        logger.error(f"Failed to enqueue OCR task: {e}", exc_info=True)
+        logger.error(f"Failed to enqueue task: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 async def _cancel_in_background(pool, redis_conn, job_id: str):
+    """Cancel job safely in background."""
     try:
         await redis_conn.setex(f"job:{job_id}:cancel", 3600, "1")
         
@@ -71,12 +78,12 @@ async def _cancel_in_background(pool, redis_conn, job_id: str):
             
         job = Job(job_id, pool)
         await job.abort()
-        logger.info(f"Background cancellation completed for {job_id}")
     except Exception as e:
-        logger.error(f"Failed to background cancel job {job_id}: {e}")
+        logger.error(f"Failed to background cancel: {e}")
 
 @router.post("/stop")
 async def stop_process(req: StopRequest, request: Request, background_tasks: BackgroundTasks):
+    """Stop processing job."""
     pool = request.app.state.arq_pool
     redis_conn = request.app.state.redis
     background_tasks.add_task(_cancel_in_background, pool, redis_conn, req.job_id)
@@ -84,6 +91,7 @@ async def stop_process(req: StopRequest, request: Request, background_tasks: Bac
 
 @router.post("/import_srt")
 async def import_srt(file: UploadFile = File(...)):
+    """Import subtitles from file."""
     try:
         content = await file.read()
         content_str = content.decode("utf-8")
@@ -101,10 +109,12 @@ async def import_srt(file: UploadFile = File(...)):
 
 @router.post("/preview_blur")
 async def preview_blur_frame(config: BlurPreviewConfig):
+    """Preview blur effect."""
     video_path = get_video_path(config.filename)
 
     try:
-        preview_image = generate_blur_preview(
+        preview_image = await asyncio.to_thread(
+            generate_blur_preview,
             video_path=video_path,
             frame_index=config.frame_index,
             settings=config.blur_settings.model_dump(),
@@ -122,6 +132,7 @@ async def preview_blur_frame(config: BlurPreviewConfig):
 
 @router.post("/render_blur")
 async def render_blur_video(config: RenderConfig, request: Request):
+    """Start render blur process."""
     try:
         pool = request.app.state.arq_pool
         job_id = f"blur_{config.client_id}_{uuid.uuid4().hex[:8]}"

@@ -1,17 +1,20 @@
 import re
 
 def parse_srt(content: str) -> list[dict]:
-    """Parse SRT content into a list of subtitle dictionaries with automatic time offset correction."""
+    """Parse SRT content into a list of subtitle dictionaries."""
     content = content.replace('\r\n', '\n').replace('\r', '\n')
 
-    pattern = re.compile(r'(\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n(.*?)(?=\n\n|\Z)', re.DOTALL)
+    pattern = re.compile(r'(\d+)\n(\d{2}:\d{2}:\d{2}[,.]?\d*) --> (\d{2}:\d{2}:\d{2}[,.]?\d*)\n(.*?)(?=\n\n|\Z)', re.DOTALL)
     tag_pattern = re.compile(r'<[^>]+>')
 
     matches = pattern.findall(content + '\n\n')
     subtitles = []
 
     def time_to_seconds(t_str: str) -> float:
-        """Convert HH:MM:SS,ms time string format to total seconds."""
+        """Convert time string to seconds."""
+        t_str = t_str.replace('.', ',')
+        if ',' not in t_str:
+            t_str += ',000'
         h, m, s_ms = t_str.split(':')
         s, ms = s_ms.split(',')
         return int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000.0

@@ -21,8 +21,9 @@ from core.config import settings
 logger = logging.getLogger(__name__)
 
 async def cleanup_loop():
+    """Periodic background task to clean temporary files older than 24 hours."""
     while True:
-        await asyncio.sleep(3600)
+        await asyncio.sleep(86400)
         temp_root = Path(settings.cache_dir) / ".temp"
         if not temp_root.exists():
             continue
@@ -30,17 +31,17 @@ async def cleanup_loop():
         for entry in temp_root.iterdir():
             try:
                 mtime = entry.stat().st_mtime
-                if now - mtime > 3600:
+                if now - mtime > 86400:
                     if entry.is_dir():
                         shutil.rmtree(entry, ignore_errors=True)
                     elif entry.is_file():
                         entry.unlink(missing_ok=True)
-                    logger.info("Cleaned up stale upload: %s", entry)
-            except Exception as e:
-                logger.warning("Could not clean up %s: %s", entry, e)
+            except Exception:
+                pass
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Application lifespan context manager."""
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     app.state.arq_pool = await create_pool(redis_settings)
     app.state.redis = aioredis.from_url(settings.redis_url)
@@ -74,6 +75,7 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 @app.get("/health")
 async def health_check():
+    """Health check endpoint."""
     redis_up = False
     try:
         r = aioredis.from_url(settings.redis_url)
@@ -86,6 +88,7 @@ async def health_check():
 
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
+    """Websocket connection endpoint."""
     redis_client = websocket.app.state.redis
     await connection_manager.connect(websocket, client_id)
     pubsub = None
@@ -103,8 +106,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
                         await connection_manager.send_json(client_id, data)
             except asyncio.CancelledError:
                 pass
-            except Exception as e:
-                logger.error(f"Redis reader error for {client_id}: {e}")
+            except Exception:
+                pass
         reader_task = asyncio.create_task(redis_reader())
         while True:
             data = await asyncio.wait_for(websocket.receive_text(), timeout=120.0)
@@ -116,8 +119,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
                 pass
     except (WebSocketDisconnect, asyncio.TimeoutError):
         pass
-    except Exception as e:
-        logger.error(f"Unexpected WebSocket error for {client_id}: {e}")
+    except Exception:
+        pass
     finally:
         connection_manager.disconnect(client_id)
         if reader_task:
