@@ -88,7 +88,7 @@ async def health_check():
 
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
-    """Websocket connection endpoint."""
+    """Websocket connection endpoint supporting auto-reconnect."""
     redis_client = websocket.app.state.redis
     await connection_manager.connect(websocket, client_id)
     pubsub = None
@@ -96,19 +96,24 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
     try:
         pubsub = redis_client.pubsub()
         await pubsub.subscribe(f"ws_{client_id}")
+        
         async def redis_reader():
-            try:
-                async for message in pubsub.listen():
-                    if message["type"] == "message":
-                        raw_data = message["data"]
-                        data_str = raw_data.decode("utf-8") if isinstance(raw_data, bytes) else raw_data
-                        data = json.loads(data_str)
-                        await connection_manager.send_json(client_id, data)
-            except asyncio.CancelledError:
-                pass
-            except Exception:
-                pass
+            while True:
+                try:
+                    async for message in pubsub.listen():
+                        if message["type"] == "message":
+                            raw_data = message["data"]
+                            data_str = raw_data.decode("utf-8") if isinstance(raw_data, bytes) else raw_data
+                            data = json.loads(data_str)
+                            await connection_manager.send_json(client_id, data)
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    logger.error(f"Redis reader error for {client_id}: {e}")
+                    await asyncio.sleep(2)
+                    
         reader_task = asyncio.create_task(redis_reader())
+        
         while True:
             data = await asyncio.wait_for(websocket.receive_text(), timeout=120.0)
             try:

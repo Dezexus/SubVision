@@ -20,6 +20,15 @@ from rendering.pipeline import render_blur_pipeline
 from rendering.interfaces import Reporter, Storage, CancellationToken
 from rendering.models import RenderTaskConfig
 
+_sync_redis_client = None
+
+def get_sync_redis() -> redis.Redis:
+    """Return a singleton synchronous Redis client."""
+    global _sync_redis_client
+    if _sync_redis_client is None:
+        _sync_redis_client = redis.Redis.from_url(settings.redis_url)
+    return _sync_redis_client
+
 async def publish_ws(redis_conn: aioredis.Redis, client_id: str, job_id: str, payload: Dict[str, Any]) -> None:
     """Publish a message to a WebSocket client via Redis."""
     payload['job_id'] = job_id
@@ -32,7 +41,7 @@ class RedisCancellationToken:
     """Token to check if a job has been cancelled by the user using Redis."""
     def __init__(self, job_id: str) -> None:
         self._job_id = job_id
-        self._sync_redis = redis.Redis.from_url(settings.redis_url)
+        self._sync_redis = get_sync_redis()
         self._last_check = 0.0
         self._cached_result = False
 
@@ -76,9 +85,11 @@ class ProgressReporter:
             raise TaskCancelledError("Job cancelled by user.")
 
     def set_total(self, total: int) -> None:
+        """Set total processing count."""
         self._total = total
 
     def _send(self, payload: dict) -> None:
+        """Dispatch payload to Redis PubSub."""
         payload['job_id'] = self._job_id
         async def do_send():
             try:
@@ -89,10 +100,12 @@ class ProgressReporter:
             asyncio.run_coroutine_threadsafe(do_send(), self._loop)
 
     def log(self, message: str) -> None:
+        """Send log message."""
         self._check_cancel()
         self._send({"type": "log", "message": message})
 
     def progress(self, current: int, total: int, eta: str) -> None:
+        """Report execution progress."""
         self._check_cancel()
         now = time.time()
         if now - self._throttle_ts >= self._throttle_interval:
@@ -101,10 +114,12 @@ class ProgressReporter:
         self._last_progress = {"type": "progress", "current": current, "total": total, "eta": eta}
 
     def subtitle(self, item: Dict[str, Any]) -> None:
+        """Send detected subtitle item."""
         self._check_cancel()
         self._send({"type": "subtitle_new", "item": item})
 
     def done(self) -> None:
+        """Report completion."""
         self._check_cancel()
         payload = {"type": "progress", "current": self._total, "total": self._total, "eta": "00:00"}
         self._send(payload)
@@ -175,6 +190,7 @@ class RedisReporter:
             raise TaskCancelledError("Job cancelled by user.")
 
     def _send(self, payload: dict) -> None:
+        """Send payload via coroutine threadsafe execution."""
         payload['job_id'] = self._job_id
         async def do_send():
             try:
@@ -185,23 +201,28 @@ class RedisReporter:
             asyncio.run_coroutine_threadsafe(do_send(), self._loop)
 
     def log(self, message: str) -> None:
+        """Log message synchronously."""
         self._check_cancel()
         self._send({"type": "log", "message": message})
 
     def progress(self, current: int, total: int, eta: str) -> None:
+        """Report progress synchronously."""
         self._check_cancel()
         self._send({"type": "progress", "current": current, "total": total, "eta": eta})
 
     def done(self, total: int) -> None:
+        """Send completion signal synchronously."""
         self._check_cancel()
         self._send({"type": "progress", "current": total, "total": total, "eta": "00:00"})
 
 class StorageAdapter:
     """Adapter for storage manager operations."""
     async def download(self, key: str, dest: str) -> bool:
+        """Download file securely."""
         return await storage_manager.download_file(key, dest)
 
     async def upload(self, src: str, key: str) -> bool:
+        """Upload file securely."""
         return await storage_manager.upload_file(src, key)
 
 async def startup(ctx: Dict[str, Any]) -> None:

@@ -248,6 +248,8 @@ def iter_frames_ffmpeg(video_path: str, step: int = 1, fps: float = 25.0, total:
                 yield frame_idx, timestamp, arr.copy()
             frame_idx += 1
     finally:
+        if proc.stdout:
+            proc.stdout.close()
         proc.kill()
         proc.wait()
 
