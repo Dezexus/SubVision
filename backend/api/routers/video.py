@@ -4,13 +4,14 @@ import logging
 import cv2
 import asyncio
 from typing import List, Dict, Any
-from fastapi import APIRouter, HTTPException, status, Form, UploadFile, File, Request
+from fastapi import APIRouter, HTTPException, status, Form, UploadFile, File, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse, FileResponse
 from io import BytesIO
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from core.video_io import get_video_info, get_frame_image, generate_video_preview, get_video_dar, get_video_metadata
 from api.schemas import VideoMetadata, PreviewConfig
 from api.dependencies import get_video_path
+from api.websockets.manager import connection_manager
 from core.storage import storage_manager
 from core.config import settings
 from core.utils import validate_filename
@@ -32,7 +33,6 @@ class UploadCompleteRequest(BaseModel):
 
 @router.get("/config")
 async def get_upload_config() -> Dict[str, Any]:
-    """Get configurations for uploading video files."""
     return {
         "chunk_size": settings.upload_chunk_size,
         "max_size": settings.max_upload_size,
@@ -41,12 +41,10 @@ async def get_upload_config() -> Dict[str, Any]:
 
 @router.get("/allowed-extensions")
 async def get_allowed_extensions() -> List[str]:
-    """Get list of supported video extensions."""
     return list(ALLOWED_VIDEO_EXTENSIONS)
 
 @router.post("/upload/init")
 async def init_upload(req: UploadInitRequest, request: Request) -> Dict[str, Any]:
-    """Initialize a chunked file upload session."""
     ext = os.path.splitext(req.filename)[1].lower()
     if ext not in ALLOWED_VIDEO_EXTENSIONS:
         raise HTTPException(
@@ -64,7 +62,6 @@ async def upload_local_chunk(
     part_number: int = Form(...),
     file: UploadFile = File(...)
 ) -> Dict[str, Any]:
-    """Process and save an incoming chunk of video data."""
     data = await file.read()
     offset = (part_number - 1) * settings.upload_chunk_size
     success = await storage_manager.save_chunk(upload_id, data, offset)
@@ -74,7 +71,6 @@ async def upload_local_chunk(
 
 @router.post("/upload/complete")
 async def complete_upload(req: UploadCompleteRequest, request: Request) -> VideoMetadata:
-    """Finalize the video upload and extract preliminary metadata."""
     safe_filename = req.filename
     redis_conn = request.app.state.redis
     orig_bytes = await redis_conn.get(f"session:{safe_filename}")
@@ -117,7 +113,6 @@ async def complete_upload(req: UploadCompleteRequest, request: Request) -> Video
 
 @router.delete("/delete/{filename}")
 async def delete_video(filename: str, request: Request):
-    """Delete a video file and abort any related processing jobs."""
     safe_filename = validate_filename(filename)
     redis_conn = request.app.state.redis
     pending_jobs_key = f"pending_jobs:{safe_filename}"
@@ -143,7 +138,6 @@ async def delete_video(filename: str, request: Request):
 
 @router.get("/download/{filename}")
 async def download_file(filename: str):
-    """Serve a completed video file for download."""
     safe_filename = validate_filename(filename)
     file_path = os.path.join(settings.cache_dir, safe_filename)
     if not os.path.exists(file_path):
@@ -157,7 +151,6 @@ async def download_file(filename: str):
 
 @router.get("/frame/{filename}/{frame_index}")
 async def get_frame(filename: str, frame_index: int):
-    """Extract and stream a specific frame from the video."""
     safe_filename = validate_filename(filename)
     video_path = get_video_path(safe_filename)
     image = await asyncio.to_thread(get_frame_image, video_path, frame_index)
@@ -169,7 +162,7 @@ async def get_frame(filename: str, frame_index: int):
 
 @router.post("/preview")
 async def get_preview(config: PreviewConfig):
-    """Generate and stream a preview frame with algorithm filters applied."""
+    """Legacy HTTP preview endpoint."""
     video_path = get_video_path(config.filename)
     preview_image = await asyncio.to_thread(
         generate_video_preview,
@@ -182,3 +175,32 @@ async def get_preview(config: PreviewConfig):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Processing failed")
     _, encoded_img = cv2.imencode('.jpg', preview_image)
     return StreamingResponse(BytesIO(encoded_img.tobytes()), media_type="image/jpeg")
+
+@router.websocket("/ws/stream/{client_id}")
+async def preview_stream_endpoint(websocket: WebSocket, client_id: str):
+    """Dedicated high-frequency WebSocket for binary streaming (previews)."""
+    await connection_manager.connect_stream(websocket, client_id)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            try:
+                config = PreviewConfig.model_validate_json(data)
+                video_path = get_video_path(config.filename)
+                preview_image = await asyncio.to_thread(
+                    generate_video_preview,
+                    video_path=video_path,
+                    frame_index=config.frame_index,
+                    roi_override=config.roi,
+                    scale_factor=config.scale_factor
+                )
+                if preview_image is not None:
+                    _, encoded_img = cv2.imencode('.jpg', preview_image)
+                    await connection_manager.send_bytes(client_id, encoded_img.tobytes())
+            except ValidationError:
+                pass
+            except Exception as e:
+                logger.warning(f"Preview stream error for {client_id}: {e}")
+    except WebSocketDisconnect:
+        pass
+    finally:
+        connection_manager.disconnect_stream(client_id)

@@ -1,81 +1,69 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Cpu, Loader2, ScanLine } from 'lucide-react';
+import useWebSocket from 'react-use-websocket';
 import { useVideoStore } from '../../../store/videoStore';
 import { useConfigStore } from '../../../store/configStore';
-import { api } from '../../../shared/api';
 
-const MAX_FILTER_CACHE = 30;
-const filterCache = new Map<string, string>();
+const API_BASE = import.meta.env.VITE_API_URL || '';
+const WS_URL = API_BASE ? API_BASE.replace(/^http(s?):\/\//, 'ws$1://') : `ws://${window.location.host}`;
 
 export const FilterPreview = () => {
   const metadata = useVideoStore((s) => s.metadata);
+  const clientId = useVideoStore((s) => s.clientId);
   const roi = useVideoStore((s) => s.roi);
   const currentFrameIndex = useVideoStore((s) => s.currentFrameIndex);
   const config = useConfigStore((s) => s.config);
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const throttleRef = useRef<number>(0);
+
+  const { sendMessage, lastMessage, readyState } = useWebSocket(
+    clientId ? `${WS_URL}/api/video/ws/stream/${clientId}` : null,
+    {
+      shouldReconnect: () => true,
+      reconnectAttempts: 10,
+      reconnectInterval: 2000,
+    }
+  );
 
   useEffect(() => {
-    filterCache.forEach((url) => URL.revokeObjectURL(url));
-    filterCache.clear();
-  }, [metadata?.filename]);
+    if (lastMessage && lastMessage.data instanceof Blob) {
+      const url = URL.createObjectURL(lastMessage.data);
+      setPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return url;
+      });
+      setLoading(false);
+    }
+  }, [lastMessage]);
 
   useEffect(() => {
-    if (!metadata || roi?.[2] === 0) {
+    if (!metadata || !roi?.[2]) {
       setPreviewUrl(null);
       return;
     }
 
-    let isActive = true;
+    if (readyState !== 1) return;
+
     const scaleFactor = config.scale_factor || 1.0;
-    const cacheKey = `${metadata.filename}_${currentFrameIndex}_${roi?.join(',')}_${scaleFactor}`;
+    const now = Date.now();
+    const timeSinceLast = now - throttleRef.current;
+    const delay = Math.max(0, 50 - timeSinceLast);
 
-    if (filterCache.has(cacheKey)) {
-      const url = filterCache.get(cacheKey)!;
-      filterCache.delete(cacheKey);
-      filterCache.set(cacheKey, url);
-      setPreviewUrl(url);
-      setLoading(false);
-      return;
-     }
-
-    const timer = setTimeout(async () => {
+    const timer = setTimeout(() => {
       setLoading(true);
-      try {
-        const url = await api.getPreview({
-          filename: metadata.filename,
-          frame_index: currentFrameIndex,
-          roi: roi!,
-          scale_factor: scaleFactor,
-        });
+      throttleRef.current = Date.now();
+      sendMessage(JSON.stringify({
+        filename: metadata.filename,
+        frame_index: currentFrameIndex,
+        roi: roi,
+        scale_factor: scaleFactor,
+      }));
+    }, delay);
 
-        if (isActive) {
-           if (filterCache.size >= MAX_FILTER_CACHE) {
-            const firstKey = filterCache.keys().next().value;
-            if (firstKey) {
-              const oldUrl = filterCache.get(firstKey);
-              if (oldUrl) URL.revokeObjectURL(oldUrl);
-              filterCache.delete(firstKey);
-            }
-          }
-          filterCache.set(cacheKey, url);
-          setPreviewUrl(url);
-        } else {
-          URL.revokeObjectURL(url);
-        }
-      } catch (e) {
-        console.error(e);
-      } finally {
-        if (isActive) setLoading(false);
-      }
-    }, 500);
-
-    return () => {
-      isActive = false;
-      clearTimeout(timer);
-    };
-  }, [roi, config, currentFrameIndex, metadata]);
+    return () => clearTimeout(timer);
+  }, [roi, config.scale_factor, currentFrameIndex, metadata, readyState, sendMessage]);
 
   if (!metadata) return null;
 
@@ -86,7 +74,7 @@ export const FilterPreview = () => {
           <ScanLine size={20} className="mb-2 opacity-50" />
           <span className="text-xs font-medium tracking-wide">
             Draw a selection box on the video to preview the algorithm
-           </span>
+          </span>
         </div>
       ) : (
         <div className="flex gap-4 w-full h-full items-center">
@@ -105,22 +93,21 @@ export const FilterPreview = () => {
                 <span className="text-txt-main font-mono">{roi?.[2]}x{roi?.[3]}</span>
               </div>
             </div>
-           </div>
+          </div>
 
           <div className="flex-1 bg-black rounded border border-border-main overflow-hidden flex items-center justify-center relative h-full">
-            {loading && (
+            {loading && !previewUrl && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
                 <Loader2 className="animate-spin text-brand-500" size={20} />
               </div>
-             )}
-            {previewUrl ?
-            (
+            )}
+            {previewUrl ? (
               <img src={previewUrl} alt="Algorithm View" className="h-full w-auto object-contain" />
             ) : (
               <div className="flex flex-col items-center gap-1 text-txt-subtle">
                 <ScanLine size={16} />
                 <span className="text-[9px]">NO SIGNAL</span>
-               </div>
+              </div>
             )}
           </div>
         </div>
