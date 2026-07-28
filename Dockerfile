@@ -82,6 +82,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --upgrade pip \
  && python -m pip install paddlepaddle-gpu==3.3.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/ \
  && python -m pip install -r requirements.txt \
+ && python -m pip uninstall -y onnxruntime \
  && python -m pip install -r requirements-worker.txt
 
 COPY backend ./backend

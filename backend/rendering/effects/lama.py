@@ -3,7 +3,6 @@ import threading
 from typing import Dict, Any, List, Tuple
 import cv2
 import numpy as np
-import onnxruntime as ort
 
 from rendering.effects.interface import Effect
 from rendering.geometry import calculate_text_roi
@@ -11,27 +10,37 @@ from rendering.effects.inpainting import generate_text_mask
 
 logger = logging.getLogger(__name__)
 
+try:
+    import onnxruntime as ort
+except ImportError as e:
+    ort = None
+    logger.error(f"Failed to import onnxruntime: {e}")
+
 _lama_session = None
 _lama_lock = threading.Lock()
 
-def get_lama_session(model_path: str = "models/lama/lama.onnx") -> ort.InferenceSession:
+def get_lama_session(model_path: str = "models/lama/lama.onnx"):
     """Global singleton for ONNX inference session."""
     global _lama_session
-    if _lama_session is None:
+    if _lama_session is None and ort is not None:
         with _lama_lock:
             if _lama_session is None:
-                providers = [
-                    ('CUDAExecutionProvider', {
+                available = ort.get_available_providers()
+                providers = []
+                if 'CUDAExecutionProvider' in available:
+                    providers.append(('CUDAExecutionProvider', {
                         'arena_extend_strategy': 'kSameAsRequested',
                         'cudnn_conv_algo_search': 'DEFAULT',
                         'do_copy_in_default_stream': True,
-                    }),
-                    'CPUExecutionProvider'
-                ]
+                    }))
+                providers.append('CPUExecutionProvider')
+                
                 sess_options = ort.SessionOptions()
                 sess_options.enable_mem_pattern = False
+                
                 try:
                     _lama_session = ort.InferenceSession(model_path, sess_options=sess_options, providers=providers)
+                    logger.info(f"LaMa ONNX model loaded with providers: {providers}")
                 except Exception as e:
                     logger.error(f"Failed to load LaMa ONNX model: {e}")
                     raise
@@ -51,10 +60,12 @@ def _pad_to_multiple(img: np.ndarray, mask: np.ndarray, multiple: int = 8) -> Tu
 def apply_lama_inpaint(frame: np.ndarray, roi: Tuple[int, int, int, int], font_size_px: int) -> np.ndarray:
     """Applies LaMa inpainting to a specific region."""
     x, y, w_roi, h_roi = roi
-    if w_roi <= 0 or h_roi <= 0:
+    if w_roi <= 0 or h_roi <= 0 or ort is None:
         return frame
     try:
         session = get_lama_session()
+        if session is None:
+            return frame
     except Exception:
         return frame
 
@@ -107,7 +118,6 @@ def apply_lama_inpaint(frame: np.ndarray, roi: Tuple[int, int, int, int], font_s
 
 class LaMaInpaintEffect(Effect):
     """LaMa AI inpainting effect."""
-    
     def __init__(self, blur_settings: Dict[str, Any]) -> None:
         self.blur_settings = blur_settings
         self.font_size_px = int(blur_settings.get('font_size', 21))
@@ -123,7 +133,7 @@ class LaMaInpaintEffect(Effect):
         video_path: str,
     ) -> None:
         """Initializes session and maps frames."""
-        if self.blur_settings.get('mode') != 'lama':
+        if self.blur_settings.get('mode') != 'lama' or ort is None:
             self.frame_inpaint_map.clear()
             return
 
