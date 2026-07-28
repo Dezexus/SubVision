@@ -9,6 +9,7 @@ from rendering.interfaces import Reporter, Storage, CancellationToken
 from rendering.models import RenderTaskConfig
 from rendering.effects.interface import Effect
 from rendering.video_writer import AsyncVideoWriter
+from rendering.transcoder import FFmpegTranscoder
 from core.exceptions import TaskCancelledError
 from core.video_io import get_video_dar, get_video_metadata, iter_frames
 
@@ -51,7 +52,7 @@ async def render_blur_pipeline(
     reporter: Reporter,
     cancellation: CancellationToken,
 ) -> str:
-    """Executes the complete blur rendering pipeline using PyAV hardware acceleration."""
+    """Executes the complete blur rendering pipeline."""
     filename = task_config.filename
     safe_filename = os.path.basename(filename)
     output_filename = f"blurred_{safe_filename}"
@@ -60,6 +61,7 @@ async def render_blur_pipeline(
 
     with tempfile.TemporaryDirectory() as tmpdir:
         local_video_path = os.path.join(tmpdir, safe_filename)
+        temp_render_path = os.path.join(tmpdir, "temp_" + output_filename)
         final_output_path = os.path.join(tmpdir, output_filename)
 
         reporter.log("Downloading video from storage...")
@@ -75,6 +77,7 @@ async def render_blur_pipeline(
             raise TaskCancelledError("User cancelled before processing")
 
         meta = await asyncio.to_thread(get_video_metadata, local_video_path)
+        dar = await asyncio.to_thread(get_video_dar, local_video_path)
         width = meta["width"]
         height = meta["height"]
         fps = meta["fps"]
@@ -92,7 +95,7 @@ async def render_blur_pipeline(
                 video_path=local_video_path,
             )
 
-        writer = AsyncVideoWriter(final_output_path, fps, (width, height), task_config.blur_settings.encoder, local_video_path)
+        writer = AsyncVideoWriter(temp_render_path, fps, (width, height), task_config.blur_settings.encoder)
 
         try:
             frame_idx = await asyncio.to_thread(
@@ -114,6 +117,16 @@ async def render_blur_pipeline(
 
         if cancellation.is_cancelled_sync():
             raise TaskCancelledError("User cancelled after writing")
+
+        reporter.log("Muxing audio and restoring aspect ratio...")
+        await FFmpegTranscoder.transcode_with_audio(
+            temp_video=temp_render_path,
+            original_video=local_video_path,
+            output_path=final_output_path,
+            dar=dar,
+            encoder=task_config.blur_settings.encoder,
+            cancel=cancellation
+        )
 
         reporter.log("Uploading result...")
         up_ok = await storage.upload(final_output_path, output_filename)
