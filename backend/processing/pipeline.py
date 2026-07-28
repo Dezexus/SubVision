@@ -6,7 +6,7 @@ from processing.ocr_engine import PaddleWrapper, get_paddle_engine
 from processing.aggregator import SubtitleAggregator
 from processing.filters import ImagePipeline
 from processing.video_reader import VideoProvider
-from processing.interfaces import OCRReporter
+from processing.interfaces import OCRReporter, CancellationToken
 from processing.presets import get_preset_config
 
 logger = logging.getLogger(__name__)
@@ -15,7 +15,7 @@ def run_ocr_pipeline(
     video_path: str,
     params: Dict[str, Any],
     reporter: OCRReporter,
-    cancel_check: callable
+    cancellation: CancellationToken
 ) -> bool:
     logger.info("Starting OCR pipeline")
 
@@ -49,14 +49,13 @@ def run_ocr_pipeline(
 
     try:
         for frame_idx, timestamp, frame in video:
-            if cancel_check():
+            if cancellation.is_cancelled_sync():
                 reporter.log("Process stopped by user.")
                 logger.info("OCR process cancelled by user request.")
                 return False
 
             buffer.append((frame_idx, timestamp, frame))
 
-            # PROGRESS REPORTING - Вынесено за пределы буфера
             if frame_idx > 0 and frame_idx % 25 == 0:
                 elapsed = time.time() - start_time
                 eta_sec = int((total_frames - frame_idx) * (elapsed / frame_idx))

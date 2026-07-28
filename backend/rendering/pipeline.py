@@ -26,7 +26,6 @@ def _process_frames_sync(
     reporter: Reporter,
     cancellation: CancellationToken
 ) -> int:
-    """Synchronous core frame processing loop."""
     frame_idx = 0
     for f_idx, _, frame in iter_frames(local_video_path, step=1, fps=fps, total=total_frames, width=width, height=height, use_hwaccel=True):
         if cancellation.is_cancelled_sync():
@@ -52,7 +51,6 @@ async def render_blur_pipeline(
     reporter: Reporter,
     cancellation: CancellationToken,
 ) -> str:
-    """Executes the complete blur rendering pipeline."""
     filename = task_config.filename
     safe_filename = os.path.basename(filename)
     output_filename = f"blurred_{safe_filename}"

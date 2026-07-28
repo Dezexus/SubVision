@@ -13,32 +13,44 @@ import numpy as np
 from core.config import settings
 from core.storage import storage_manager
 from core.exceptions import TaskCancelledError
+
 from processing.pipeline import run_ocr_pipeline
-from processing.interfaces import OCRReporter
+from processing.interfaces import OCRReporter, CancellationToken as ProcessCancellationToken
 from processing.ocr_engine import get_paddle_engine
+
 from rendering.pipeline import render_blur_pipeline
-from rendering.interfaces import Reporter, Storage, CancellationToken
+from rendering.interfaces import Reporter, Storage, CancellationToken as RenderCancellationToken
 from rendering.models import RenderTaskConfig
 
 _sync_redis_client = None
 
 def get_sync_redis() -> redis.Redis:
-    """Return a singleton synchronous Redis client."""
     global _sync_redis_client
     if _sync_redis_client is None:
         _sync_redis_client = redis.Redis.from_url(settings.redis_url)
     return _sync_redis_client
 
-async def publish_ws(redis_conn: aioredis.Redis, client_id: str, job_id: str, payload: Dict[str, Any]) -> None:
-    """Publish a message to a WebSocket client via Redis."""
-    payload['job_id'] = job_id
-    try:
-        await redis_conn.publish(f"ws_{client_id}", json.dumps(payload))
-    except Exception as e:
-        logging.error(f"WS publish failed: {e}")
+class RedisEventBus:
+    """Implementation of the EventBus using Redis Pub/Sub."""
+    def __init__(self, redis_conn: aioredis.Redis, client_id: str, job_id: str, loop: asyncio.AbstractEventLoop):
+        self._redis = redis_conn
+        self._client_id = client_id
+        self._job_id = job_id
+        self._loop = loop
+
+    async def publish_async(self, payload: Dict[str, Any]) -> None:
+        payload['job_id'] = self._job_id
+        try:
+            await self._redis.publish(f"ws_{self._client_id}", json.dumps(payload))
+        except Exception as e:
+            logging.error(f"EventBus publish failed: {e}")
+
+    def publish_sync(self, payload: Dict[str, Any]) -> None:
+        if not self._loop.is_closed():
+            asyncio.run_coroutine_threadsafe(self.publish_async(payload), self._loop)
 
 class RedisCancellationToken:
-    """Token to check if a job has been cancelled by the user using Redis."""
+    """Token to verify user cancellation via Redis."""
     def __init__(self, job_id: str) -> None:
         self._job_id = job_id
         self._sync_redis = get_sync_redis()
@@ -46,11 +58,9 @@ class RedisCancellationToken:
         self._cached_result = False
 
     async def is_cancelled(self) -> bool:
-        """Asynchronous check for the rendering pipeline."""
         return self.is_cancelled_sync()
 
     def is_cancelled_sync(self) -> bool:
-        """Synchronous check for the pipeline thread."""
         now = time.time()
         if now - self._last_check > 1.0:
             try:
@@ -61,71 +71,50 @@ class RedisCancellationToken:
             self._last_check = now
         return self._cached_result
 
-    def __call__(self) -> bool:
-        """Support for legacy functional checks."""
-        return self.is_cancelled_sync()
-
-class ProgressReporter:
-    """Reporter for tracking progress via WebSockets for synchronous tasks."""
-    def __init__(self, client_id: str, job_id: str, redis_conn: aioredis.Redis, loop: asyncio.AbstractEventLoop, cancel_token: RedisCancellationToken = None) -> None:
-        self._client_id = client_id
-        self._job_id = job_id
-        self._redis = redis_conn
-        self._loop = loop
+class TaskReporter:
+    """Unified reporter adapter utilizing the EventBus."""
+    def __init__(self, bus: RedisEventBus, cancel_token: RedisCancellationToken = None) -> None:
+        self._bus = bus
         self._cancel_token = cancel_token
-        self._last_progress = None
         self._throttle_interval = 0.5
         self._throttle_ts = 0.0
         self._total = 0
 
     def _check_cancel(self) -> None:
-        """Forcefully halt the thread if the job was cancelled."""
         if self._cancel_token and self._cancel_token.is_cancelled_sync():
-            logging.info(f"Poison pill triggered for job {self._job_id}.")
             raise TaskCancelledError("Job cancelled by user.")
 
     def set_total(self, total: int) -> None:
-        """Set total processing count."""
         self._total = total
 
-    def _send(self, payload: dict) -> None:
-        """Dispatch payload to Redis PubSub."""
-        payload['job_id'] = self._job_id
-        async def do_send():
-            try:
-                await self._redis.publish(f"ws_{self._client_id}", json.dumps(payload))
-            except Exception:
-                pass
-        if not self._loop.is_closed():
-            asyncio.run_coroutine_threadsafe(do_send(), self._loop)
-
     def log(self, message: str) -> None:
-        """Send log message."""
         self._check_cancel()
-        self._send({"type": "log", "message": message})
+        self._bus.publish_sync({"type": "log", "message": message})
 
     def progress(self, current: int, total: int, eta: str) -> None:
-        """Report execution progress."""
         self._check_cancel()
         now = time.time()
-        if now - self._throttle_ts >= self._throttle_interval:
+        if now - self._throttle_ts >= self._throttle_interval or current == total:
             self._throttle_ts = now
-            self._send({"type": "progress", "current": current, "total": total, "eta": eta})
-        self._last_progress = {"type": "progress", "current": current, "total": total, "eta": eta}
+            self._bus.publish_sync({"type": "progress", "current": current, "total": total, "eta": eta})
 
     def subtitle(self, item: Dict[str, Any]) -> None:
-        """Send detected subtitle item."""
         self._check_cancel()
-        self._send({"type": "subtitle_new", "item": item})
+        self._bus.publish_sync({"type": "subtitle_new", "item": item})
 
-    def done(self) -> None:
-        """Report completion."""
+    def done(self, total: int = None) -> None:
         self._check_cancel()
-        payload = {"type": "progress", "current": self._total, "total": self._total, "eta": "00:00"}
-        self._send(payload)
+        t = total if total is not None else self._total
+        self._bus.publish_sync({"type": "progress", "current": t, "total": t, "eta": "00:00"})
+
+class StorageAdapter:
+    async def download(self, key: str, dest: str) -> bool:
+        return await storage_manager.download_file(key, dest)
+
+    async def upload(self, src: str, key: str) -> bool:
+        return await storage_manager.upload_file(src, key)
 
 async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
-    """Execute the OCR extraction pipeline task."""
     client_id = config['client_id']
     filename = config['filename']
     safe_filename = os.path.basename(filename)
@@ -133,8 +122,9 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
     redis_conn: aioredis.Redis = ctx['redis']
     loop = asyncio.get_running_loop()
 
+    bus = RedisEventBus(redis_conn, client_id, job_id, loop)
     cancellation = RedisCancellationToken(job_id)
-    reporter = ProgressReporter(client_id, job_id, redis_conn, loop, cancellation)
+    reporter = TaskReporter(bus, cancellation)
 
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -143,7 +133,7 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
 
             dl_ok = await storage_manager.download_file(safe_filename, local_video_path)
             if not dl_ok:
-                await publish_ws(redis_conn, client_id, job_id, {
+                await bus.publish_async({
                     "type": "finish",
                     "success": False,
                     "error": "Source video file is no longer available. It may have been deleted."
@@ -155,12 +145,12 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
                 local_video_path,
                 config,
                 reporter,
-                cancellation.is_cancelled_sync
+                cancellation
             )
 
             if success:
                 reporter.done()
-                await publish_ws(redis_conn, client_id, job_id, {"type": "finish", "success": True})
+                await bus.publish_async({"type": "finish", "success": True})
             else:
                 raise RuntimeError("OCR pipeline execution failed or was interrupted.")
     except asyncio.CancelledError:
@@ -175,58 +165,46 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
     finally:
         await redis_conn.srem(f"pending_jobs:{safe_filename}", job_id)
 
-class RedisReporter:
-    """Synchronous reporter for the blur rendering process with thread safety."""
-    def __init__(self, client_id: str, job_id: str, redis_conn: aioredis.Redis, loop: asyncio.AbstractEventLoop, cancel_token: RedisCancellationToken = None) -> None:
-        self._client_id = client_id
-        self._job_id = job_id
-        self._redis = redis_conn
-        self._loop = loop
-        self._cancel_token = cancel_token
+async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
+    client_id = config['client_id']
+    job_id = ctx.get('job_id', 'unknown')
+    redis_conn: aioredis.Redis = ctx['redis']
+    loop = asyncio.get_running_loop()
 
-    def _check_cancel(self) -> None:
-        """Synchronously check for cancellation."""
-        if self._cancel_token and self._cancel_token.is_cancelled_sync():
-            raise TaskCancelledError("Job cancelled by user.")
+    bus = RedisEventBus(redis_conn, client_id, job_id, loop)
+    cancellation = RedisCancellationToken(job_id)
+    reporter = TaskReporter(bus, cancellation)
+    storage = StorageAdapter()
 
-    def _send(self, payload: dict) -> None:
-        """Send payload via coroutine threadsafe execution."""
-        payload['job_id'] = self._job_id
-        async def do_send():
-            try:
-                await self._redis.publish(f"ws_{self._client_id}", json.dumps(payload))
-            except Exception:
-                pass
-        if not self._loop.is_closed():
-            asyncio.run_coroutine_threadsafe(do_send(), self._loop)
+    task_config = RenderTaskConfig(**config)
+    safe_filename = os.path.basename(task_config.filename)
 
-    def log(self, message: str) -> None:
-        """Log message synchronously."""
-        self._check_cancel()
-        self._send({"type": "log", "message": message})
+    try:
+        local_video_path = os.path.join(tempfile.gettempdir(), safe_filename)
+        dl_ok = await storage.download(safe_filename, local_video_path)
+        if not dl_ok:
+            reporter.log("Error: source video missing")
+            await bus.publish_async({
+                "type": "finish",
+                "success": False,
+                "error": "Source video file is no longer available. It may have been deleted."
+            })
+            return
 
-    def progress(self, current: int, total: int, eta: str) -> None:
-        """Report progress synchronously."""
-        self._check_cancel()
-        self._send({"type": "progress", "current": current, "total": total, "eta": eta})
+        output_filename = await render_blur_pipeline(task_config, storage, reporter, cancellation)
 
-    def done(self, total: int) -> None:
-        """Send completion signal synchronously."""
-        self._check_cancel()
-        self._send({"type": "progress", "current": total, "total": total, "eta": "00:00"})
-
-class StorageAdapter:
-    """Adapter for storage manager operations."""
-    async def download(self, key: str, dest: str) -> bool:
-        """Download file securely."""
-        return await storage_manager.download_file(key, dest)
-
-    async def upload(self, src: str, key: str) -> bool:
-        """Upload file securely."""
-        return await storage_manager.upload_file(src, key)
+        await bus.publish_async({
+            "type": "finish",
+            "success": True,
+            "download_url": f"/api/video/download/{output_filename}"
+        })
+    except (asyncio.CancelledError, TaskCancelledError):
+        logging.info(f"Render task {job_id} cancelled successfully.")
+        raise
+    finally:
+        await redis_conn.srem(f"pending_jobs:{safe_filename}", job_id)
 
 async def startup(ctx: Dict[str, Any]) -> None:
-    """Initialize the worker and pre-warm the OCR engine."""
     logging.info("Worker starting up...")
     logging.info("Pre-warming OCR engine...")
     try:
@@ -238,55 +216,10 @@ async def startup(ctx: Dict[str, Any]) -> None:
         logging.error(f"Failed to pre-warm OCR: {e}")
 
 async def shutdown(ctx: Dict[str, Any]) -> None:
-    """Handle worker shutdown."""
     logging.info("Worker shutting down...")
 
-async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
-    """Execute the blur rendering pipeline task."""
-    client_id = config['client_id']
-    job_id = ctx.get('job_id', 'unknown')
-    redis_conn: aioredis.Redis = ctx['redis']
-    loop = asyncio.get_running_loop()
-
-    cancellation = RedisCancellationToken(job_id)
-    reporter = RedisReporter(client_id, job_id, redis_conn, loop, cancellation)
-    storage = StorageAdapter()
-
-    task_config = RenderTaskConfig(**config)
-    safe_filename = os.path.basename(task_config.filename)
-
-    try:
-        local_video_path = os.path.join(tempfile.gettempdir(), safe_filename)
-        dl_ok = await storage.download(safe_filename, local_video_path)
-        if not dl_ok:
-            reporter.log("Error: source video missing")
-            await redis_conn.publish(f"ws_{client_id}", json.dumps({
-                "type": "finish",
-                "success": False,
-                "error": "Source video file is no longer available. It may have been deleted.",
-                "job_id": job_id
-            }))
-            return
-
-        output_filename = await render_blur_pipeline(task_config, storage, reporter, cancellation)
-
-        finish_payload = {
-            "type": "finish",
-            "success": True,
-            "download_url": f"/api/video/download/{output_filename}",
-            "job_id": job_id
-        }
-        await redis_conn.publish(f"ws_{client_id}", json.dumps(finish_payload))
-    except (asyncio.CancelledError, TaskCancelledError):
-        logging.info(f"Render task {job_id} cancelled successfully.")
-        raise
-    finally:
-        await redis_conn.srem(f"pending_jobs:{safe_filename}", job_id)
-
 async def on_job_end_handler(ctx: Dict[str, Any], job_id: str, result: Any, exc: Exception) -> None:
-    """Handle job completion or failure."""
     redis_conn: aioredis.Redis = ctx['redis']
-    
     client_id = "unknown"
     if "_" in job_id:
         client_id = job_id.split("_", 1)[1].rsplit("_", 1)[0]
@@ -303,18 +236,16 @@ async def on_job_end_handler(ctx: Dict[str, Any], job_id: str, result: Any, exc:
             is_cancelled = "cancel" in str(exc).lower() or isinstance(exc, TaskCancelledError) or isinstance(exc, asyncio.CancelledError)
             error_message = "Task Cancelled" if is_cancelled else f"Task Failed: {str(exc)}"
             
-            error_payload = {
+            bus = RedisEventBus(redis_conn, client_id, job_id, asyncio.get_event_loop())
+            await bus.publish_async({
                 "type": "finish",
                 "success": False,
-                "error": error_message,
-                "job_id": job_id
-            }
-            await redis_conn.publish(f"ws_{client_id}", json.dumps(error_payload))
+                "error": error_message
+            })
         except Exception as e:
             logging.error(f"Failed to publish error state for {job_id}: {e}")
 
 class WorkerSettings:
-    """Arq worker settings configuration."""
     functions = [process_ocr_task, render_blur_task]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     on_startup = startup
