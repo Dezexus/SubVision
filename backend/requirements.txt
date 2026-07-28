@@ -9,3 +9,4 @@ pydantic-settings
 redis
 arq
 av
+onnxruntime-gpu

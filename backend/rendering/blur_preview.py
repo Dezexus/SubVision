@@ -4,10 +4,11 @@ import numpy as np
 from rendering.geometry import calculate_blur_roi, calculate_text_roi
 from rendering.effects.blur import apply_blur_to_frame
 from rendering.effects.inpainting import generate_text_mask
+from rendering.effects.lama import apply_lama_inpaint
 from core.video_io import extract_frame_cv2
 
 def generate_blur_preview(video_path: str, frame_index: int, settings: Dict[str, Any], text: str) -> np.ndarray | None:
-    """Generate a single frame with blur/inpaint effects applied for UI preview."""
+    """Generates a single frame with effects applied."""
     cached = extract_frame_cv2(video_path, frame_index)
     if cached is None:
         return None
@@ -51,6 +52,11 @@ def generate_blur_preview(video_path: str, frame_index: int, settings: Dict[str,
 
             blended = inpainted_float * soft_mask_3ch + original_float * (1.0 - soft_mask_3ch)
             frame[y1:y2, x1:x2] = blended.astype(np.uint8)
+
+    elif mode == 'lama':
+        text_roi = calculate_text_roi(text, width, height, settings)
+        if text_roi[2] > 0 and text_roi[3] > 0:
+            frame = apply_lama_inpaint(frame, text_roi, font_size_px)
 
     blur_roi = calculate_blur_roi(text, width, height, settings)
     text_roi = calculate_text_roi(text, width, height, settings)

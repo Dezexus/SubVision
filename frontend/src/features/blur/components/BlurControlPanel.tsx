@@ -10,7 +10,7 @@ import { useStartBlurRender } from '../mutations/useStartBlurRender';
 import { useDefaultBlurSettingsQuery } from '../queries/useDefaultBlurSettingsQuery';
 
 /**
- * Renders the control panel for configuring and starting the smart blur rendering process.
+ * Control panel for configuring and starting the smart blur rendering process.
  */
 export const BlurControlPanel = () => {
   const metadata = useVideoStore((s) => s.metadata);
@@ -76,7 +76,6 @@ export const BlurControlPanel = () => {
   return (
     <div className="flex flex-col h-full bg-bg-main relative">
       <div className="flex-1 overflow-y-auto p-4 space-y-5 scrollbar-hide">
-        
         <div className="w-full bg-bg-panel p-2 rounded-xl border border-border-main shadow-sm flex items-center relative overflow-hidden">
           <div className="flex-1 flex items-center">
             {isPreviewUpdating ? (
@@ -88,7 +87,6 @@ export const BlurControlPanel = () => {
                 <div className="w-32" />
             )}
           </div>
-
           <div className="flex-none">
               <button
                 onClick={handleReset}
@@ -122,12 +120,23 @@ export const BlurControlPanel = () => {
                 blurSettings.mode === 'hybrid' ? "text-white" : "text-txt-subtle hover:text-txt-muted"
               )}
             >
-              HYBRID INPAINT
+              HYBRID
+            </button>
+            <button
+              onClick={() => setBlurSettings({ mode: 'lama' })}
+              className={cn(
+                "relative flex-1 text-xs py-2 font-bold rounded-md transition-all duration-200 z-10",
+                blurSettings.mode === 'lama' ? "text-white" : "text-txt-subtle hover:text-txt-muted"
+              )}
+            >
+              AI INPAINT
             </button>
             <div 
               className={cn(
-                "absolute left-1 top-1 bottom-1 w-[calc(50%-4px)] bg-brand-500 rounded-md transition-transform duration-300 ease-out shadow-sm",
-                blurSettings.mode === 'blur' ? "translate-x-0" : "translate-x-full"
+                "absolute left-1 top-1 bottom-1 w-[calc(33.33%-3px)] bg-brand-500 rounded-md transition-transform duration-300 ease-out shadow-sm",
+                blurSettings.mode === 'blur' ? "translate-x-0" :
+                blurSettings.mode === 'hybrid' ? "translate-x-[100%]" :
+                "translate-x-[200%]"
               )}
             />
           </div>
@@ -191,7 +200,6 @@ export const BlurControlPanel = () => {
             />
           </div>
         </div>
-        
       </div>
       <div className="p-4 border-t border-border-main bg-bg-panel shrink-0">
          <Button

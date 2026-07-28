@@ -79,16 +79,13 @@ COPY backend/requirements.txt .
 COPY backend/requirements-worker.txt .
 
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python -m pip install --upgrade pip nuitka \
+    python -m pip install --upgrade pip \
  && python -m pip install paddlepaddle-gpu==3.3.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/ \
  && python -m pip install -r requirements.txt \
  && python -m pip install -r requirements-worker.txt
 
 COPY backend ./backend
 WORKDIR /app/backend
-
-RUN python -m nuitka --module --remove-output core/motion.py \
- && python -m nuitka --module --remove-output processing/aggregator.py
 
 CMD ["arq", "worker.WorkerSettings"]
 
