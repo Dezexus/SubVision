@@ -4,11 +4,12 @@ import av
 import numpy as np
 import logging
 from typing import Tuple
+from fractions import Fraction
 
 logger = logging.getLogger(__name__)
 
 class AsyncVideoWriter:
-    """Writes video frames and muxes audio asynchronously using PyAV NVENC."""
+    """Writes video frames and muxes audio asynchronously."""
     def __init__(self, path: str, fps: float, size: Tuple[int, int], encoder: str = "auto", audio_source: str = ""):
         self.path = path
         self._queue = queue.Queue(maxsize=100)
@@ -17,7 +18,8 @@ class AsyncVideoWriter:
         self.container = av.open(path, 'w')
         
         selected_encoder = "h264_nvenc" if encoder in ["auto", "nvenc"] else "libx264"
-        self.stream = self.container.add_stream(selected_encoder, rate=fps)
+        safe_fps = Fraction(fps).limit_denominator(100000)
+        self.stream = self.container.add_stream(selected_encoder, rate=safe_fps)
         self.stream.width = size[0]
         self.stream.height = size[1]
         self.stream.pix_fmt = 'yuv420p'
@@ -47,7 +49,7 @@ class AsyncVideoWriter:
         self._thread.start()
 
     def _mux_audio_up_to(self, target_time: float):
-        """Mux audio packets up to the given target time."""
+        """Mux audio packets up to the target time."""
         if not self.audio_iter or not self.out_audio:
             return
         try:
