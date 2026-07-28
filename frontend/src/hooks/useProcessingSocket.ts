@@ -1,98 +1,83 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import useWebSocket from 'react-use-websocket';
+import axios from 'axios';
 import { useProcessingStore } from '../store/processingStore';
-import { API_BASE } from '../shared/api';
-import { getClientId } from '../shared/lib';
+import { useUIStore } from '../store/uiStore';
 
-const getSocketUrl = () => {
-  const url = new URL(API_BASE);
-  const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${protocol}//${url.host}/ws`;
-};
-
-const SOCKET_URL = getSocketUrl();
+const API_BASE = import.meta.env.VITE_API_URL || '';
+const WS_URL = API_BASE 
+  ? API_BASE.replace(/^http(s?):\/\//, 'ws$1://') 
+  : `ws://${window.location.host}`;
 
 /**
- * WebSocket hook for listening to backend processing events.
+ * Hook to manage WebSocket connection and synchronize processing state.
  */
-export const useProcessingSocket = (providedClientId?: string | null) => {
-  const [clientId] = useState(() => providedClientId || getClientId());
-  
-  const activeOcrJobId = useProcessingStore((s) => s.activeOcrJobId);
-  const activeBlurJobId = useProcessingStore((s) => s.activeBlurJobId);
-  const addLog = useProcessingStore((s) => s.addLog);
-  const updateProgress = useProcessingStore((s) => s.updateProgress);
-  const setProcessing = useProcessingStore((s) => s.setProcessing);
-  const setRenderedVideoUrl = useProcessingStore((s) => s.setRenderedVideoUrl);
-  
-  const addSubtitle = useProcessingStore((s) => s.addSubtitle);
-  const updateSubtitle = useProcessingStore((s) => s.updateSubtitle);
+export const useProcessingSocket = (clientId: string | null) => {
+  const addLog = useProcessingStore(s => s.addLog);
+  const updateProgress = useProcessingStore(s => s.updateProgress);
+  const addSubtitle = useProcessingStore(s => s.addSubtitle);
+  const setProcessing = useProcessingStore(s => s.setProcessing);
+  const setActiveOcrJobId = useProcessingStore(s => s.setActiveOcrJobId);
+  const setActiveBlurJobId = useProcessingStore(s => s.setActiveBlurJobId);
+  const setRenderedVideoUrl = useProcessingStore(s => s.setRenderedVideoUrl);
+  const addToast = useUIStore(s => s.addToast);
 
   const { lastJsonMessage } = useWebSocket(
-    clientId ? `${SOCKET_URL}/${clientId}` : null,
+    clientId ? `${WS_URL}/ws/${clientId}` : null,
     {
-      shouldReconnect: (closeEvent) => {
-        if (closeEvent.code === 4001) {
-          window.location.reload();
-          return false;
+      shouldReconnect: () => true,
+      reconnectAttempts: 10,
+      reconnectInterval: 2000,
+      onOpen: async () => {
+        if (!clientId) return;
+        try {
+          const { data: res } = await axios.get(`${API_BASE}/api/session/status/${clientId}`);
+          if (res.has_active_job && res.last_state) {
+            const state = res.last_state;
+            if (state.type === 'progress') {
+              updateProgress(state.current, state.total, state.eta);
+            }
+          }
+        } catch (e) {
+          console.error("Failed to restore processing state", e);
         }
-        return true;
-      },
-      reconnectInterval: 3000,
+      }
     }
   );
 
   useEffect(() => {
     if (!lastJsonMessage) return;
-
-    const msg = lastJsonMessage as any;
-    if (msg.type === 'pong') return;
-
-    if (msg.job_id) {
-      const relevantJobs = [activeOcrJobId, activeBlurJobId].filter(Boolean);
-      if (relevantJobs.length > 0 && !relevantJobs.includes(msg.job_id)) {
-        return;
-      }
-    }
-
-    const isProcessing = useProcessingStore.getState().isProcessing;
-    const stoppedJobId = useProcessingStore.getState().stoppedJobId;
-
-    if (msg.type !== 'finish') {
-      if (!isProcessing && stoppedJobId) {
-        return;
-      }
-    }
-
-    switch (msg.type) {
+    const data = lastJsonMessage as any;
+    
+    switch (data.type) {
       case 'log':
-        addLog(msg.message);
+        addLog(data.message);
         break;
       case 'progress':
-        updateProgress(msg.current, msg.total, msg.eta);
+        updateProgress(data.current, data.total, data.eta);
         break;
       case 'subtitle_new':
-        addSubtitle(msg.item);
-        break;
-      case 'subtitle_update':
-        updateSubtitle(msg.item);
+        addSubtitle(data.item);
         break;
       case 'finish':
         setProcessing(false);
-        if (msg.success) {
-          addLog('--- Process Completed Successfully ---');
-          if (msg.download_url) {
-            const uniqueUrl = `${msg.download_url}?t=${Date.now()}`;
-            setRenderedVideoUrl(uniqueUrl);
+        setActiveOcrJobId(null);
+        setActiveBlurJobId(null);
+        if (data.success) {
+          if (data.download_url) {
+            setRenderedVideoUrl(data.download_url);
+            addToast('Render completed successfully', 'success');
+          } else {
+            addToast('Processing completed successfully', 'success');
           }
         } else {
-          addLog('--- Process Failed ---');
-          if (msg.error) addLog(`Error details: ${msg.error}`);
+          addToast(data.error || 'Task failed', 'error');
         }
         break;
     }
   }, [
-    lastJsonMessage, activeOcrJobId, activeBlurJobId, addLog, 
-    updateProgress, addSubtitle, updateSubtitle, setProcessing, setRenderedVideoUrl
+    lastJsonMessage, addLog, updateProgress, addSubtitle, 
+    setProcessing, setActiveOcrJobId, setActiveBlurJobId, 
+    setRenderedVideoUrl, addToast
   ]);
 };

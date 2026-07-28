@@ -31,7 +31,7 @@ def get_sync_redis() -> redis.Redis:
     return _sync_redis_client
 
 class RedisEventBus:
-    """Implementation of the EventBus using Redis Pub/Sub."""
+    """Implementation of the EventBus using Redis Pub/Sub and State Storage."""
     def __init__(self, redis_conn: aioredis.Redis, client_id: str, job_id: str, loop: asyncio.AbstractEventLoop):
         self._redis = redis_conn
         self._client_id = client_id
@@ -41,7 +41,10 @@ class RedisEventBus:
     async def publish_async(self, payload: Dict[str, Any]) -> None:
         payload['job_id'] = self._job_id
         try:
-            await self._redis.publish(f"ws_{self._client_id}", json.dumps(payload))
+            payload_str = json.dumps(payload)
+            await self._redis.publish(f"ws_{self._client_id}", payload_str)
+            if payload.get("type") in ("progress", "finish", "error"):
+                await self._redis.setex(f"job_status:{self._job_id}", 86400, payload_str)
         except Exception as e:
             logging.error(f"EventBus publish failed: {e}")
 
