@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { getClientId } from '../shared/lib';
 import { api } from '../shared/api';
+import { useProcessingStore } from './processingStore';
+import { useBlurStore } from './blurStore';
 import type { VideoMetadata } from '../types';
 
 interface VideoState {
@@ -129,6 +131,8 @@ export const useVideoStore = create<VideoState>()((set, get) => ({
         console.error('Failed to delete video on reset', e);
       }
     }
+    useProcessingStore.getState().reset();
+    useBlurStore.getState().reset();
     get().reset();
   }
 }));

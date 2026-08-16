@@ -4,6 +4,7 @@ import av
 import cv2
 import numpy as np
 from typing import Optional, Tuple, Dict, Any, NamedTuple
+from core.gpu_utils import has_cuda
 
 class VideoInfo(NamedTuple):
     """Preliminary video metadata struct."""
@@ -157,7 +158,15 @@ def generate_video_preview(video_path: str, frame_index: int, roi_override: list
         frame_roi = frame_bgr
     if frame_roi.size == 0:
         return None
-    denoised = cv2.cuda.fastNlMeansDenoisingColored(frame_roi, None, 3.0, 3.0, 7, 21) if cv2.cuda.getCudaEnabledDeviceCount() > 0 else cv2.fastNlMeansDenoisingColored(frame_roi, None, 3.0, 3.0, 7, 21)
+
+    if has_cuda():
+        try:
+            denoised = cv2.cuda.fastNlMeansDenoisingColored(frame_roi, None, 3.0, 3.0, 7, 21)
+        except Exception:
+            denoised = cv2.fastNlMeansDenoisingColored(frame_roi, None, 3.0, 3.0, 7, 21)
+    else:
+        denoised = cv2.fastNlMeansDenoisingColored(frame_roi, None, 3.0, 3.0, 7, 21)
+
     processed = denoised
     if scale_factor > 1.0 and processed is not None:
         processed = cv2.resize(processed, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC)

@@ -76,8 +76,33 @@ class PaddleWrapper:
             return "", 0.0
 
         res_obj = result_list[0]
-        data: Any = res_obj.get("res", res_obj) if isinstance(res_obj, dict) else getattr(res_obj, "res", res_obj)
+        if not res_obj:
+            return "", 0.0
 
+        if isinstance(res_obj, list):
+            valid_items = []
+            for line in res_obj:
+                if not line or len(line) < 2:
+                    continue
+                box = line[0]
+                text_tuple = line[1]
+                if isinstance(text_tuple, (tuple, list)) and len(text_tuple) >= 2:
+                    text_str = str(text_tuple[0]).strip()
+                    score_val = float(text_tuple[1])
+                    if score_val >= conf_thresh and text_str:
+                        valid_items.append((box, text_str, score_val))
+            if not valid_items:
+                return "", 0.0
+            try:
+                valid_items.sort(key=lambda x: (x[0][0][1] + x[0][2][1]) / 2.0 if len(x[0]) >= 3 and len(x[0][0]) >= 2 and len(x[0][2]) >= 2 else 0)
+            except (IndexError, TypeError):
+                pass
+            final_texts = [item[1] for item in valid_items]
+            final_scores = [item[2] for item in valid_items]
+            avg_conf = sum(final_scores) / len(final_scores) if final_scores else 0.0
+            return " ".join(final_texts), avg_conf
+
+        data: Any = res_obj.get("res", res_obj) if isinstance(res_obj, dict) else getattr(res_obj, "res", res_obj)
         if not data:
             return "", 0.0
 
@@ -92,24 +117,24 @@ class PaddleWrapper:
         scores_list = scores.tolist() if isinstance(scores, np.ndarray) else scores
         boxes_list = boxes.tolist() if isinstance(boxes, np.ndarray) else boxes
 
-        valid_items: list[tuple[Any, str, float]] = []
+        valid_items_dict: list[tuple[Any, str, float]] = []
         for i, raw_text in enumerate(texts_list):
             text = str(raw_text).strip()
             score = float(scores_list[i]) if i < len(scores_list) else 0.0
             if score >= conf_thresh and text:
                 box = boxes_list[i] if i < len(boxes_list) else []
-                valid_items.append((box, text, score))
+                valid_items_dict.append((box, text, score))
 
-        if not valid_items:
+        if not valid_items_dict:
             return "", 0.0
 
         try:
-            valid_items.sort(key=lambda x: (x[0][0][1] + x[0][2][1]) / 2.0 if len(x[0]) >= 3 and len(x[0][0]) >= 2 and len(x[0][2]) >= 2 else 0)
+            valid_items_dict.sort(key=lambda x: (x[0][0][1] + x[0][2][1]) / 2.0 if len(x[0]) >= 3 and len(x[0][0]) >= 2 and len(x[0][2]) >= 2 else 0)
         except (IndexError, TypeError):
             pass
 
-        final_texts = [item[1] for item in valid_items]
-        final_scores = [item[2] for item in valid_items]
+        final_texts = [item[1] for item in valid_items_dict]
+        final_scores = [item[2] for item in valid_items_dict]
         avg_conf = sum(final_scores) / len(final_scores) if final_scores else 0.0
         return " ".join(final_texts), avg_conf
 
@@ -117,6 +142,7 @@ _engine_lock = threading.Lock()
 _engines: dict[tuple[str, bool], PaddleWrapper] = {}
 
 def get_paddle_engine(lang: str = "en", use_gpu: bool = True) -> PaddleWrapper:
+    """Retrieve or create thread-safe singleton OCR engine."""
     key = (lang, use_gpu)
     if key not in _engines:
         with _engine_lock:

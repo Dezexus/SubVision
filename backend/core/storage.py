@@ -6,9 +6,9 @@ from typing import Dict
 
 class StorageManager:
     """Storage manager with concurrent chunk upload protection."""
-    def __init__(self, upload_dir: str = "uploads", temp_dir: str = ".temp") -> None:
+    def __init__(self, upload_dir: str = "uploads") -> None:
         self.upload_dir = upload_dir
-        self.temp_dir = temp_dir
+        self.temp_dir = os.path.join(upload_dir, ".temp")
         self._locks: Dict[str, asyncio.Lock] = {}
         os.makedirs(self.upload_dir, exist_ok=True)
         os.makedirs(self.temp_dir, exist_ok=True)
