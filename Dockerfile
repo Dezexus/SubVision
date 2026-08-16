@@ -31,6 +31,7 @@ WORKDIR /app/backend
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
 
 FROM nvidia/cuda:12.6.2-cudnn-devel-ubuntu22.04 AS worker
+ARG CUDA_ARCH_BIN=7.5
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -49,10 +50,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends software-proper
     && wget https://bootstrap.pypa.io/get-pip.py && python3.12 get-pip.py \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN wget http://security.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2_amd64.deb \
- && dpkg -i libssl1.1_1.1.1f-1ubuntu2_amd64.deb \
- && rm libssl1.1_1.1.1f-1ubuntu2_amd64.deb
-
 RUN python -m pip install numpy
 
 RUN wget -O opencv.zip https://github.com/opencv/opencv/archive/4.10.0.zip \
@@ -63,13 +60,13 @@ RUN wget -O opencv.zip https://github.com/opencv/opencv/archive/4.10.0.zip \
           -D CMAKE_INSTALL_PREFIX=/usr/local \
           -D OPENCV_EXTRA_MODULES_PATH=../opencv_contrib-4.10.0/modules \
           -D WITH_CUDA=ON \
-          -D CUDA_ARCH_BIN=7.5 \
+          -D CUDA_ARCH_BIN=${CUDA_ARCH_BIN} \
           -D WITH_CUDNN=ON \
           -D OPENCV_DNN_CUDA=ON \
           -D BUILD_opencv_python3=ON \
           -D PYTHON3_EXECUTABLE=/usr/bin/python3.12 \
           ../opencv-4.10.0 \
- && make -j12 \
+ && make -j6 \
  && make install \
  && ldconfig \
  && cd .. && rm -rf opencv* build

@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 class FFmpegTranscoder:
     """Handles video multiplexing and asynchronous command execution."""
-    
+
     @staticmethod
     async def run_cmd(cmd: List[str], cancel: Optional[CancellationToken] = None) -> None:
         """Executes an FFmpeg command asynchronously with cancellation support."""
@@ -62,15 +62,14 @@ class FFmpegTranscoder:
             "-map", "0:v:0",
             "-map", "1:a:0?",
             "-c:v", "copy",
-            "-c:a", "aac",
-            "-shortest"
+            "-c:a", "aac"
         ]
 
         if dar is not None:
             cmd.extend(["-aspect", f"{dar:.6f}"])
 
         cmd.append(output_path)
-        
+
         await FFmpegTranscoder.run_cmd(cmd, cancel=cancel)
 
         if os.path.exists(temp_video):

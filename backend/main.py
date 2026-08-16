@@ -20,24 +20,26 @@ from core.config import settings
 
 logger = logging.getLogger(__name__)
 
-async def cleanup_loop():
+async def cleanup_loop() -> None:
     """Periodic background task to clean temporary files older than 24 hours."""
     while True:
-        await asyncio.sleep(86400)
-        temp_root = Path(settings.cache_dir) / ".temp"
-        if not temp_root.exists():
-            continue
-        now = time.time()
-        for entry in temp_root.iterdir():
-            try:
-                mtime = entry.stat().st_mtime
-                if now - mtime > 86400:
-                    if entry.is_dir():
-                        shutil.rmtree(entry, ignore_errors=True)
-                    elif entry.is_file():
-                        entry.unlink(missing_ok=True)
-            except Exception:
-                pass
+        try:
+            temp_root = Path(settings.cache_dir) / ".temp"
+            if temp_root.exists():
+                now = time.time()
+                for entry in temp_root.iterdir():
+                    try:
+                        mtime = entry.stat().st_mtime
+                        if now - mtime > 86400:
+                            if entry.is_dir():
+                                shutil.rmtree(entry, ignore_errors=True)
+                            elif entry.is_file():
+                                entry.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.error(f"Cleanup loop error: {e}")
+        await asyncio.sleep(3600)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -96,7 +98,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
     try:
         pubsub = redis_client.pubsub()
         await pubsub.subscribe(f"ws_{client_id}")
-        
+
         async def redis_reader():
             while True:
                 try:
@@ -111,9 +113,9 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
                 except Exception as e:
                     logger.error(f"Redis reader error for {client_id}: {e}")
                     await asyncio.sleep(2)
-                    
+
         reader_task = asyncio.create_task(redis_reader())
-        
+
         while True:
             data = await asyncio.wait_for(websocket.receive_text(), timeout=120.0)
             try:

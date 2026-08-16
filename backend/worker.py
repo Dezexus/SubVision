@@ -15,16 +15,15 @@ from core.storage import storage_manager
 from core.exceptions import TaskCancelledError
 
 from processing.pipeline import run_ocr_pipeline
-from processing.interfaces import OCRReporter, CancellationToken as ProcessCancellationToken
 from processing.ocr_engine import get_paddle_engine
 
 from rendering.pipeline import render_blur_pipeline
-from rendering.interfaces import Reporter, Storage, CancellationToken as RenderCancellationToken
 from rendering.models import RenderTaskConfig
 
 _sync_redis_client = None
 
 def get_sync_redis() -> redis.Redis:
+    """Retrieve or initialize synchronous Redis client singleton."""
     global _sync_redis_client
     if _sync_redis_client is None:
         _sync_redis_client = redis.Redis.from_url(settings.redis_url)
@@ -101,9 +100,9 @@ class TaskReporter:
             self._throttle_ts = now
             self._bus.publish_sync({"type": "progress", "current": current, "total": total, "eta": eta})
 
-    def subtitle(self, item: Dict[str, Any]) -> None:
-        self._check_cancel()
-        self._bus.publish_sync({"type": "subtitle_new", "item": item})
+        def subtitle(self, item: Dict[str, Any]) -> None:
+            self._check_cancel()
+            self._bus.publish_sync({"type": "subtitle_new", "item": item})
 
     def done(self, total: int = None) -> None:
         self._check_cancel()
@@ -225,8 +224,12 @@ async def on_job_end_handler(ctx: Dict[str, Any], job_id: str, result: Any, exc:
     redis_conn: aioredis.Redis = ctx['redis']
     client_id = "unknown"
     if "_" in job_id:
-        client_id = job_id.split("_", 1)[1].rsplit("_", 1)[0]
-        
+        parts = job_id.split("_")
+        if len(parts) >= 3:
+            client_id = "_".join(parts[1:-1])
+        elif len(parts) == 2:
+            client_id = parts[1]
+
     if client_id != "unknown":
         try:
             await redis_conn.delete(f"active_job:{client_id}")
@@ -238,7 +241,7 @@ async def on_job_end_handler(ctx: Dict[str, Any], job_id: str, result: Any, exc:
         try:
             is_cancelled = "cancel" in str(exc).lower() or isinstance(exc, TaskCancelledError) or isinstance(exc, asyncio.CancelledError)
             error_message = "Task Cancelled" if is_cancelled else f"Task Failed: {str(exc)}"
-            
+
             bus = RedisEventBus(redis_conn, client_id, job_id, asyncio.get_event_loop())
             await bus.publish_async({
                 "type": "finish",

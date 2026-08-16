@@ -20,19 +20,26 @@ class StorageManager:
 
     async def save_chunk(self, filename: str, chunk_data: bytes, offset: int) -> bool:
         """Save uploaded chunk bytes to local storage sequentially."""
+        if offset < 0 or not chunk_data:
+            logging.error(f"Invalid chunk payload or offset {offset} for {filename}")
+            return False
+
         temp_path = os.path.join(self.temp_dir, filename)
-        
-        def _write_chunk() -> None:
+
+        def _write_chunk() -> bool:
+            if offset > 0 and not os.path.exists(temp_path):
+                logging.error(f"Cannot write offset {offset} to non-existent file {filename}")
+                return False
             mode = "r+b" if os.path.exists(temp_path) else "w+b"
             with open(temp_path, mode) as f:
                 f.seek(offset)
                 f.write(chunk_data)
+            return True
 
         lock = self._get_lock(filename)
         async with lock:
             try:
-                await asyncio.to_thread(_write_chunk)
-                return True
+                return await asyncio.to_thread(_write_chunk)
             except Exception as e:
                 logging.error(f"Failed to write chunk for {filename} at offset {offset}: {e}")
                 return False
@@ -41,7 +48,7 @@ class StorageManager:
         """Complete upload and move file to main directory."""
         temp_path = os.path.join(self.temp_dir, filename)
         final_path = os.path.join(self.upload_dir, filename)
-        
+
         lock = self._get_lock(filename)
         async with lock:
             if not os.path.exists(temp_path):

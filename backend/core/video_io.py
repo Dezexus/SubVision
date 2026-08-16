@@ -1,4 +1,5 @@
 import functools
+import os
 import av
 import cv2
 import numpy as np
@@ -52,17 +53,15 @@ def _correct_sar(frame: np.ndarray, src_width: int, src_height: int, dar: float)
     return cv2.resize(frame, (new_width, src_height), interpolation=cv2.INTER_CUBIC)
 
 @functools.lru_cache(maxsize=32)
-def extract_frame_cv2(video_path: str, frame_index: int, dar: Optional[float] = None) -> Optional[Tuple[np.ndarray, int]]:
-    """Extract a specific frame using sequential decoding and PTS tracking."""
-    if not video_path:
-        return None
+def _extract_frame_cached(video_path: str, mtime: float, frame_index: int, dar: Optional[float] = None) -> Optional[Tuple[np.ndarray, int]]:
+    """Extract a specific frame using sequential decoding with cache keyed by mtime."""
     try:
         with av.open(video_path) as container:
             stream = container.streams.video[0]
             fps = float(stream.average_rate) if stream.average_rate else 25.0
             target_timestamp = int((frame_index / fps) / stream.time_base)
             container.seek(target_timestamp, stream=stream, backward=True)
-            
+
             first = True
             current_idx = 0
             for frame in container.decode(stream):
@@ -72,7 +71,7 @@ def extract_frame_cv2(video_path: str, frame_index: int, dar: Optional[float] = 
                     else:
                         current_idx = 0
                     first = False
-                
+
                 if current_idx >= frame_index:
                     img = frame.to_ndarray(format='bgr24')
                     h, w = img.shape[:2]
@@ -86,6 +85,13 @@ def extract_frame_cv2(video_path: str, frame_index: int, dar: Optional[float] = 
     except Exception:
         pass
     return None
+
+def extract_frame_cv2(video_path: str, frame_index: int, dar: Optional[float] = None) -> Optional[Tuple[np.ndarray, int]]:
+    """Extract frame resolving file modification time to prevent stale cache entries."""
+    if not video_path or not os.path.exists(video_path):
+        return None
+    mtime = os.path.getmtime(video_path)
+    return _extract_frame_cached(video_path, mtime, frame_index, dar)
 
 def iter_frames(video_path: str, step: int = 1, fps: float = 25.0, total: int = 0, width: int = 0, height: int = 0, use_hwaccel: bool = True):
     """Yield video frames sequentially using PyAV."""
