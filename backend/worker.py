@@ -100,9 +100,9 @@ class TaskReporter:
             self._throttle_ts = now
             self._bus.publish_sync({"type": "progress", "current": current, "total": total, "eta": eta})
 
-        def subtitle(self, item: Dict[str, Any]) -> None:
-            self._check_cancel()
-            self._bus.publish_sync({"type": "subtitle_new", "item": item})
+    def subtitle(self, item: Dict[str, Any]) -> None:
+        self._check_cancel()
+        self._bus.publish_sync({"type": "subtitle_new", "item": item})
 
     def done(self, total: int = None) -> None:
         self._check_cancel()
