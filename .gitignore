@@ -17,6 +17,8 @@ env/
 
 # === Python bytecode / cache ===
 **/__pycache__/
+.pytest_cache/
+.ruff_cache/
 **/*.py[cod]
 **/*.pyo
 **/*.pyd

@@ -17,23 +17,26 @@ Detect, extract, and blur hardcoded subtitles using **PaddleOCR** and **OpenCV**
 ```bash
 git clone https://github.com/Dezexus/SubVision.git
 cd SubVision
-docker-compose up --build
+cp .env.example .env
+docker compose up --build
 ```
 Open http://localhost:7860.
 
+> **Note:** First worker build compiles OpenCV with CUDA (~45–90 min). Requires NVIDIA GPU + Container Toolkit. See [docs/backend.md](docs/backend.md) for hardware requirements.
+
 ## Manual Setup (Development)
 
-### 1. Redis
+### 1. Valkey / Redis
 ```bash
-docker run -p 6379:6379 -d redis:7-alpine
+docker run -p 6379:6379 -d valkey/valkey:8-alpine
 ```
 
 ### 2. API
 ```bash
 cd backend
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
+python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
+pip install -r requirements.txt -r requirements-dev.txt
+uvicorn subvision.main:app --reload --port 8000
 ```
 
 ### 3. Worker
@@ -41,7 +44,7 @@ uvicorn main:app --reload --port 8000
 cd backend
 source venv/bin/activate
 pip install -r requirements-worker.txt
-python -m arq worker.WorkerSettings
+arq subvision.worker.WorkerSettings
 ```
 
 ### 4. Frontend
@@ -59,3 +62,7 @@ npm run dev
 4. Edit or merge detected subtitles in the right panel.
 5. Switch to **Blur Mode**, adjust bounding box, padding, sigma, feather → **Start Render**.
 6. Download the rendered video.
+
+## Backend Docs
+
+See [docs/backend.md](docs/backend.md) for system requirements, configuration, and testing.

@@ -3,10 +3,10 @@ import { Play, Square, RefreshCw, ChevronLeft, ChevronRight, Settings2, AlertTri
 import { useVideoStore } from '../../../store/videoStore';
 import { useProcessingStore } from '../../../store/processingStore';
 import { useBlurStore } from '../../../store/blurStore';
-import { useConfigStore } from '../../../store/configStore';
+import { useConfigStore, defaultConfig } from '../../../store/configStore';
 import { GlassPanel, Button } from '../../../shared/ui';
 import { PresetSelector } from './PresetSelector';
-import { LanguageSelector } from './LanguageSelector';
+import { AdvancedSettings } from './AdvancedSettings';
 import { BlurControlPanel } from '../../blur';
 import { useStartOcr } from '../mutations/useStartOcr';
 import { useStopOcr } from '../mutations/useStopOcr';
@@ -24,6 +24,7 @@ export const SettingsPanel = () => {
   const isBlurMode = useBlurStore((s) => s.isBlurMode);
   const resetProject = useVideoStore((s) => s.resetProject);
   const config = useConfigStore((s) => s.config);
+  const setConfig = useConfigStore((s) => s.setConfig);
 
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -46,7 +47,14 @@ export const SettingsPanel = () => {
       client_id: clientId,
       roi,
       preset: config.preset || '⚖️ Balance',
-      languages: config.languages || 'en'
+      languages: config.languages || 'en',
+      step: config.step,
+      conf_threshold: config.conf_threshold,
+      scale_factor: config.scale_factor,
+      denoise_strength: config.denoise_strength,
+      smart_skip: config.smart_skip,
+      motion_mse_thresh: config.motion_mse_thresh,
+      gap_tolerance: config.gap_tolerance,
     };
     startOcr(processConfig);
   };
@@ -106,7 +114,11 @@ export const SettingsPanel = () => {
           <div className="p-5 space-y-6">
             <PresetSelector />
             <div className="w-full h-px bg-border-main" />
-            <LanguageSelector />
+            <AdvancedSettings
+              config={config}
+              setConfig={setConfig}
+              defaultConfig={defaultConfig}
+            />
           </div>
         )}
       </div>

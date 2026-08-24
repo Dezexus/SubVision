@@ -19,6 +19,9 @@ export interface PresetConfig {
   smart_skip: boolean;
   denoise_strength: number;
   scale_factor: number;
+  motion_mse_thresh?: number;
+  gap_tolerance?: number;
+  min_event_frames_mult?: number;
 }
 
 export interface Preset {
@@ -39,10 +42,14 @@ export interface ProcessConfig {
   roi: [number, number, number, number];
   preset: string;
   languages: string;
-  step: number;
-  conf_threshold: number;
-  scale_factor: number;
-  smart_skip: boolean;
+  step?: number;
+  conf_threshold?: number;
+  min_conf?: number;
+  scale_factor?: number;
+  denoise_strength?: number;
+  smart_skip?: boolean;
+  motion_mse_thresh?: number;
+  gap_tolerance?: number;
 }
 
 export interface BlurSettings {

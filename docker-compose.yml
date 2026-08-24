@@ -27,11 +27,15 @@ services:
       - subvision_uploads:/app/backend/uploads
     environment:
       - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - USE_NVDEC=${USE_NVDEC:-true}
 
   worker:
     build:
       context: .
       target: worker
+      args:
+        CUDA_ARCH_BIN: ${CUDA_ARCH_BIN:-7.5}
     init: true
     container_name: subvision_worker
     restart: unless-stopped
@@ -44,11 +48,13 @@ services:
       - paddlex_cache:/root/.paddlex
     environment:
       - PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
-      - FLAGS_fraction_of_gpu_memory_to_use=0.4
+      - FLAGS_fraction_of_gpu_memory_to_use=${PADDLE_GPU_MEMORY_FRACTION:-0.35}
       - FLAGS_allocator_strategy=auto_growth
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
       - REDIS_URL=redis://redis:6379/0
-    deploy:
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - USE_NVDEC=${USE_NVDEC:-true}
+      - PADDLE_GPU_MEMORY_FRACTION=${PADDLE_GPU_MEMORY_FRACTION:-0.35}
       resources:
         reservations:
           devices:

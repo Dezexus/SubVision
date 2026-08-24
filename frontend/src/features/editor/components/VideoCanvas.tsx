@@ -86,23 +86,19 @@ export const VideoCanvas = () => {
     const heightMultiplier = blurSettings.height_multiplier || 1.0;
 
     const textWidth = estimateTextWidth(textToMeasure, fontSizePx, widthMultiplier);
-    const textHeight = (fontSizePx + 4) * heightMultiplier;
-
-    const padXPx = Math.floor(fontSizePx * 0.8);
-    const padYPx = Math.floor(fontSizePx * 0.3) + 4;
+    const numLines = textToMeasure.split('\n').length;
+    const textHeight = (fontSizePx + 4) * numLines * heightMultiplier;
 
     const x = Math.floor((metadata.width - textWidth) / 2);
     const y = blurSettings.y - textHeight;
 
-    const greenX = x, greenY = y, greenW = textWidth, greenH = textHeight;
-    const redX = Math.max(0, x - padXPx);
-    const redY = Math.max(0, y - padYPx);
-    const redW = Math.min(metadata.width - redX, textWidth + padXPx * 2);
-    const redH = Math.min(metadata.height - redY, textHeight + padYPx * 2);
-
     return {
-      green: { x: greenX, y: greenY, w: greenW, h: greenH },
-      red: { x: redX, y: redY, w: redW, h: redH },
+      green: {
+        x: Math.max(0, x),
+        y: Math.max(0, y),
+        w: Math.min(metadata.width - Math.max(0, x), textWidth),
+        h: Math.min(metadata.height - Math.max(0, y), textHeight),
+      },
     };
   }, [blurSettings, metadata, activeSubtitle]);
 
@@ -211,10 +207,6 @@ export const VideoCanvas = () => {
                 />
                 {showGuides && geometry && (
                   <>
-                    <div
-                      className="absolute border border-dashed border-red-500/80 z-30"
-                      style={toCss(geometry.red)}
-                    />
                     <div
                       className="absolute bg-green-500/10 border border-green-500/90 z-40 cursor-grab active:cursor-grabbing group/green"
                       style={toCss(geometry.green)}

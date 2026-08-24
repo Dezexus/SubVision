@@ -1,0 +1,34 @@
+from collections.abc import Iterator
+from typing import Any
+import logging
+
+from subvision.core.video_io import get_video_metadata, iter_frames
+
+logger = logging.getLogger(__name__)
+
+
+class VideoProvider:
+    """Provides an iterable stream of video frames using PyAV."""
+
+    def __init__(self, video_path: str, step: int = 1, use_hwaccel: bool = True) -> None:
+        self.video_path = video_path
+        self.step = step
+        self.use_hwaccel = use_hwaccel
+
+        meta = get_video_metadata(video_path)
+        self.width = meta["width"]
+        self.height = meta["height"]
+        self.fps = meta["fps"]
+        self.total_frames = meta["total_frames"]
+
+        self._generator = iter_frames(video_path=self.video_path, step=self.step, fps=self.fps, total=self.total_frames, width=self.width, height=self.height, use_hwaccel=self.use_hwaccel)
+
+        logger.info("Video %s: %dx%d, %.2f fps, %d frames", video_path, self.width, self.height, self.fps, self.total_frames)
+
+    def __iter__(self) -> Iterator[tuple[int, float, Any]]:
+        return self._generator
+
+    def release(self) -> None:
+        """Release underlying resources."""
+        if self._generator:
+            self._generator.close()

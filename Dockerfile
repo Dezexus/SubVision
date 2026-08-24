@@ -22,13 +22,44 @@ WORKDIR /app
 COPY backend/requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --upgrade pip \
-    && python -m pip install -r requirements.txt \
-    && python -m pip install opencv-contrib-python-headless
+    && python -m pip install -r requirements.txt
 COPY backend ./backend
 RUN mkdir -p /app/backend/uploads
 EXPOSE 8000
 WORKDIR /app/backend
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["uvicorn", "subvision.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+
+FROM nvidia/cuda:12.6.2-cudnn-devel-ubuntu22.04 AS opencv-cuda-builder
+ARG CUDA_ARCH_BIN=7.5
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget unzip cmake build-essential pkg-config \
+    python3.12 python3.12-dev \
+    libavcodec-dev libavformat-dev libswscale-dev \
+    libgstreamer-plugins-base1.0-dev libgstreamer1.0-dev libpng-dev libjpeg-dev \
+    && ln -sf /usr/bin/python3.12 /usr/bin/python3 \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opencv-src
+RUN wget -q -O opencv.zip https://github.com/opencv/opencv/archive/4.10.0.zip \
+ && wget -q -O opencv_contrib.zip https://github.com/opencv/opencv_contrib/archive/4.10.0.zip \
+ && unzip -q opencv.zip && unzip -q opencv_contrib.zip
+
+WORKDIR /opencv-src/build
+RUN cmake -D CMAKE_BUILD_TYPE=RELEASE \
+          -D CMAKE_INSTALL_PREFIX=/usr/local \
+          -D OPENCV_EXTRA_MODULES_PATH=/opencv-src/opencv_contrib-4.10.0/modules \
+          -D WITH_CUDA=ON \
+          -D CUDA_ARCH_BIN=${CUDA_ARCH_BIN} \
+          -D WITH_CUDNN=ON \
+          -D OPENCV_DNN_CUDA=ON \
+          -D BUILD_opencv_python3=ON \
+          -D PYTHON3_EXECUTABLE=/usr/bin/python3.12 \
+          /opencv-src/opencv-4.10.0 \
+ && make -j6 \
+ && make install \
+ && ldconfig
 
 FROM nvidia/cuda:12.6.2-cudnn-devel-ubuntu22.04 AS worker
 ARG CUDA_ARCH_BIN=7.5
@@ -37,39 +68,19 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/usr/local/bin:$PATH"
 
+COPY --from=opencv-cuda-builder /usr/local /usr/local
+
 RUN apt-get update && apt-get install -y --no-install-recommends software-properties-common gpg-agent \
     && add-apt-repository ppa:deadsnakes/ppa \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
     python3.12 python3.12-dev python3.12-venv \
     gcc g++ patchelf ffmpeg libgl1 libglib2.0-0 libgomp1 libsm6 libxext6 wget tzdata libdav1d5 \
-    cmake build-essential unzip pkg-config libavcodec-dev libavformat-dev libswscale-dev \
-    libgstreamer-plugins-base1.0-dev libgstreamer1.0-dev libpng-dev libjpeg-dev \
     && ln -sf /usr/bin/python3.12 /usr/bin/python \
     && ln -sf /usr/bin/python3.12 /usr/bin/python3 \
-    && wget https://bootstrap.pypa.io/get-pip.py && python3.12 get-pip.py \
+    && wget -q https://bootstrap.pypa.io/get-pip.py && python3.12 get-pip.py \
+    && ldconfig \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-RUN python -m pip install numpy
-
-RUN wget -O opencv.zip https://github.com/opencv/opencv/archive/4.10.0.zip \
- && wget -O opencv_contrib.zip https://github.com/opencv/opencv_contrib/archive/4.10.0.zip \
- && unzip opencv.zip && unzip opencv_contrib.zip \
- && mkdir -p build && cd build \
- && cmake -D CMAKE_BUILD_TYPE=RELEASE \
-          -D CMAKE_INSTALL_PREFIX=/usr/local \
-          -D OPENCV_EXTRA_MODULES_PATH=../opencv_contrib-4.10.0/modules \
-          -D WITH_CUDA=ON \
-          -D CUDA_ARCH_BIN=${CUDA_ARCH_BIN} \
-          -D WITH_CUDNN=ON \
-          -D OPENCV_DNN_CUDA=ON \
-          -D BUILD_opencv_python3=ON \
-          -D PYTHON3_EXECUTABLE=/usr/bin/python3.12 \
-          ../opencv-4.10.0 \
- && make -j6 \
- && make install \
- && ldconfig \
- && cd .. && rm -rf opencv* build
 
 WORKDIR /app
 COPY backend/requirements.txt .
@@ -85,7 +96,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 COPY backend ./backend
 WORKDIR /app/backend
 
-CMD ["arq", "worker.WorkerSettings"]
+CMD ["arq", "subvision.worker.WorkerSettings"]
 
 FROM nginx:alpine AS web
 COPY nginx.conf /etc/nginx/nginx.conf

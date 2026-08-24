@@ -44,25 +44,19 @@ const generateLocalPreview = async (
         const fontSizePx = settings.font_size;
         const widthMult = settings.width_multiplier || 1.0;
         const heightMult = settings.height_multiplier || 1.0;
-        
+        const numLines = text.split('\n').length;
+
         const textW = estimateTextWidth(text, fontSizePx, widthMult);
-        const textH = (fontSizePx + 4) * heightMult;
-        
-        const x = (img.width - textW) / 2;
-        const y = settings.y - textH;
-        
-        const feather = settings.feather || 30;
-        const padX = fontSizePx * 0.8 + feather;
-        const padY = fontSizePx * 0.3 + 4 + feather;
-        
-        const bx = Math.max(0, x - padX);
-        const by = Math.max(0, y - padY);
-        const bw = Math.min(img.width - bx, textW + padX * 2);
-        const bh = Math.min(img.height - by, textH + padY * 2);
-        
+        const textH = (fontSizePx + 4) * numLines * heightMult;
+
+        const x = Math.max(0, (img.width - textW) / 2);
+        const y = Math.max(0, settings.y - textH);
+        const bw = Math.min(img.width - x, textW);
+        const bh = Math.min(img.height - y, textH);
+
         ctx.save();
         ctx.filter = `blur(${settings.sigma}px)`;
-        ctx.drawImage(canvas, bx, by, bw, bh, bx, by, bw, bh);
+        ctx.drawImage(canvas, x, y, bw, bh, x, y, bw, bh);
         ctx.restore();
       }
       
