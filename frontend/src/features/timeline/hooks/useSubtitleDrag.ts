@@ -85,6 +85,7 @@ export const useSubtitleDrag = (
 
   const handleEdgeMouseDown = (e: React.MouseEvent, sub: ProcessedSubtitle, edge: 'start' | 'end') => {
     e.stopPropagation();
+    useProcessingStore.getState().saveHistory();
     setDraggedEdge({ id: sub.id, edge });
     isDraggingRef.current = true;
   };

@@ -1,23 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { api } from '../../../shared/api';
+import { calculateTextRect } from '../../../shared/lib/textGeometry';
 import type { VideoMetadata, BlurSettings, SubtitleItem } from '../../../types';
 
 const MAX_BLUR_CACHE = 30;
 const blurCache = new Map<string, string>();
-
-const estimateTextWidth = (text: string, fontSizePx: number, multiplier: number): number => {
-  let width = 0.0;
-  for (const char of text) {
-    if (/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af\uff00-\uffef]/.test(char)) width += 1.1;
-    else if (/[mwWM@OQG]/.test(char)) width += 0.95;
-    else if (/[A-Z]/.test(char)) width += 0.8;
-    else if (/[0-9]/.test(char)) width += 0.65;
-    else if (/[il1.,!I|:;tfj]/.test(char)) width += 0.35;
-    else width += 0.65;
-  }
-  return Math.ceil(width * fontSizePx * multiplier);
-};
 
 const generateLocalPreview = async (
   filename: string,
@@ -37,29 +25,19 @@ const generateLocalPreview = async (
       canvas.height = img.height;
       const ctx = canvas.getContext('2d');
       if (!ctx) return reject('No 2d context');
-      
+
       ctx.drawImage(img, 0, 0);
-      
+
       if (text && settings.sigma > 0) {
-        const fontSizePx = settings.font_size;
-        const widthMult = settings.width_multiplier || 1.0;
-        const heightMult = settings.height_multiplier || 1.0;
-        const numLines = text.split('\n').length;
-
-        const textW = estimateTextWidth(text, fontSizePx, widthMult);
-        const textH = (fontSizePx + 4) * numLines * heightMult;
-
-        const x = Math.max(0, (img.width - textW) / 2);
-        const y = Math.max(0, settings.y - textH);
-        const bw = Math.min(img.width - x, textW);
-        const bh = Math.min(img.height - y, textH);
-
-        ctx.save();
-        ctx.filter = `blur(${settings.sigma}px)`;
-        ctx.drawImage(canvas, x, y, bw, bh, x, y, bw, bh);
-        ctx.restore();
+        const rect = calculateTextRect(text, img.width, img.height, settings);
+        if (rect.w > 0 && rect.h > 0) {
+          ctx.save();
+          ctx.filter = `blur(${settings.sigma}px)`;
+          ctx.drawImage(canvas, rect.x, rect.y, rect.w, rect.h, rect.x, rect.y, rect.w, rect.h);
+          ctx.restore();
+        }
       }
-      
+
       URL.revokeObjectURL(frameUrl);
       resolve(canvas.toDataURL('image/jpeg', 0.85));
     };
@@ -139,7 +117,7 @@ export const useBlurPreview = (
             const firstKey = blurCache.keys().next().value;
             if (firstKey) {
               const oldUrl = blurCache.get(firstKey);
-              if (oldUrl) {
+              if (oldUrl && oldUrl.startsWith('blob:')) {
                 URL.revokeObjectURL(oldUrl);
               }
               blurCache.delete(firstKey);
@@ -147,7 +125,7 @@ export const useBlurPreview = (
           }
           blurCache.set(cacheKey, url);
           setBlurPreviewUrl(url);
-        } else {
+        } else if (url.startsWith('blob:')) {
           URL.revokeObjectURL(url);
         }
       } catch (e) {

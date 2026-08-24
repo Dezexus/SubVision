@@ -16,20 +16,21 @@ export interface BlurActions {
   reset: () => void;
 }
 
-const initialBlurSettings: BlurSettings = {
+/** Placeholder until blur-defaults loads from backend (matches domain/models.py). */
+const placeholderBlurSettings: BlurSettings = {
   mode: 'hybrid',
-  y: 912,
-  font_size: 22,
+  y: 0,
+  font_size: 30,
   sigma: 5,
   feather: 40,
   width_multiplier: 1.0,
-  height_multiplier: 1.0,
+  height_multiplier: 1.2,
   encoder: 'auto',
 };
 
 export const useBlurStore = create<BlurState & BlurActions>((set) => ({
   isBlurMode: false,
-  blurSettings: { ...initialBlurSettings },
+  blurSettings: { ...placeholderBlurSettings },
   defaultBlurSettings: null,
   blurPreviewUrl: null,
 
@@ -45,7 +46,7 @@ export const useBlurStore = create<BlurState & BlurActions>((set) => ({
   reset: () =>
     set({
       isBlurMode: false,
-      blurSettings: { ...initialBlurSettings },
+      blurSettings: { ...placeholderBlurSettings },
       defaultBlurSettings: null,
       blurPreviewUrl: null,
     }),

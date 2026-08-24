@@ -1,13 +1,8 @@
 import axios from 'axios';
 import { API_URL } from './config';
-import type { ProcessConfig, RenderConfig, SubtitleItem, BlurSettings, Preset, Language } from '../../types';
+import type { ProcessConfig, RenderConfig, SubtitleItem, BlurSettings, Preset, Language, OcrSettings } from '../../types';
 
 export const processApi = {
-  registerSession: async (): Promise<{ client_id: string }> => {
-    const response = await axios.post(`${API_URL}/session/register`);
-    return response.data;
-  },
-
   getPresets: async (): Promise<Preset[]> => {
     const response = await axios.get(`${API_URL}/process/presets`);
     return response.data;
@@ -23,7 +18,7 @@ export const processApi = {
     return response.data;
   },
 
-  getDefaultProcessConfig: async (): Promise<Partial<ProcessConfig>> => {
+  getDefaultProcessConfig: async (): Promise<OcrSettings> => {
     const response = await axios.get(`${API_URL}/process/process-defaults`);
     return response.data;
   },

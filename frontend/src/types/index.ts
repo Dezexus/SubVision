@@ -52,6 +52,9 @@ export interface ProcessConfig {
   gap_tolerance?: number;
 }
 
+/** OCR settings in configStore (without session/video fields). */
+export type OcrSettings = Omit<ProcessConfig, 'filename' | 'client_id' | 'roi'>;
+
 export interface BlurSettings {
   mode: string;
   y: number;

@@ -3,9 +3,7 @@ import { Cpu, Loader2, ScanLine } from 'lucide-react';
 import useWebSocket from 'react-use-websocket';
 import { useVideoStore } from '../../../store/videoStore';
 import { useConfigStore } from '../../../store/configStore';
-
-const API_BASE = import.meta.env.VITE_API_URL || '';
-const WS_URL = API_BASE ? API_BASE.replace(/^http(s?):\/\//, 'ws$1://') : `ws://${window.location.host}`;
+import { getWsBase } from '../../../shared/api/config';
 
 export const FilterPreview = () => {
   const metadata = useVideoStore((s) => s.metadata);
@@ -19,7 +17,7 @@ export const FilterPreview = () => {
   const throttleRef = useRef<number>(0);
 
   const { sendMessage, lastMessage, readyState } = useWebSocket(
-    clientId ? `${WS_URL}/api/video/ws/stream/${clientId}` : null,
+    clientId ? `${getWsBase()}/api/video/ws/stream/${clientId}` : null,
     {
       shouldReconnect: () => true,
       reconnectAttempts: 10,

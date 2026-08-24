@@ -3,11 +3,8 @@ import useWebSocket from 'react-use-websocket';
 import axios from 'axios';
 import { useProcessingStore } from '../store/processingStore';
 import { useUIStore } from '../store/uiStore';
-
-const API_BASE = import.meta.env.VITE_API_URL || '';
-const WS_URL = API_BASE 
-  ? API_BASE.replace(/^http(s?):\/\//, 'ws$1://') 
-  : `ws://${window.location.host}`;
+import { API_URL, getWsBase } from '../shared/api/config';
+import type { WebSocketMessage } from '../types';
 
 /**
  * Hook to manage WebSocket connection and synchronize processing state.
@@ -16,14 +13,17 @@ export const useProcessingSocket = (clientId: string | null) => {
   const addLog = useProcessingStore(s => s.addLog);
   const updateProgress = useProcessingStore(s => s.updateProgress);
   const addSubtitle = useProcessingStore(s => s.addSubtitle);
+  const updateSubtitle = useProcessingStore(s => s.updateSubtitle);
   const setProcessing = useProcessingStore(s => s.setProcessing);
   const setActiveOcrJobId = useProcessingStore(s => s.setActiveOcrJobId);
   const setActiveBlurJobId = useProcessingStore(s => s.setActiveBlurJobId);
   const setRenderedVideoUrl = useProcessingStore(s => s.setRenderedVideoUrl);
   const addToast = useUIStore(s => s.addToast);
 
+  const wsBase = getWsBase();
+
   const { lastJsonMessage } = useWebSocket(
-    clientId ? `${WS_URL}/ws/${clientId}` : null,
+    clientId ? `${wsBase}/ws/${clientId}` : null,
     {
       shouldReconnect: () => true,
       reconnectAttempts: 10,
@@ -31,7 +31,7 @@ export const useProcessingSocket = (clientId: string | null) => {
       onOpen: async () => {
         if (!clientId) return;
         try {
-          const { data: res } = await axios.get(`${API_BASE}/api/session/status/${clientId}`);
+          const { data: res } = await axios.get(`${API_URL}/session/status/${clientId}`);
           if (res.has_active_job && res.last_state) {
             const state = res.last_state;
             if (state.type === 'progress') {
@@ -47,8 +47,8 @@ export const useProcessingSocket = (clientId: string | null) => {
 
   useEffect(() => {
     if (!lastJsonMessage) return;
-    const data = lastJsonMessage as any;
-    
+    const data = lastJsonMessage as WebSocketMessage;
+
     switch (data.type) {
       case 'log':
         addLog(data.message);
@@ -58,6 +58,9 @@ export const useProcessingSocket = (clientId: string | null) => {
         break;
       case 'subtitle_new':
         addSubtitle(data.item);
+        break;
+      case 'subtitle_update':
+        updateSubtitle(data.item);
         break;
       case 'finish':
         setProcessing(false);
@@ -76,8 +79,8 @@ export const useProcessingSocket = (clientId: string | null) => {
         break;
     }
   }, [
-    lastJsonMessage, addLog, updateProgress, addSubtitle, 
-    setProcessing, setActiveOcrJobId, setActiveBlurJobId, 
+    lastJsonMessage, addLog, updateProgress, addSubtitle, updateSubtitle,
+    setProcessing, setActiveOcrJobId, setActiveBlurJobId,
     setRenderedVideoUrl, addToast
   ]);
 };

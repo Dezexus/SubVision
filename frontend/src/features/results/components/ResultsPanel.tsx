@@ -7,14 +7,13 @@ import { useProcessingStore } from '../../../store/processingStore';
 import { useBlurStore } from '../../../store/blurStore';
 import { useExportSrt } from '../mutations/useExportSrt';
 import { useImportSrt } from '../mutations/useImportSrt';
-import { useStartBlurRender } from '../../blur/mutations/useStartBlurRender';
+import { API_BASE } from '../../../shared/api';
 
 /**
  * Displays the results panel containing the subtitle list and global editing actions.
  */
 export const ResultsPanel = () => {
   const metadata = useVideoStore((s) => s.metadata);
-  const clientId = useVideoStore((s) => s.clientId);
   const isProcessing = useProcessingStore((s) => s.isProcessing);
   const subtitles = useProcessingStore((s) => s.subtitles);
   const pastSubtitles = useProcessingStore((s) => s.pastSubtitles);
@@ -25,14 +24,12 @@ export const ResultsPanel = () => {
 
   const isBlurMode = useBlurStore((s) => s.isBlurMode);
   const setBlurMode = useBlurStore((s) => s.setBlurMode);
-  const blurSettings = useBlurStore((s) => s.blurSettings);
 
   const isPreviewMode = useVideoStore((s) => s.isPreviewMode);
   const setPreviewMode = useVideoStore((s) => s.setPreviewMode);
 
   const { execute: exportSrt } = useExportSrt();
   const { execute: importSrt } = useImportSrt();
-  const { execute: startBlurRender } = useStartBlurRender();
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -43,21 +40,11 @@ export const ResultsPanel = () => {
     e.target.value = '';
   };
 
-  const handleRenderBlur = () => {
-    if (!metadata || !clientId) return;
-    startBlurRender({
-      filename: metadata.filename,
-      client_id: clientId,
-      subtitles: subtitles,
-      blur_settings: blurSettings,
-    });
-  };
-
   const handleDownloadVideo = () => {
     if (!renderedVideoUrl || !metadata) return;
     const downloadLink = renderedVideoUrl.startsWith('http')
       ? renderedVideoUrl
-      : `${import.meta.env.VITE_API_URL || 'http://localhost:7860'}${renderedVideoUrl}`;
+      : `${API_BASE}${renderedVideoUrl}`;
     const link = document.createElement('a');
     link.href = downloadLink;
     const safeName = metadata.filename.replace(/\.[^/.]+$/, "");

@@ -6,26 +6,7 @@ import { useBlurStore } from '../../../store/blurStore';
 import { useProcessingStore } from '../../../store/processingStore';
 import { Loader2, ImageOff, Eye, EyeOff, MoveVertical, AlertTriangle } from 'lucide-react';
 import { useVideoFrame } from '../hooks/useVideoFrame';
-
-const estimateTextWidth = (text: string, fontSizePx: number, multiplier: number): number => {
-  let width = 0.0;
-  for (const char of text) {
-    if (/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af\uff00-\uffef]/.test(char)) {
-      width += 1.1;
-    } else if (/[mwWM@OQG]/.test(char)) {
-      width += 0.95;
-    } else if (/[A-Z]/.test(char)) {
-      width += 0.8;
-    } else if (/[0-9]/.test(char)) {
-      width += 0.65;
-    } else if (/[il1.,!I|:;tfj]/.test(char)) {
-      width += 0.35;
-    } else {
-      width += 0.65;
-    }
-  }
-  return Math.ceil(width * fontSizePx * multiplier);
-};
+import { calculateTextRect } from '../../../shared/lib/textGeometry';
 
 export const VideoCanvas = () => {
   const file = useVideoStore((s) => s.file);
@@ -81,25 +62,13 @@ export const VideoCanvas = () => {
   const geometry = useMemo(() => {
     if (!metadata) return null;
     const textToMeasure = activeSubtitle ? activeSubtitle.text : "Preview Text Size";
-    const fontSizePx = blurSettings.font_size;
-    const widthMultiplier = blurSettings.width_multiplier || 1.0;
-    const heightMultiplier = blurSettings.height_multiplier || 1.0;
-
-    const textWidth = estimateTextWidth(textToMeasure, fontSizePx, widthMultiplier);
-    const numLines = textToMeasure.split('\n').length;
-    const textHeight = (fontSizePx + 4) * numLines * heightMultiplier;
-
-    const x = Math.floor((metadata.width - textWidth) / 2);
-    const y = blurSettings.y - textHeight;
-
-    return {
-      green: {
-        x: Math.max(0, x),
-        y: Math.max(0, y),
-        w: Math.min(metadata.width - Math.max(0, x), textWidth),
-        h: Math.min(metadata.height - Math.max(0, y), textHeight),
-      },
-    };
+    const green = calculateTextRect(
+      textToMeasure,
+      metadata.width,
+      metadata.height,
+      blurSettings
+    );
+    return { green: { x: green.x, y: green.y, w: green.w, h: green.h } };
   }, [blurSettings, metadata, activeSubtitle]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {

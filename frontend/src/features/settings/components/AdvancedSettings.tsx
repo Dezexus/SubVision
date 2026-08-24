@@ -2,11 +2,12 @@ import React from 'react';
 import { Globe } from 'lucide-react';
 import { Slider, Switch } from '../../../shared/ui';
 import { useLanguagesQuery } from '../queries/useLanguagesQuery';
+import type { OcrSettings } from '../../../types';
 
 interface Props {
-  config: any;
-  setConfig: (updates: any) => void;
-  defaultConfig: any;
+  config: OcrSettings;
+  setConfig: (updates: Partial<OcrSettings>) => void;
+  defaultConfig: OcrSettings;
 }
 
 /**
@@ -25,7 +26,7 @@ export const AdvancedSettings = ({ config, setConfig, defaultConfig }: Props) =>
         </div>
         <div className="relative">
           <select
-             value={config.languages || defaultConfig?.languages || 'en'}
+             value={config.languages || defaultConfig.languages || 'en'}
             onChange={(e) => setConfig({ languages: e.target.value })}
             className="w-full bg-bg-input border border-border-strong rounded-md text-sm text-txt-main px-3 py-2 focus:outline-none focus:ring-1 focus:ring-brand-500 appearance-none cursor-pointer font-medium"
           >
@@ -50,28 +51,28 @@ export const AdvancedSettings = ({ config, setConfig, defaultConfig }: Props) =>
       <Slider
         label="Min Confidence"
         min={50} max={100} step={1}
-        value={config.conf_threshold ?? defaultConfig?.conf_threshold ?? 0}
-        valueDisplay={`${config.conf_threshold ?? defaultConfig?.conf_threshold ?? 0}%`}
+        value={config.conf_threshold ?? defaultConfig.conf_threshold ?? 0}
+        valueDisplay={`${config.conf_threshold ?? defaultConfig.conf_threshold ?? 0}%`}
         onChange={(e) => setConfig({ conf_threshold: Number(e.target.value) })}
       />
 
       <Slider
         label="Scan Step (Frames)"
         min={1} max={10} step={1}
-        value={config.step ?? defaultConfig?.step ?? 0}
-        valueDisplay={config.step ?? defaultConfig?.step ?? 0}
+        value={config.step ?? defaultConfig.step ?? 0}
+        valueDisplay={config.step ?? defaultConfig.step ?? 0}
         onChange={(e) => setConfig({ step: Number(e.target.value) })}
       />
 
       <div className="space-y-1 pt-2 border-t border-border-main">
         <Switch
           label="Smart Skip (Static Scenes)"
-          checked={config.smart_skip ?? defaultConfig?.smart_skip ?? false}
+          checked={config.smart_skip ?? defaultConfig.smart_skip ?? false}
           onChange={(val) => setConfig({ smart_skip: val })}
         />
         <Switch
           label="Upscale (2x Resolution)"
-          checked={(config.scale_factor ?? defaultConfig?.scale_factor ?? 1.0) > 1.5}
+          checked={(config.scale_factor ?? defaultConfig.scale_factor ?? 1.0) > 1.5}
           onChange={(val) => setConfig({ scale_factor: val ? 2.0 : 1.0 })}
         />
       </div>

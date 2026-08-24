@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Play, Square, RefreshCw, ChevronLeft, ChevronRight, Settings2, AlertTriangle } from 'lucide-react';
 import { useVideoStore } from '../../../store/videoStore';
 import { useProcessingStore } from '../../../store/processingStore';
@@ -10,6 +10,8 @@ import { AdvancedSettings } from './AdvancedSettings';
 import { BlurControlPanel } from '../../blur';
 import { useStartOcr } from '../mutations/useStartOcr';
 import { useStopOcr } from '../mutations/useStopOcr';
+import { useDefaultProcessConfigQuery } from '../queries/useDefaultProcessConfigQuery';
+import type { ProcessConfig } from '../../../types';
 
 /**
  * Renders the settings panel for configuring OCR options and navigating to blur settings.
@@ -31,6 +33,17 @@ export const SettingsPanel = () => {
 
   const { execute: startOcr } = useStartOcr();
   const { execute: stopOcr } = useStopOcr();
+  const { data: serverDefaults } = useDefaultProcessConfigQuery();
+  const configInitialized = useRef(false);
+
+  useEffect(() => {
+    if (serverDefaults && !configInitialized.current) {
+      setConfig(serverDefaults);
+      configInitialized.current = true;
+    }
+  }, [serverDefaults, setConfig]);
+
+  const uiDefaults = serverDefaults ?? defaultConfig;
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -42,7 +55,7 @@ export const SettingsPanel = () => {
 
   const handleStart = () => {
     if (!metadata || !clientId) return;
-    const processConfig = {
+    const processConfig: ProcessConfig = {
       filename: metadata.filename,
       client_id: clientId,
       roi,
@@ -117,7 +130,7 @@ export const SettingsPanel = () => {
             <AdvancedSettings
               config={config}
               setConfig={setConfig}
-              defaultConfig={defaultConfig}
+              defaultConfig={uiDefaults}
             />
           </div>
         )}

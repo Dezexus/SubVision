@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Video, RotateCcw, Wand2, ScanLine, Droplet, Loader2 } from 'lucide-react';
+import { Video, RotateCcw, Wand2, ScanLine, Droplet, Loader2, Square } from 'lucide-react';
 import { useVideoStore } from '../../../store/videoStore';
 import { useProcessingStore } from '../../../store/processingStore';
 import { useBlurStore } from '../../../store/blurStore';
@@ -7,6 +7,7 @@ import { Slider, Button } from '../../../shared/ui';
 import { cn } from '../../../shared/lib';
 import { useBlurPreview } from '../hooks/useBlurPreview';
 import { useStartBlurRender } from '../mutations/useStartBlurRender';
+import { useStopBlurRender } from '../mutations/useStopBlurRender';
 import { useDefaultBlurSettingsQuery } from '../queries/useDefaultBlurSettingsQuery';
 
 /**
@@ -19,6 +20,7 @@ export const BlurControlPanel = () => {
   const roi = useVideoStore((s) => s.roi);
 
   const isProcessing = useProcessingStore((s) => s.isProcessing);
+  const activeBlurJobId = useProcessingStore((s) => s.activeBlurJobId);
   const updateProgress = useProcessingStore((s) => s.updateProgress);
   const subtitles = useProcessingStore((s) => s.subtitles);
 
@@ -32,6 +34,7 @@ export const BlurControlPanel = () => {
   const { data: defaultBlurSettings } = useDefaultBlurSettingsQuery();
   const { isPreviewUpdating } = useBlurPreview(metadata, blurSettings, subtitles, currentFrameIndex, setBlurPreviewUrl);
   const { execute: startBlurRender } = useStartBlurRender();
+  const { execute: stopBlurRender } = useStopBlurRender();
 
   const videoHeight = metadata?.height || 1080;
 
@@ -202,16 +205,26 @@ export const BlurControlPanel = () => {
         </div>
       </div>
       <div className="p-4 border-t border-border-main bg-bg-panel shrink-0">
-         <Button
-          variant="primary"
-          className="w-full py-3.5 text-sm font-bold tracking-wide shadow-lg"
-          icon={<Video size={18} />}
-          onClick={handleRender}
-          isLoading={isProcessing}
-          disabled={isProcessing}
-        >
-          START RENDER
-        </Button>
+        {!isProcessing || !activeBlurJobId ? (
+          <Button
+            variant="primary"
+            className="w-full py-3.5 text-sm font-bold tracking-wide shadow-lg"
+            icon={<Video size={18} />}
+            onClick={handleRender}
+            disabled={isProcessing}
+          >
+            START RENDER
+          </Button>
+        ) : (
+          <Button
+            variant="danger"
+            className="w-full py-3.5 text-sm font-bold tracking-wide shadow-lg"
+            icon={<Square size={18} fill="currentColor" />}
+            onClick={() => stopBlurRender()}
+          >
+            STOP RENDER
+          </Button>
+        )}
      </div>
     </div>
   );
