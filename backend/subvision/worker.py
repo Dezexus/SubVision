@@ -150,17 +150,22 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
 
             success = await asyncio.to_thread(run_ocr_pipeline, local_video_path, config, reporter, cancellation)
 
+            if cancellation.is_cancelled_sync():
+                logging.info("OCR task %s cancelled by user.", job_id)
+                await bus.publish_async({"type": "finish", "success": False, "error": "Task Cancelled"})
+                return
+
             if success:
                 reporter.done()
                 await bus.publish_async({"type": "finish", "success": True})
             else:
-                raise RuntimeError("OCR pipeline execution failed or was interrupted.")
+                raise RuntimeError("OCR pipeline execution failed.")
     except asyncio.CancelledError:
-        logging.info(f"ARQ successfully aborted the main task wrapper for {job_id}.")
-        raise
+        logging.info("ARQ successfully aborted the main task wrapper for %s.", job_id)
+        await bus.publish_async({"type": "finish", "success": False, "error": "Task Cancelled"})
     except TaskCancelledError:
-        logging.info(f"Detached thread for {job_id} was successfully halted via poison pill.")
-        raise
+        logging.info("OCR task %s cancelled by user.", job_id)
+        await bus.publish_async({"type": "finish", "success": False, "error": "Task Cancelled"})
     except Exception as e:
         logging.error(f"Pipeline crashed: {e}")
         raise
@@ -187,8 +192,8 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
 
         await bus.publish_async({"type": "finish", "success": True, "download_url": f"/api/video/download/{output_filename}"})
     except (asyncio.CancelledError, TaskCancelledError):
-        logging.info(f"Render task {job_id} cancelled successfully.")
-        raise
+        logging.info("Render task %s cancelled by user.", job_id)
+        await bus.publish_async({"type": "finish", "success": False, "error": "Task Cancelled"})
     finally:
         await redis_conn.srem(f"pending_jobs:{safe_filename}", job_id)
 
@@ -226,9 +231,12 @@ async def on_job_end_handler(ctx: Dict[str, Any], job_id: str, result: Any, exc:
             logging.error(f"Failed to clear active job for {client_id}: {e}")
 
     if exc is not None:
-        logging.error(f"Job {job_id} ended with exception: {exc}")
+        is_cancelled = "cancel" in str(exc).lower() or isinstance(exc, (TaskCancelledError, asyncio.CancelledError))
+        if is_cancelled:
+            logging.info("Job %s cancelled.", job_id)
+        else:
+            logging.error("Job %s ended with exception: %s", job_id, exc)
         try:
-            is_cancelled = "cancel" in str(exc).lower() or isinstance(exc, TaskCancelledError) or isinstance(exc, asyncio.CancelledError)
             error_message = "Task Cancelled" if is_cancelled else f"Task Failed: {str(exc)}"
 
             bus = RedisEventBus(redis_conn, client_id, job_id, asyncio.get_event_loop())

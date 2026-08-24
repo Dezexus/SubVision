@@ -57,7 +57,6 @@ def run_ocr_pipeline(video_path: str, params: dict[str, Any], reporter: OCRRepor
     try:
         for frame_idx, timestamp, frame in video:
             if cancellation.is_cancelled_sync():
-                reporter.log("Process stopped by user.")
                 logger.info("OCR process cancelled by user request.")
                 return False
 
