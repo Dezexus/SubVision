@@ -33,7 +33,10 @@ FROM nvidia/cuda:12.6.2-cudnn-devel-ubuntu22.04 AS opencv-cuda-builder
 ARG CUDA_ARCH_BIN=7.5
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends software-properties-common gpg-agent \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
     wget unzip cmake build-essential pkg-config \
     python3.12 python3.12-dev \
     libavcodec-dev libavformat-dev libswscale-dev \
