@@ -6,6 +6,7 @@
 .env
 .env.*.local
 .vscode/.env.local
+.cursorrules
 
 # === Python virtual envs ===
 backend/venv/
