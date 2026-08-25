@@ -44,13 +44,23 @@ class RedisEventBus:
     async def publish_async(self, payload: Dict[str, Any]) -> None:
         payload["job_id"] = self._job_id
         try:
-            payload_str = json.dumps(payload)
+            payload_str = json.dumps(payload, default=str)
             await self._redis.publish(f"ws_{self._client_id}", payload_str)
-            if payload.get("type") in ("progress", "finish", "error"):
+            msg_type = payload.get("type")
+            if msg_type in ("progress", "finish", "error"):
                 await self._redis.setex(f"job_status:{self._job_id}", 86400, payload_str)
-            # Persist last terminal/progress state by client so UI can recover after
-            # background tab freeze (finish is often missed while active_job is already cleared).
-            if payload.get("type") in ("finish", "error", "progress"):
+            # Persist last state for UI recovery. Never let progress overwrite a terminal finish/error.
+            if msg_type in ("finish", "error"):
+                await self._redis.setex(f"client_last_state:{self._client_id}", 86400, payload_str)
+            elif msg_type == "progress":
+                existing = await self._redis.get(f"client_last_state:{self._client_id}")
+                if existing:
+                    try:
+                        prev = json.loads(existing)
+                        if prev.get("type") in ("finish", "error") and prev.get("job_id") == self._job_id:
+                            return
+                    except (json.JSONDecodeError, TypeError):
+                        pass
                 await self._redis.setex(f"client_last_state:{self._client_id}", 86400, payload_str)
         except Exception as e:
             logging.error(f"EventBus publish failed: {e}")
@@ -169,7 +179,6 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
                 return
 
             if items is not None:
-                reporter.done()
                 await bus.publish_async({"type": "finish", "success": True, "subtitles": items})
             else:
                 raise RuntimeError("OCR pipeline execution failed.")
@@ -203,7 +212,6 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
     try:
         output_filename = await render_blur_pipeline(task_config, storage, reporter, cancellation)
 
-        reporter.done()
         await bus.publish_async({"type": "finish", "success": True, "download_url": f"/api/video/download/{output_filename}"})
     except (asyncio.CancelledError, TaskCancelledError):
         logging.info("Render task %s cancelled by user.", job_id)

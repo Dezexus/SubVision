@@ -102,6 +102,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
     await connection_manager.connect(websocket, client_id)
     pubsub = None
     reader_task = None
+    ping_task = None
     try:
         pubsub = redis_client.pubsub()
         await pubsub.subscribe(f"ws_{client_id}")
@@ -121,10 +122,21 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
                     logger.error("Redis reader error for %s: %s", client_id, e)
                     await asyncio.sleep(2)
 
+        async def keepalive_ping():
+            """Keep the socket alive during long OCR/render jobs (no client traffic)."""
+            while True:
+                await asyncio.sleep(25)
+                try:
+                    await connection_manager.send_json(client_id, {"type": "pong"})
+                except Exception:
+                    break
+
         reader_task = asyncio.create_task(redis_reader())
+        ping_task = asyncio.create_task(keepalive_ping())
 
         while True:
-            data = await asyncio.wait_for(websocket.receive_text(), timeout=120.0)
+            # Long timeout: server pings keep the connection; avoid dropping mid-job.
+            data = await asyncio.wait_for(websocket.receive_text(), timeout=300.0)
             try:
                 message = WebSocketMessage.model_validate_json(data)
                 if message.type == "ping":
@@ -137,6 +149,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
         logger.warning("WebSocket error for %s: %s", client_id, e)
     finally:
         connection_manager.disconnect(client_id)
+        if ping_task:
+            ping_task.cancel()
         if reader_task:
             reader_task.cancel()
         if pubsub:

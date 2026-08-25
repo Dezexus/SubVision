@@ -100,7 +100,9 @@ def run_ocr_pipeline(video_path: str, params: dict[str, Any], reporter: OCRRepor
         logger.info("Edge refine window=%d frames, cues=%d", window, len(items))
 
         def _on_refine_progress(done: int, total: int) -> None:
-            reporter.progress(total_frames, total_frames, f"refine {done}/{total}")
+            # Keep bar under 100% until the worker sends finish.
+            almost = max(total_frames - 1, 1)
+            reporter.progress(almost, total_frames, f"refine {done}/{total}")
 
         items = refine_subtitle_boundaries(
             items=items,
