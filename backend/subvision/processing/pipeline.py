@@ -4,6 +4,7 @@ from typing import Any
 
 from subvision.processing.ocr_engine import PaddleWrapper, get_paddle_engine
 from subvision.processing.aggregator import SubtitleAggregator
+from subvision.processing.edge_refine import refine_subtitle_boundaries
 from subvision.processing.filters import ImagePipeline
 from subvision.processing.video_reader import VideoProvider
 from subvision.processing.interfaces import OCRReporter, CancellationToken
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 DET_REFRESH_INTERVAL = 30
 
 
-def run_ocr_pipeline(video_path: str, params: dict[str, Any], reporter: OCRReporter, cancellation: CancellationToken) -> bool:
+def run_ocr_pipeline(video_path: str, params: dict[str, Any], reporter: OCRReporter, cancellation: CancellationToken) -> list[dict[str, Any]] | None:
     logger.info("Starting OCR pipeline")
 
     config = resolve_config(params)
@@ -45,6 +46,7 @@ def run_ocr_pipeline(video_path: str, params: dict[str, Any], reporter: OCRRepor
         gap_tolerance=int(config.get("gap_tolerance", 5)),
         fps=video.fps,
         min_event_frames_mult=float(config.get("min_event_frames_mult", 2.0)),
+        step=step,
     )
     aggregator.on_new_subtitle = reporter.subtitle
 
@@ -58,7 +60,7 @@ def run_ocr_pipeline(video_path: str, params: dict[str, Any], reporter: OCRRepor
         for frame_idx, timestamp, frame in video:
             if cancellation.is_cancelled_sync():
                 logger.info("OCR process cancelled by user request.")
-                return False
+                return None
 
             if frame_idx > 0 and frame_idx % 25 == 0:
                 elapsed = time.time() - start_time
@@ -90,11 +92,38 @@ def run_ocr_pipeline(video_path: str, params: dict[str, Any], reporter: OCRRepor
                 last_text, last_conf = "", 0.0
                 aggregator.add_result("", 0.0, timestamp)
 
-        aggregator.finalize()
+        items = aggregator.finalize()
+
+        # Frame-accurate edges: OCR every frame in ±step around each coarse boundary.
+        window = max(step, 3)
+        reporter.log(f"Refining boundaries (±{window} frames) for {len(items)} cues...")
+        logger.info("Edge refine window=%d frames, cues=%d", window, len(items))
+
+        def _on_refine_progress(done: int, total: int) -> None:
+            reporter.progress(total_frames, total_frames, f"refine {done}/{total}")
+
+        items = refine_subtitle_boundaries(
+            items=items,
+            video_path=video_path,
+            image_pipeline=pipeline,
+            ocr_engine=ocr_engine,
+            min_conf=min_conf,
+            fps=video.fps,
+            total_frames=total_frames,
+            window_frames=window,
+            abut_gap_max=aggregator.abut_gap_max,
+            cancellation=cancellation,
+            on_progress=_on_refine_progress,
+        )
+
+        if cancellation.is_cancelled_sync():
+            return None
+
+        reporter.subtitles_replace(items)
         skip_msg = f"Smart Skip: {pipeline.skipped_count} frames"
         reporter.log(skip_msg)
         logger.info(skip_msg)
-        logger.info("OCR pipeline completed successfully.")
-        return True
+        logger.info("OCR pipeline completed successfully (%d cues).", len(items))
+        return items
     finally:
         video.release()
