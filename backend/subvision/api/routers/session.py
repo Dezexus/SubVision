@@ -33,7 +33,21 @@ async def get_session_status(client_id: str, request: Request):
             except json.JSONDecodeError:
                 pass
 
-    return {"has_active_job": job_id is not None, "job_id": job_id, "last_state": last_state}
+    # Fallback: finished jobs clear active_job, but client may have missed the WS finish
+    # (background tab). Restore from per-client snapshot.
+    if last_state is None:
+        client_state = await redis_conn.get(f"client_last_state:{client_id}")
+        if client_state:
+            try:
+                last_state = json.loads(client_state)
+            except json.JSONDecodeError:
+                pass
+
+    return {
+        "has_active_job": job_id is not None,
+        "job_id": job_id,
+        "last_state": last_state,
+    }
 
 
 async def _cancel_in_background(pool, redis_conn, job_id: str, client_id: str):

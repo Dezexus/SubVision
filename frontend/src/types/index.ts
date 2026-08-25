@@ -93,4 +93,5 @@ export type WebSocketMessage =
   | { type: 'progress'; current: number; total: number; eta: string; job_id?: string }
   | { type: 'subtitle_new'; item: SubtitleItem; job_id?: string }
   | { type: 'subtitle_update'; item: SubtitleItem; job_id?: string }
-  | { type: 'finish'; success: boolean; download_url?: string; error?: string; job_id?: string };
+  | { type: 'subtitles_replace'; items: SubtitleItem[]; job_id?: string }
+  | { type: 'finish'; success: boolean; download_url?: string; error?: string; subtitles?: SubtitleItem[]; job_id?: string };

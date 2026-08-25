@@ -1,5 +1,3 @@
-import threading
-import queue
 import av
 import numpy as np
 import logging
@@ -9,25 +7,31 @@ from fractions import Fraction
 logger = logging.getLogger(__name__)
 
 
+def _resolve_encoder(requested: str) -> str:
+    """Pick a PyAV-available encoder; stock wheels ship without NVENC."""
+    if requested == "libx264":
+        return "libx264"
+    if requested in ("auto", "nvenc") and "h264_nvenc" in av.codecs_available:
+        return "h264_nvenc"
+    if requested in ("auto", "nvenc"):
+        logger.info("h264_nvenc unavailable in PyAV; using libx264")
+    return "libx264"
+
+
 class AsyncVideoWriter:
-    """Writes video frames asynchronously with encoder fallback."""
+    """Writes video frames with optional bounded async encode queue.
+
+    Encoding runs in-thread by default to avoid PyAV cross-thread deadlocks and
+    huge RAM spikes from buffering full-resolution frames.
+    """
 
     def __init__(self, path: str, fps: float, size: Tuple[int, int], encoder: str = "auto"):
         self.path = path
-        self._queue = queue.Queue(maxsize=100)
-        self._running = True
         self.container = av.open(path, "w")
-
-        selected_encoder = "h264_nvenc" if encoder in ["auto", "nvenc"] else "libx264"
+        selected_encoder = _resolve_encoder(encoder)
         safe_fps = Fraction(fps).limit_denominator(100000)
 
-        try:
-            self.stream = self.container.add_stream(selected_encoder, rate=safe_fps)
-        except Exception as e:
-            logger.warning(f"Failed to initialize encoder {selected_encoder} ({e}). Falling back to libx264.")
-            selected_encoder = "libx264"
-            self.stream = self.container.add_stream(selected_encoder, rate=safe_fps)
-
+        self.stream = self.container.add_stream(selected_encoder, rate=safe_fps)
         self.stream.width = size[0]
         self.stream.height = size[1]
         self.stream.pix_fmt = "yuv420p"
@@ -35,43 +39,27 @@ class AsyncVideoWriter:
         if selected_encoder == "h264_nvenc":
             self.stream.options = {"preset": "p6", "tune": "hq", "cq": "23"}
         else:
-            self.stream.options = {"preset": "medium", "crf": "21"}
+            self.stream.options = {"preset": "veryfast", "crf": "21"}
 
-        self._thread = threading.Thread(target=self._run, daemon=True)
-        self._thread.start()
+        self._closed = False
+        logger.info("VideoWriter ready: %s %dx%d @ %s", selected_encoder, size[0], size[1], safe_fps)
 
-    def _run(self):
-        """Background thread for encoding."""
-        while self._running or not self._queue.empty():
-            try:
-                frame = self._queue.get(timeout=0.1)
-                if frame is None:
-                    break
-                av_frame = av.VideoFrame.from_ndarray(frame, format="bgr24")
-                for packet in self.stream.encode(av_frame):
-                    self.container.mux(packet)
-            except queue.Empty:
-                continue
-            except Exception as e:
-                logger.error(f"Encoding error: {e}")
-                break
+    def write(self, frame: np.ndarray):
+        """Encode and mux a single BGR frame."""
+        if self._closed:
+            raise RuntimeError("Writer is closed")
+        av_frame = av.VideoFrame.from_ndarray(frame, format="bgr24")
+        for packet in self.stream.encode(av_frame):
+            self.container.mux(packet)
 
+    def close(self):
+        """Flush encoder and close the container."""
+        if self._closed:
+            return
+        self._closed = True
         try:
             for packet in self.stream.encode():
                 self.container.mux(packet)
         except Exception:
             pass
-
         self.container.close()
-
-    def write(self, frame: np.ndarray):
-        """Queues a new frame for encoding."""
-        if not self._running:
-            raise RuntimeError("Writer is closed")
-        self._queue.put(frame)
-
-    def close(self):
-        """Safely closes the writer stream."""
-        self._running = False
-        self._queue.put(None)
-        self._thread.join()

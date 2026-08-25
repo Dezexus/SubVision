@@ -60,6 +60,8 @@ class SubtitleAggregator:
         gap_tolerance: int = 5,
         fps: float = 25.0,
         min_event_frames_mult: float = 2.0,
+        step: int = 1,
+        abut_gap_max: float = 0.08,
     ) -> None:
         self.srt_data: list[SubtitleItem] = []
         self.active_event: SubtitleEvent | None = None
@@ -67,7 +69,18 @@ class SubtitleAggregator:
         self.gap_tolerance: int = gap_tolerance
         self.min_event_frames_mult: float = min_event_frames_mult
         self.on_new_subtitle: Callable[[SubtitleItem], None] | None = None
-        self.frame_duration = 1.0 / fps if fps > 0 else 0.04
+
+        fps = fps if fps > 0 else 25.0
+        step = max(1, int(step))
+        self.frame_duration = 1.0 / fps
+        # OCR samples every ``step`` frames — cover the full sample window on end.
+        # lead_in fixes late first-hit; abut snaps ~1-sample residual (~0.067s @ step5/30fps)
+        # without swallowing real pauses (>= ~0.1s).
+        self.sample_duration = step * self.frame_duration
+        self.end_fill = self.sample_duration
+        self.lead_in = 0.6 * self.sample_duration
+        self.lead_out = 0.0
+        self.abut_gap_max = float(abut_gap_max)
 
     def add_result(self, text: str, conf: float, timestamp: float) -> None:
         """Process a new OCR result."""
@@ -78,7 +91,8 @@ class SubtitleAggregator:
             required_conf = 0.95 if len(norm_text) < 3 else self.min_conf
             is_valid = conf >= required_conf
 
-        frame_end_time = timestamp + self.frame_duration
+        # Cover the full sample window so consecutive cues meet after lead-in.
+        frame_end_time = timestamp + self.end_fill
 
         if is_valid:
             if self.active_event:
@@ -117,6 +131,7 @@ class SubtitleAggregator:
         """Process remaining events and apply post-processing like merging."""
         self._commit_event()
         self._merge_adjacent_events()
+        self._refine_timings()
         return self.srt_data
 
     def _merge_adjacent_events(self) -> None:
@@ -130,9 +145,13 @@ class SubtitleAggregator:
             prev = merged[-1]
 
             time_gap = curr["start"] - prev["end"]
-            text_match = is_similar(prev["text"], curr["text"], 0.8) or curr["text"] in prev["text"] or prev["text"] in curr["text"]
+            text_match = (
+                is_similar(prev["text"], curr["text"], 0.75)
+                or curr["text"] in prev["text"]
+                or prev["text"] in curr["text"]
+            )
 
-            if time_gap <= 0.6 and text_match:
+            if time_gap <= 0.5 and text_match:
                 prev["end"] = curr["end"]
                 if len(curr["text"]) > len(prev["text"]):
                     prev["text"] = curr["text"]
@@ -141,3 +160,30 @@ class SubtitleAggregator:
                 merged.append(curr)
 
         self.srt_data = merged
+
+    def _refine_timings(self) -> None:
+        """Pad for OCR sample quantization and snap near-adjacent cues together."""
+        if not self.srt_data:
+            return
+
+        for item in self.srt_data:
+            item["start"] = max(0.0, float(item["start"]) - self.lead_in)
+            item["end"] = float(item["end"]) + self.lead_out
+
+        for i in range(1, len(self.srt_data)):
+            prev = self.srt_data[i - 1]
+            curr = self.srt_data[i]
+            gap = float(curr["start"]) - float(prev["end"])
+
+            if gap < 0:
+                # Pads overlapped — split at midpoint of the overlap.
+                boundary = (float(prev["end"]) + float(curr["start"])) / 2.0
+                prev["end"] = boundary
+                curr["start"] = boundary
+            elif gap <= self.abut_gap_max:
+                # Continuous dialogue: ideal-style abutting cues.
+                prev["end"] = curr["start"]
+
+        for item in self.srt_data:
+            if float(item["end"]) <= float(item["start"]):
+                item["end"] = float(item["start"]) + self.sample_duration

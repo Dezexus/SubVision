@@ -48,6 +48,10 @@ class RedisEventBus:
             await self._redis.publish(f"ws_{self._client_id}", payload_str)
             if payload.get("type") in ("progress", "finish", "error"):
                 await self._redis.setex(f"job_status:{self._job_id}", 86400, payload_str)
+            # Persist last terminal/progress state by client so UI can recover after
+            # background tab freeze (finish is often missed while active_job is already cleared).
+            if payload.get("type") in ("finish", "error", "progress"):
+                await self._redis.setex(f"client_last_state:{self._client_id}", 86400, payload_str)
         except Exception as e:
             logging.error(f"EventBus publish failed: {e}")
 
@@ -103,6 +107,8 @@ class TaskReporter:
 
     def progress(self, current: int, total: int, eta: str) -> None:
         self._check_cancel()
+        if total > 0:
+            self._total = total
         now = time.time()
         if now - self._throttle_ts >= self._throttle_interval or current == total:
             self._throttle_ts = now
@@ -112,10 +118,17 @@ class TaskReporter:
         self._check_cancel()
         self._bus.publish_sync({"type": "subtitle_new", "item": item})
 
+    def subtitles_replace(self, items: list) -> None:
+        """Push the final refined subtitle list after OCR aggregation."""
+        self._check_cancel()
+        self._bus.publish_sync({"type": "subtitles_replace", "items": items})
+
     def done(self, total: int = None) -> None:
         self._check_cancel()
         t = total if total is not None else self._total
-        self._bus.publish_sync({"type": "progress", "current": t, "total": t, "eta": "00:00"})
+        if t > 0:
+            self._total = t
+        self._bus.publish_sync({"type": "progress", "current": self._total or t, "total": self._total or t, "eta": "00:00"})
 
 
 class StorageAdapter:
@@ -148,16 +161,16 @@ async def process_ocr_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
                 await bus.publish_async({"type": "finish", "success": False, "error": "Source video file is no longer available. It may have been deleted."})
                 return
 
-            success = await asyncio.to_thread(run_ocr_pipeline, local_video_path, config, reporter, cancellation)
+            items = await asyncio.to_thread(run_ocr_pipeline, local_video_path, config, reporter, cancellation)
 
             if cancellation.is_cancelled_sync():
                 logging.info("OCR task %s cancelled by user.", job_id)
                 await bus.publish_async({"type": "finish", "success": False, "error": "Task Cancelled"})
                 return
 
-            if success:
+            if items is not None:
                 reporter.done()
-                await bus.publish_async({"type": "finish", "success": True})
+                await bus.publish_async({"type": "finish", "success": True, "subtitles": items})
             else:
                 raise RuntimeError("OCR pipeline execution failed.")
     except asyncio.CancelledError:
@@ -190,6 +203,7 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
     try:
         output_filename = await render_blur_pipeline(task_config, storage, reporter, cancellation)
 
+        reporter.done()
         await bus.publish_async({"type": "finish", "success": True, "download_url": f"/api/video/download/{output_filename}"})
     except (asyncio.CancelledError, TaskCancelledError):
         logging.info("Render task %s cancelled by user.", job_id)

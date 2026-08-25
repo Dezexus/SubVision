@@ -21,6 +21,9 @@ def _process_frames_sync(
     local_video_path: str, total_frames: int, fps: float, width: int, height: int, effects: List[Effect], writer: AsyncVideoWriter, reporter: Reporter, cancellation: CancellationToken
 ) -> int:
     frame_idx = 0
+    t0 = time.time()
+    reporter.progress(0, total_frames, "...")
+
     for f_idx, _, frame in iter_frames(local_video_path, step=1, fps=fps, total=total_frames, width=width, height=height, use_hwaccel=True):
         if cancellation.is_cancelled_sync():
             raise TaskCancelledError("User cancelled during frame writing")
@@ -29,14 +32,23 @@ def _process_frames_sync(
             frame = effect.apply(frame, f_idx)
 
         writer.write(frame)
-
-        if frame_idx > 0 and frame_idx % 25 == 0:
-            reporter.progress(frame_idx, total_frames, "N/A")
-
         frame_idx += 1
 
-    reporter.progress(total_frames, total_frames, "00:00")
-    reporter.done(total_frames)
+        # Prefer actual work against decoded count when metadata over-reports frames.
+        progress_total = max(total_frames, frame_idx)
+        if frame_idx == 1 or frame_idx % 10 == 0:
+            elapsed = max(time.time() - t0, 1e-3)
+            fps_done = frame_idx / elapsed
+            remaining = max(0, progress_total - frame_idx)
+            eta_sec = int(remaining / fps_done) if fps_done > 0 else 0
+            eta = f"{eta_sec // 60:02d}:{eta_sec % 60:02d}"
+            reporter.progress(frame_idx, progress_total, eta)
+            if frame_idx == 1 or frame_idx % 100 == 0:
+                logger.info("Render progress: %d/%d (%.1f fps, ETA %s)", frame_idx, progress_total, fps_done, eta)
+
+    done_total = max(frame_idx, 1)
+    reporter.progress(done_total, done_total, "00:00")
+    reporter.done(done_total)
     return frame_idx
 
 
@@ -102,16 +114,20 @@ async def render_blur_pipeline(
         if cancellation.is_cancelled_sync():
             raise TaskCancelledError("User cancelled after writing")
 
+        done_total = max(frame_idx, 1)
+        reporter.progress(done_total, done_total, "00:00")
         reporter.log("Muxing audio and restoring aspect ratio...")
         await FFmpegTranscoder.transcode_with_audio(
             temp_video=temp_render_path, original_video=local_video_path, output_path=final_output_path, dar=dar, encoder=task_config.blur_settings.encoder, cancel=cancellation
         )
 
+        reporter.progress(done_total, done_total, "00:00")
         reporter.log("Uploading result...")
         up_ok = await storage.copy_to(final_output_path, output_filename)
         if not up_ok:
             raise RuntimeError("Failed to upload the final rendered video to storage.")
 
+        reporter.progress(done_total, done_total, "00:00")
         total_elapsed = time.time() - overall_start
         logger.info(f"Total render time: {total_elapsed:.2f} seconds")
 
