@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import useWebSocket from 'react-use-websocket';
 import axios from 'axios';
 import { useProcessingStore } from '../store/processingStore';
@@ -60,6 +60,7 @@ export const useProcessingSocket = (clientId: string | null) => {
   const setActiveBlurJobId = useProcessingStore(s => s.setActiveBlurJobId);
   const setRenderedVideoUrl = useProcessingStore(s => s.setRenderedVideoUrl);
   const addToast = useUIStore(s => s.addToast);
+  const lastProgressAt = useRef(Date.now());
 
   const wsBase = getWsBase();
 
@@ -80,7 +81,7 @@ export const useProcessingSocket = (clientId: string | null) => {
       // Job finished while tab was hidden / WS dropped.
       if (state?.type === 'finish') {
         const alreadyDone = !local.isProcessing && (
-          !!local.renderedVideoUrl || local.progress.current === local.progress.total && local.progress.total > 0
+          !!local.renderedVideoUrl || (local.progress.current === local.progress.total && local.progress.total > 0)
         );
         applyFinishState(state, {
           setProcessing, setActiveOcrJobId, setActiveBlurJobId,
@@ -90,11 +91,13 @@ export const useProcessingSocket = (clientId: string | null) => {
         return;
       }
 
-      // No active job and no finish snapshot, but UI still thinks work is running.
+      // No active job — clear stuck UI (missed finish / progress overwrote terminal state).
       if (!res.has_active_job && local.isProcessing) {
         setProcessing(false);
         setActiveOcrJobId(null);
         setActiveBlurJobId(null);
+        const { current, total } = local.progress;
+        if (total > 0) updateProgress(Math.max(current, total), Math.max(current, total), '00:00');
       }
     } catch (e) {
       console.error('Failed to restore processing state', e);
@@ -104,17 +107,45 @@ export const useProcessingSocket = (clientId: string | null) => {
     setRenderedVideoUrl, setSubtitles, addToast,
   ]);
 
-  const { lastJsonMessage } = useWebSocket(
+  const { lastJsonMessage, sendJsonMessage, readyState } = useWebSocket(
     clientId ? `${wsBase}/ws/${clientId}` : null,
     {
       shouldReconnect: () => true,
-      reconnectAttempts: 10,
+      reconnectAttempts: 50,
       reconnectInterval: 2000,
       onOpen: () => {
         void syncFromServer({ showToast: true });
       },
     }
   );
+
+  // Client → server ping so proxies / server receive-timeout don't kill long jobs.
+  useEffect(() => {
+    if (!clientId || readyState !== 1) return;
+    const id = window.setInterval(() => {
+      try {
+        sendJsonMessage({ type: 'ping' });
+      } catch {
+        /* ignore */
+      }
+    }, 20000);
+    return () => window.clearInterval(id);
+  }, [clientId, readyState, sendJsonMessage]);
+
+  // If we sit at 100% still "processing", poll session status (finish often missed after WS drop).
+  useEffect(() => {
+    if (!clientId) return;
+    const id = window.setInterval(() => {
+      const { isProcessing, progress } = useProcessingStore.getState();
+      if (!isProcessing) return;
+      const atEnd = progress.total > 0 && progress.current >= progress.total;
+      const stalled = Date.now() - lastProgressAt.current > 8000;
+      if (atEnd || stalled) {
+        void syncFromServer({ showToast: true });
+      }
+    }, 5000);
+    return () => window.clearInterval(id);
+  }, [clientId, syncFromServer]);
 
   useEffect(() => {
     if (!clientId) return;
@@ -136,6 +167,7 @@ export const useProcessingSocket = (clientId: string | null) => {
         addLog(data.message);
         break;
       case 'progress':
+        lastProgressAt.current = Date.now();
         updateProgress(data.current, data.total, data.eta);
         break;
       case 'subtitle_new':
@@ -153,6 +185,8 @@ export const useProcessingSocket = (clientId: string | null) => {
           updateProgress, setRenderedVideoUrl, setSubtitles, addToast,
           showToast: true,
         });
+        break;
+      case 'pong':
         break;
     }
   }, [
