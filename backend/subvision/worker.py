@@ -14,6 +14,11 @@ from subvision.core.config import settings
 from subvision.core.logging_config import setup_logging
 from subvision.core.storage import storage_manager
 from subvision.core.exceptions import TaskCancelledError
+from subvision.core.jobs import (
+    clear_active_job_if_match,
+    parse_client_id_from_job_id,
+    touch_active_job,
+)
 from subvision.processing.pipeline import run_ocr_pipeline
 from subvision.processing.ocr_engine import get_paddle_engine
 from subvision.rendering.pipeline import render_blur_pipeline
@@ -48,6 +53,8 @@ class RedisEventBus:
             msg_type = payload.get("type")
             if msg_type in ("progress", "finish", "error"):
                 await self._redis.setex(f"job_status:{self._job_id}", 86400, payload_str)
+            if msg_type == "progress":
+                await touch_active_job(self._redis, self._client_id, self._job_id)
             # Persist last state for UI recovery. Never let progress overwrite a terminal finish/error.
             if msg_type in ("finish", "error"):
                 await self._redis.setex(f"client_last_state:{self._client_id}", 86400, payload_str)
@@ -236,17 +243,11 @@ async def shutdown(ctx: Dict[str, Any]) -> None:
 
 async def on_job_end_handler(ctx: Dict[str, Any], job_id: str, result: Any, exc: Exception) -> None:
     redis_conn: aioredis.Redis = ctx["redis"]
-    client_id = "unknown"
-    if "_" in job_id:
-        parts = job_id.split("_")
-        if len(parts) >= 3:
-            client_id = "_".join(parts[1:-1])
-        elif len(parts) == 2:
-            client_id = parts[1]
+    client_id = parse_client_id_from_job_id(job_id)
 
     if client_id != "unknown":
         try:
-            await redis_conn.delete(f"active_job:{client_id}")
+            await clear_active_job_if_match(redis_conn, client_id, job_id)
         except Exception as e:
             logging.error(f"Failed to clear active job for {client_id}: {e}")
 

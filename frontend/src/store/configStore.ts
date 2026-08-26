@@ -10,18 +10,24 @@ interface ConfigState {
 export const defaultConfig: OcrSettings = {
   preset: '⚖️ Balance',
   languages: 'en',
-  step: 5,
-  conf_threshold: 80,
-  scale_factor: 1.0,
-  denoise_strength: 0,
+  step: 3,
+  conf_threshold: 82,
+  scale_factor: 1.5,
+  denoise_strength: 2,
   smart_skip: true,
-  motion_mse_thresh: 15,
-  gap_tolerance: 5,
+  motion_mse_thresh: 22,
+  gap_tolerance: 3,
 };
 
 export const useConfigStore = create<ConfigState>((set) => ({
   config: defaultConfig,
   setConfig: (newConfig) =>
-    set((state) => ({ config: { ...state.config, ...newConfig } })),
+    set((state) => {
+      const merged = { ...state.config, ...newConfig };
+      if (merged.preset === '🎬 Mixed') {
+        merged.preset = '⚖️ Balance';
+      }
+      return { config: merged };
+    }),
   resetConfig: () => set({ config: defaultConfig }),
 }));

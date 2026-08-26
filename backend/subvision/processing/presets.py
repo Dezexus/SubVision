@@ -3,14 +3,19 @@ from typing import Any
 ConfigType = dict[str, int | float | bool]
 
 DEFAULT_CONFIG: ConfigType = {
-    "step": 2,
-    "min_conf": 80,
-    "denoise_strength": 3,
-    "scale_factor": 2.0,
+    "step": 3,
+    "min_conf": 82,
+    "denoise_strength": 2,
+    "scale_factor": 1.5,
     "smart_skip": True,
-    "motion_mse_thresh": 15.0,
-    "gap_tolerance": 5,
-    "min_event_frames_mult": 2.0,
+    "motion_mse_thresh": 22.0,
+    "gap_tolerance": 3,
+    "min_event_frames_mult": 1.5,
+}
+
+# Legacy UI / saved sessions that still send the old Mixed id.
+_PRESET_ALIASES: dict[str, str] = {
+    "🎬 Mixed": "⚖️ Balance",
 }
 
 PRESETS_DELTAS: dict[str, dict[str, Any]] = {
@@ -30,20 +35,6 @@ PRESETS_DELTAS: dict[str, dict[str, Any]] = {
     },
     "⚖️ Balance": {
         "label": "Balance",
-        "desc": "Fast & accurate",
-        "config": {
-            "step": 5,
-            "min_conf": 80,
-            "denoise_strength": 0,
-            "scale_factor": 1.0,
-            "smart_skip": True,
-            "motion_mse_thresh": 15.0,
-            "gap_tolerance": 5,
-            "min_event_frames_mult": 2.0,
-        },
-    },
-    "🎬 Mixed": {
-        "label": "Mixed",
         "desc": "Anime & live-action ROI",
         "config": {
             "step": 3,
@@ -84,7 +75,8 @@ _OVERRIDE_KEYS: tuple[str, ...] = (
 def get_preset_config(preset_name: str) -> ConfigType:
     """Merge default config with preset specific deltas."""
     config = DEFAULT_CONFIG.copy()
-    preset_data = PRESETS_DELTAS.get(preset_name)
+    resolved = _PRESET_ALIASES.get(preset_name, preset_name)
+    preset_data = PRESETS_DELTAS.get(resolved)
     if preset_data:
         config.update(preset_data.get("config", {}))
     return config

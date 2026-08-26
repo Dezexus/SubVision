@@ -1,5 +1,5 @@
 import React from 'react';
-import { Gem, Gauge, Clapperboard } from 'lucide-react';
+import { Gem, Gauge } from 'lucide-react';
 import { useConfigStore } from '../../../store/configStore';
 import { usePresetsQuery } from '../queries/usePresetsQuery';
 import type { Preset } from '../../../types';
@@ -7,7 +7,6 @@ import type { Preset } from '../../../types';
 const PRESET_ICONS: Record<string, React.ReactNode> = {
   '🎯 Quality': <Gem size={20} />,
   '⚖️ Balance': <Gauge size={20} />,
-  '🎬 Mixed': <Clapperboard size={20} />,
 };
 
 export const PresetSelector: React.FC = () => {

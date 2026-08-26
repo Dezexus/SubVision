@@ -148,7 +148,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
     except Exception as e:
         logger.warning("WebSocket error for %s: %s", client_id, e)
     finally:
-        connection_manager.disconnect(client_id)
+        connection_manager.disconnect(client_id, websocket)
         if ping_task:
             ping_task.cancel()
         if reader_task:
