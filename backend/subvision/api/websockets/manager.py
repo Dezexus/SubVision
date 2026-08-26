@@ -1,5 +1,5 @@
 import logging
-from typing import Dict
+from typing import Dict, Optional
 from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
@@ -18,13 +18,21 @@ class ConnectionManager:
         await websocket.accept()
         self.stream_connections[client_id] = websocket
 
-    def disconnect(self, client_id: str) -> None:
-        if client_id in self.active_connections:
-            del self.active_connections[client_id]
+    def disconnect(self, client_id: str, websocket: Optional[WebSocket] = None) -> None:
+        current = self.active_connections.get(client_id)
+        if current is None:
+            return
+        if websocket is not None and current is not websocket:
+            return
+        del self.active_connections[client_id]
 
-    def disconnect_stream(self, client_id: str) -> None:
-        if client_id in self.stream_connections:
-            del self.stream_connections[client_id]
+    def disconnect_stream(self, client_id: str, websocket: Optional[WebSocket] = None) -> None:
+        current = self.stream_connections.get(client_id)
+        if current is None:
+            return
+        if websocket is not None and current is not websocket:
+            return
+        del self.stream_connections[client_id]
 
     async def send_json(self, client_id: str, message: dict) -> None:
         if client_id in self.active_connections:

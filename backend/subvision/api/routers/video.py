@@ -177,4 +177,4 @@ async def preview_stream_endpoint(websocket: WebSocket, client_id: str):
     except WebSocketDisconnect:
         pass
     finally:
-        connection_manager.disconnect_stream(client_id)
+        connection_manager.disconnect_stream(client_id, websocket)

@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from subvision.api.schemas import ProcessConfig, RenderConfig, BlurPreviewConfig, BlurSettings
 from subvision.api.dependencies import get_video_path
-from subvision.core.jobs import cancel_job
+from subvision.core.jobs import cancel_job, set_active_job
 from subvision.rendering.blur_preview import generate_blur_preview
 from subvision.processing.subtitle_parser import parse_srt
 from subvision.processing.presets import get_all_presets, get_supported_languages, get_preset_config
@@ -20,17 +20,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def _register_active_job(redis_conn, client_id: str, job_id: str, filename: str) -> None:
-    """Mark job active and clear stale finish so UI cannot resurrect a previous OCR result."""
+async def _register_active_job(redis_conn, pool, client_id: str, job_id: str, filename: str) -> None:
+    """Mark job active, store meta, cancel any previous active job for this client."""
     safe_filename = os.path.basename(filename)
     await redis_conn.sadd(f"pending_jobs:{safe_filename}", job_id)
-    await redis_conn.set(f"active_job:{client_id}", job_id)
-    await redis_conn.delete(f"client_last_state:{client_id}")
+    previous = await set_active_job(redis_conn, client_id, job_id, safe_filename)
     seed = json.dumps(
         {"type": "progress", "current": 0, "total": 0, "eta": "...", "job_id": job_id},
         default=str,
     )
     await redis_conn.setex(f"job_status:{job_id}", 86400, seed)
+    if previous:
+        logger.info("Replacing active job %s with %s for client %s", previous, job_id, client_id)
+        await cancel_job(pool, redis_conn, previous, client_id)
 
 
 class StopRequest(BaseModel):
@@ -78,7 +80,7 @@ async def start_process(config: ProcessConfig, request: Request):
         await pool.enqueue_job("process_ocr_task", config.model_dump(), _job_id=job_id)
 
         redis_conn = request.app.state.redis
-        await _register_active_job(redis_conn, config.client_id, job_id, config.filename)
+        await _register_active_job(redis_conn, pool, config.client_id, job_id, config.filename)
 
         return {"status": "queued", "job_id": job_id}
     except Exception as e:
@@ -153,7 +155,7 @@ async def render_blur_video(config: RenderConfig, request: Request):
         await pool.enqueue_job("render_blur_task", config.model_dump(), _job_id=job_id)
 
         redis_conn = request.app.state.redis
-        await _register_active_job(redis_conn, config.client_id, job_id, config.filename)
+        await _register_active_job(redis_conn, pool, config.client_id, job_id, config.filename)
 
         return {"status": "queued", "job_id": job_id}
     except Exception as e:

@@ -22,11 +22,15 @@ def test_resolve_config_overrides():
     assert config["motion_mse_thresh"] == 25.0
 
 
-def test_mixed_preset_defaults():
-    config = get_preset_config("🎬 Mixed")
+def test_balance_preset_defaults():
+    config = get_preset_config("⚖️ Balance")
     assert config["step"] == 3
     assert config["gap_tolerance"] == 3
     assert config["motion_mse_thresh"] == 22.0
+
+
+def test_legacy_mixed_alias_maps_to_balance():
+    assert get_preset_config("🎬 Mixed") == get_preset_config("⚖️ Balance")
 
 
 def test_image_pipeline_smart_skip_off():

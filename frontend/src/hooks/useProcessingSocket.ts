@@ -11,11 +11,26 @@ function activeJobIds(): string[] {
   return [activeOcrJobId, activeBlurJobId].filter((id): id is string => !!id);
 }
 
-/** Ignore WS/status events that belong to another job (or arrive before our job_id is set). */
+function bindActiveJobId(jobId: string | null | undefined) {
+  if (!jobId) return;
+  const store = useProcessingStore.getState();
+  if (jobId.startsWith('ocr_')) {
+    if (store.activeOcrJobId !== jobId) store.setActiveOcrJobId(jobId);
+    if (store.activeBlurJobId) store.setActiveBlurJobId(null);
+  } else if (jobId.startsWith('blur_')) {
+    if (store.activeBlurJobId !== jobId) store.setActiveBlurJobId(jobId);
+    if (store.activeOcrJobId) store.setActiveOcrJobId(null);
+  }
+}
+
+/** Deny-by-default: only accept events for our known active job ids. */
 function isRelevantJobEvent(jobId: string | undefined, opts?: { allowUntagged?: boolean }): boolean {
-  const { isProcessing } = useProcessingStore.getState();
+  const { isProcessing, stoppedJobId } = useProcessingStore.getState();
+  if (jobId && stoppedJobId && jobId === stoppedJobId) {
+    return false;
+  }
   if (!isProcessing) {
-    return true;
+    return false;
   }
   const ids = activeJobIds();
   if (ids.length === 0) {
@@ -26,6 +41,15 @@ function isRelevantJobEvent(jobId: string | undefined, opts?: { allowUntagged?: 
     return opts?.allowUntagged === true;
   }
   return ids.includes(jobId);
+}
+
+async function ackTerminalState(clientId: string, jobId: string | undefined) {
+  if (!jobId) return;
+  try {
+    await axios.post(`${API_URL}/session/ack`, { client_id: clientId, job_id: jobId });
+  } catch (e) {
+    console.warn('Failed to ack session state', e);
+  }
 }
 
 function applyFinishState(
@@ -39,11 +63,12 @@ function applyFinishState(
     setSubtitles: (subs: SubtitleItem[]) => void;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
     showToast: boolean;
+    replaceSubtitles: boolean;
   }
 ) {
   const {
     setProcessing, setActiveOcrJobId, setActiveBlurJobId,
-    updateProgress, setRenderedVideoUrl, setSubtitles, addToast, showToast,
+    updateProgress, setRenderedVideoUrl, setSubtitles, addToast, showToast, replaceSubtitles,
   } = deps;
 
   setProcessing(false);
@@ -51,9 +76,8 @@ function applyFinishState(
   setActiveBlurJobId(null);
 
   if (data.success) {
-    // OCR finish may carry subtitles; blur finish must not overwrite the editor list.
     const isOcrJob = !data.job_id || data.job_id.startsWith('ocr_');
-    if (isOcrJob && data.subtitles?.length) {
+    if (isOcrJob && replaceSubtitles && data.subtitles?.length) {
       setSubtitles(data.subtitles);
     }
     const { current, total } = useProcessingStore.getState().progress;
@@ -68,6 +92,23 @@ function applyFinishState(
     }
   } else if (showToast) {
     addToast(data.error || 'Task failed', 'error');
+  }
+}
+
+/**
+ * Soft-recover artifacts after a missed finish without flipping UI into "Completed".
+ * Used on cold idle refresh — then ACK so the terminal state is not replayed again.
+ */
+function softRecoverFinish(data: Extract<WebSocketMessage, { type: 'finish' }>) {
+  const store = useProcessingStore.getState();
+  if (!data.success) return;
+  const isOcrJob = !data.job_id || data.job_id.startsWith('ocr_');
+  if (isOcrJob && data.subtitles?.length && store.subtitles.length === 0) {
+    store.setSubtitles(data.subtitles);
+  }
+  const isBlurJob = !data.job_id || data.job_id.startsWith('blur_');
+  if (isBlurJob && data.download_url && !store.renderedVideoUrl) {
+    store.setRenderedVideoUrl(data.download_url);
   }
 }
 
@@ -97,36 +138,51 @@ export const useProcessingSocket = (clientId: string | null) => {
       const state = res.last_state as WebSocketMessage | null | undefined;
       const local = useProcessingStore.getState();
 
-      // Active job: only restore progress for THAT job. Never apply a stale finish.
-      if (res.has_active_job) {
+      // Active job: bind job id immediately so live WS events are accepted.
+      if (res.has_active_job && res.job_id) {
+        bindActiveJobId(res.job_id);
+        if (!local.isProcessing) setProcessing(true);
         if (
           state?.type === 'progress'
           && (!state.job_id || state.job_id === res.job_id)
         ) {
           updateProgress(state.current, state.total, state.eta);
           lastProgressAt.current = Date.now();
-          if (!local.isProcessing) setProcessing(true);
+        }
+        // If job_status already terminal while active_job briefly races, fall through carefully.
+        if (state?.type === 'finish' && (!state.job_id || state.job_id === res.job_id)) {
+          applyFinishState(state, {
+            setProcessing, setActiveOcrJobId, setActiveBlurJobId,
+            updateProgress, setRenderedVideoUrl, setSubtitles, addToast,
+            showToast,
+            replaceSubtitles: true,
+          });
+          await ackTerminalState(clientId, state.job_id || res.job_id);
         }
         return;
       }
 
-      // Job finished while tab was hidden / WS dropped.
+      // Idle + terminal snapshot.
       if (state?.type === 'finish') {
-        if (local.isProcessing && !isRelevantJobEvent(state.job_id)) {
+        if (local.isProcessing) {
+          // Missed WS finish while UI still thinks a job is running.
+          applyFinishState(state, {
+            setProcessing, setActiveOcrJobId, setActiveBlurJobId,
+            updateProgress, setRenderedVideoUrl, setSubtitles, addToast,
+            showToast,
+            replaceSubtitles: true,
+          });
+          await ackTerminalState(clientId, state.job_id);
           return;
         }
-        const alreadyDone = !local.isProcessing && (
-          !!local.renderedVideoUrl || (local.progress.current === local.progress.total && local.progress.total > 0)
-        );
-        applyFinishState(state, {
-          setProcessing, setActiveOcrJobId, setActiveBlurJobId,
-          updateProgress, setRenderedVideoUrl, setSubtitles, addToast,
-          showToast: showToast && !alreadyDone,
-        });
+
+        // Cold idle refresh: recover artifacts quietly, never show fake Completed.
+        softRecoverFinish(state);
+        await ackTerminalState(clientId, state.job_id);
         return;
       }
 
-      // No active job — clear stuck UI (missed finish / progress overwrote terminal state).
+      // No active job — clear stuck UI (missed finish / zombie processing flag).
       if (!res.has_active_job && local.isProcessing) {
         setProcessing(false);
         setActiveOcrJobId(null);
@@ -154,7 +210,6 @@ export const useProcessingSocket = (clientId: string | null) => {
     }
   );
 
-  // Client → server ping so proxies / server receive-timeout don't kill long jobs.
   useEffect(() => {
     if (!clientId || readyState !== 1) return;
     const id = window.setInterval(() => {
@@ -167,7 +222,6 @@ export const useProcessingSocket = (clientId: string | null) => {
     return () => window.clearInterval(id);
   }, [clientId, readyState, sendJsonMessage]);
 
-  // If we sit at 100% still "processing", poll session status (finish often missed after WS drop).
   useEffect(() => {
     if (!clientId) return;
     const id = window.setInterval(() => {
@@ -225,7 +279,9 @@ export const useProcessingSocket = (clientId: string | null) => {
           setProcessing, setActiveOcrJobId, setActiveBlurJobId,
           updateProgress, setRenderedVideoUrl, setSubtitles, addToast,
           showToast: true,
+          replaceSubtitles: true,
         });
+        if (clientId) void ackTerminalState(clientId, data.job_id);
         break;
       case 'pong':
         break;
@@ -233,6 +289,6 @@ export const useProcessingSocket = (clientId: string | null) => {
   }, [
     lastJsonMessage, addLog, updateProgress, addSubtitle, updateSubtitle, setSubtitles,
     setProcessing, setActiveOcrJobId, setActiveBlurJobId,
-    setRenderedVideoUrl, addToast
+    setRenderedVideoUrl, addToast, clientId,
   ]);
 };

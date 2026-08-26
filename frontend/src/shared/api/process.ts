@@ -67,9 +67,19 @@ export const processApi = {
   getSessionStatus: async (clientId: string): Promise<{
     has_active_job: boolean;
     job_id: string | null;
+    filename?: string | null;
+    kind?: string | null;
     last_state?: WebSocketMessage | null;
   }> => {
     const response = await axios.get(`${API_URL}/session/status/${clientId}`);
+    return response.data;
+  },
+
+  ackSessionState: async (clientId: string, jobId: string): Promise<{ status: string }> => {
+    const response = await axios.post(`${API_URL}/session/ack`, {
+      client_id: clientId,
+      job_id: jobId,
+    });
     return response.data;
   },
 
