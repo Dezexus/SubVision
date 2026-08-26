@@ -1,10 +1,11 @@
 from typing import Dict, Any, Optional
+
 import numpy as np
-from subvision.rendering.geometry import calculate_text_roi, compute_feather_inner_roi
+
+from subvision.core.video_io import extract_frame_cv2
 from subvision.rendering.effects.blur import apply_blur_to_frame
 from subvision.rendering.effects.inpainting import _apply_hybrid_inpaint
-from subvision.rendering.effects.lama import apply_lama_inpaint
-from subvision.core.video_io import extract_frame_cv2
+from subvision.rendering.geometry import calculate_text_roi, compute_feather_inner_roi
 
 
 def generate_blur_preview(video_path: str, frame_index: int, settings: Dict[str, Any], text: str) -> Optional[np.ndarray]:
@@ -22,8 +23,12 @@ def generate_blur_preview(video_path: str, frame_index: int, settings: Dict[str,
 
     if mode == "hybrid" and text_roi[2] > 0 and text_roi[3] > 0:
         frame = _apply_hybrid_inpaint(frame, text_roi, font_size_px)
-    elif mode == "lama" and text_roi[2] > 0 and text_roi[3] > 0:
-        frame = apply_lama_inpaint(frame, text_roi, font_size_px)
+    elif mode == "propainter" and text_roi[2] > 0 and text_roi[3] > 0:
+        from subvision.rendering.effects.propainter import apply_propainter_preview
+
+        frame = apply_propainter_preview(
+            frame, frame_index, text_roi, font_size_px, video_path, settings
+        )
 
     if text_roi[2] <= 0 or text_roi[3] <= 0:
         return frame

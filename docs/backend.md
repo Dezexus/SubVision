@@ -7,7 +7,7 @@
 | Компонент | Минимум |
 |-----------|---------|
 | GPU | NVIDIA с compute capability **7.5+** (RTX 2060 и новее) |
-| VRAM | **6 GB** (рекомендуется запас для LaMa-режима) |
+| VRAM | **6 GB** (рекомендуется запас для ProPainter) |
 | RAM | **16 GB** |
 | CPU | 6 ядер (сборка OpenCV использует `-j6`) |
 | Driver | NVIDIA **≥ 550** + [Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) |
@@ -27,14 +27,14 @@ CUDA_ARCH_BIN=7.5
 
 - Лимит загрузки видео: **4 GB** (nginx + backend синхронизированы)
 - Первая сборка worker: **45–90 мин** (OpenCV CUDA); повторные сборки быстрее за счёт BuildKit cache
-- При OOM в LaMa-режиме: уменьшите `PADDLE_GPU_MEMORY_FRACTION` до `0.30` или увеличьте `SHM_SIZE=3gb`
+- При OOM в режиме ProPainter: уменьшите `PADDLE_GPU_MEMORY_FRACTION` до `0.30` или увеличьте `SHM_SIZE=3gb`
 
 ## Архитектура
 
 ```
 nginx:7860 → api (FastAPI) → Valkey/Redis
                 ↓ enqueue
-             worker (ARQ + PaddleOCR + OpenCV CUDA + ONNX LaMa)
+             worker (ARQ + PaddleOCR + OpenCV CUDA + ProPainter)
                 ↓
            uploads/ (shared volume)
 ```

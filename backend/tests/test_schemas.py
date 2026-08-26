@@ -18,6 +18,13 @@ def test_render_config_validates_blur_settings():
         filename="v.mp4",
         client_id="c1",
         subtitles=[],
-        blur_settings=BlurSettings(mode="lama"),
+        blur_settings=BlurSettings(mode="propainter"),
     )
-    assert config.blur_settings.mode == "lama"
+    assert config.blur_settings.mode == "propainter"
+
+
+def test_blur_settings_propainter_defaults():
+    settings = BlurSettings(mode="propainter")
+    assert settings.propainter_neighbor_length == 6
+    assert settings.propainter_subvideo_length == 30
+    assert settings.propainter_fp16 is True

@@ -106,44 +106,67 @@ export const BlurControlPanel = () => {
           <div className="flex items-center gap-2 text-xs font-bold text-txt-main tracking-wide mb-3">
             <Wand2 size={16} className="text-brand-500" /> Algorithm
           </div>
-          <div className="relative flex bg-bg-input p-1 rounded-lg border border-border-strong z-10">
-            <button
-              onClick={() => setBlurSettings({ mode: 'blur' })}
-              className={cn(
-                "relative flex-1 text-xs py-2 font-bold rounded-md transition-all duration-200 z-10",
-                blurSettings.mode === 'blur' ? "text-white" : "text-txt-subtle hover:text-txt-muted"
-              )}
-            >
-              BOX BLUR
-            </button>
-            <button
-              onClick={() => setBlurSettings({ mode: 'hybrid' })}
-              className={cn(
-                "relative flex-1 text-xs py-2 font-bold rounded-md transition-all duration-200 z-10",
-                blurSettings.mode === 'hybrid' ? "text-white" : "text-txt-subtle hover:text-txt-muted"
-              )}
-            >
-              HYBRID
-            </button>
-            <button
-              onClick={() => setBlurSettings({ mode: 'lama' })}
-              className={cn(
-                "relative flex-1 text-xs py-2 font-bold rounded-md transition-all duration-200 z-10",
-                blurSettings.mode === 'lama' ? "text-white" : "text-txt-subtle hover:text-txt-muted"
-              )}
-            >
-              AI INPAINT
-            </button>
-            <div 
-              className={cn(
-                "absolute left-1 top-1 bottom-1 w-[calc(33.33%-3px)] bg-brand-500 rounded-md transition-transform duration-300 ease-out shadow-sm",
-                blurSettings.mode === 'blur' ? "translate-x-0" :
-                blurSettings.mode === 'hybrid' ? "translate-x-[100%]" :
-                "translate-x-[200%]"
-              )}
-            />
+          <div className="grid grid-cols-2 gap-1.5 bg-bg-input p-1 rounded-lg border border-border-strong">
+            {([
+              { mode: 'blur' as const, label: 'BOX BLUR' },
+              { mode: 'hybrid' as const, label: 'HYBRID' },
+              { mode: 'propainter' as const, label: 'PROPAINTER' },
+            ]).map(({ mode, label }) => (
+              <button
+                key={mode}
+                onClick={() => setBlurSettings({ mode })}
+                className={cn(
+                  "text-[10px] py-2 font-bold rounded-md transition-all duration-200",
+                  blurSettings.mode === mode
+                    ? "bg-brand-500 text-white shadow-sm"
+                    : "text-txt-subtle hover:text-txt-muted hover:bg-bg-hover"
+                )}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
+
+        {blurSettings.mode === 'propainter' && (
+          <div className="bg-bg-panel border border-border-main rounded-xl p-4 shadow-sm">
+            <div className="flex items-center gap-2 text-xs font-bold text-txt-main tracking-wide mb-4">
+              <Wand2 size={16} className="text-purple-400" /> ProPainter
+            </div>
+            <div className="space-y-4">
+              <Slider
+                label="Neighbor Length"
+                min={4} max={12} step={2}
+                value={blurSettings.propainter_neighbor_length ?? 6}
+                suffix="fr"
+                onChange={(e) => setBlurSettings({ propainter_neighbor_length: Number(e.target.value) })}
+              />
+              <Slider
+                label="Subvideo Length"
+                min={20} max={80} step={10}
+                value={blurSettings.propainter_subvideo_length ?? 30}
+                suffix="fr"
+                onChange={(e) => setBlurSettings({ propainter_subvideo_length: Number(e.target.value) })}
+              />
+              <Slider
+                label="ROI Padding"
+                min={16} max={64} step={8}
+                value={blurSettings.propainter_roi_pad ?? 32}
+                suffix="px"
+                onChange={(e) => setBlurSettings({ propainter_roi_pad: Number(e.target.value) })}
+              />
+              <label className="flex items-center gap-2 text-xs text-txt-muted cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={blurSettings.propainter_fp16 ?? true}
+                  onChange={(e) => setBlurSettings({ propainter_fp16: e.target.checked })}
+                  className="rounded border-border-strong"
+                />
+                FP16 (рекомендуется для 6 GB VRAM)
+              </label>
+            </div>
+          </div>
+        )}
 
         <div className="bg-bg-panel border border-border-main rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 text-xs font-bold text-txt-main tracking-wide mb-4">

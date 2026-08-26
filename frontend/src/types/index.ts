@@ -64,6 +64,12 @@ export interface BlurSettings {
   width_multiplier: number;
   height_multiplier?: number;
   encoder: string;
+  propainter_neighbor_length?: number;
+  propainter_ref_stride?: number;
+  propainter_subvideo_length?: number;
+  propainter_fp16?: boolean;
+  propainter_roi_pad?: number;
+  propainter_mask_dilation?: number;
 }
 
 export interface RenderConfig {
