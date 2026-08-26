@@ -9,7 +9,7 @@ def has_cuda() -> bool:
 
 
 def release_paddle_gpu_memory() -> None:
-    """Release Paddle GPU cache before render tasks that use LaMa ONNX."""
+    """Release Paddle GPU cache before render tasks (ProPainter / OpenCV CUDA)."""
     try:
         import paddle
 

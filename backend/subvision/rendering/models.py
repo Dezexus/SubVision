@@ -18,7 +18,7 @@ class RenderTaskConfig(BaseModel):
         """Builds rendering effects based on config."""
         from subvision.rendering.effects.blur import BlurEffect
         from subvision.rendering.effects.inpainting import InpaintEffect
-        from subvision.rendering.effects.lama import LaMaInpaintEffect
+        from subvision.rendering.effects.propainter import ProPainterInpaintEffect
 
         effects = []
         blur_dict = self.blur_settings.model_dump()
@@ -26,8 +26,8 @@ class RenderTaskConfig(BaseModel):
 
         if mode == "hybrid":
             effects.append(InpaintEffect(blur_dict))
-        elif mode == "lama":
-            effects.append(LaMaInpaintEffect(blur_dict))
+        elif mode == "propainter":
+            effects.append(ProPainterInpaintEffect(blur_dict))
 
         effects.append(BlurEffect(blur_dict))
         return effects

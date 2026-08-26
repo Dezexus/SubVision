@@ -26,6 +26,12 @@ const placeholderBlurSettings: BlurSettings = {
   width_multiplier: 1.0,
   height_multiplier: 1.2,
   encoder: 'auto',
+  propainter_neighbor_length: 6,
+  propainter_ref_stride: 10,
+  propainter_subvideo_length: 30,
+  propainter_fp16: true,
+  propainter_roi_pad: 32,
+  propainter_mask_dilation: 4,
 };
 
 export const useBlurStore = create<BlurState & BlurActions>((set) => ({

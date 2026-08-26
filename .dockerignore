@@ -28,6 +28,10 @@ frontend/coverage
 paddle_cache
 paddle_models
 hf_cache
+backend/third_party/ProPainter
+backend/.pytest_cache
+**/*.pth
+**/*.onnx
 
 # IDE & System
 .idea

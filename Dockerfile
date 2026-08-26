@@ -78,7 +78,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends software-proper
     && apt-get update \
     && apt-get install -y --no-install-recommends \
     python3.12 python3.12-dev python3.12-venv \
-    gcc g++ patchelf ffmpeg libgl1 libglib2.0-0 libgomp1 libsm6 libxext6 wget tzdata libdav1d5 \
+    gcc g++ patchelf ffmpeg libgl1 libglib2.0-0 libgomp1 libsm6 libxext6 wget git tzdata libdav1d5 \
     && ln -sf /usr/bin/python3.12 /usr/bin/python \
     && ln -sf /usr/bin/python3.12 /usr/bin/python3 \
     && wget -q https://bootstrap.pypa.io/get-pip.py && python3.12 get-pip.py \
@@ -92,11 +92,14 @@ COPY backend/requirements-worker.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --upgrade pip \
  && python -m pip install paddlepaddle-gpu==3.3.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/ \
+ && python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126 \
  && python -m pip install -r requirements.txt \
- && python -m pip uninstall -y onnxruntime \
  && python -m pip install -r requirements-worker.txt
 
 COPY backend ./backend
+RUN git clone --depth 1 https://github.com/sczhou/ProPainter.git /app/backend/third_party/ProPainter || true
+ENV PYTHONPATH="/app/backend/third_party/ProPainter"
+RUN python /app/backend/scripts/download_propainter_weights.py || true
 WORKDIR /app/backend
 
 CMD ["arq", "subvision.worker.WorkerSettings"]

@@ -18,7 +18,6 @@ from subvision.processing.pipeline import run_ocr_pipeline
 from subvision.processing.ocr_engine import get_paddle_engine
 from subvision.rendering.pipeline import render_blur_pipeline
 from subvision.rendering.models import RenderTaskConfig
-
 setup_logging(settings.log_level)
 
 _sync_redis_client = None
@@ -230,7 +229,6 @@ async def startup(ctx: Dict[str, Any]) -> None:
         logging.info("OCR engine pre-warmed successfully.")
     except Exception as e:
         logging.error(f"Failed to pre-warm OCR: {e}")
-
 
 async def shutdown(ctx: Dict[str, Any]) -> None:
     logging.info("Worker shutting down...")

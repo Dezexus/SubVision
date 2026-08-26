@@ -55,6 +55,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - USE_NVDEC=${USE_NVDEC:-true}
       - PADDLE_GPU_MEMORY_FRACTION=${PADDLE_GPU_MEMORY_FRACTION:-0.35}
+      - PYTHONPATH=/app/backend/third_party/ProPainter
     deploy:
       resources:
         reservations:
