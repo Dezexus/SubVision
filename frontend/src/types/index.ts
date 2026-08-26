@@ -70,6 +70,8 @@ export interface BlurSettings {
   propainter_fp16?: boolean;
   propainter_roi_pad?: number;
   propainter_mask_dilation?: number;
+  propainter_max_width?: number;
+  propainter_max_clip_frames?: number;
 }
 
 export interface RenderConfig {

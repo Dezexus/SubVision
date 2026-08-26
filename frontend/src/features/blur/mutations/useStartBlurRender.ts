@@ -10,6 +10,7 @@ import type { RenderConfig } from '../../../types';
 export function useStartBlurRender() {
   const setProcessing = useProcessingStore((s) => s.setProcessing);
   const setActiveBlurJobId = useProcessingStore((s) => s.setActiveBlurJobId);
+  const setActiveOcrJobId = useProcessingStore((s) => s.setActiveOcrJobId);
   const addLog = useProcessingStore((s) => s.addLog);
   const addToast = useUIStore((s) => s.addToast);
 
@@ -19,6 +20,7 @@ export function useStartBlurRender() {
     },
     onMutate: () => {
       setProcessing(true);
+      setActiveOcrJobId(null);
       addLog('--- Starting Smart Render ---');
     },
     onSuccess: (data) => {
@@ -26,6 +28,7 @@ export function useStartBlurRender() {
     },
     onError: (err: any) => {
       setProcessing(false);
+      setActiveBlurJobId(null);
       const msg = err.response?.data?.detail || err.message || 'Failed to start render';
       addToast(msg, 'error');
       addLog(`Error: ${msg}`);

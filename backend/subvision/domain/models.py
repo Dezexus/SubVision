@@ -10,11 +10,14 @@ class BlurSettings(BaseModel):
     sigma: int = 5
     feather: int = 40
     width_multiplier: float = 1.0
-    height_multiplier: float = 1.2
+    height_multiplier: float = 1.5
     encoder: str = "auto"
-    propainter_neighbor_length: int = 6
-    propainter_ref_stride: int = 10
-    propainter_subvideo_length: int = 30
+    # Tuned for ~5–10 min video on 6 GB VRAM (RTX 2060-class).
+    propainter_neighbor_length: int = 8
+    propainter_ref_stride: int = 8
+    propainter_subvideo_length: int = 40
     propainter_fp16: bool = True
-    propainter_roi_pad: int = 32
-    propainter_mask_dilation: int = 4
+    propainter_roi_pad: int = 40
+    propainter_mask_dilation: int = 6
+    propainter_max_width: int = 640
+    propainter_max_clip_frames: int = 48

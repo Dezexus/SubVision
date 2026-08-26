@@ -26,8 +26,11 @@ class RenderTaskConfig(BaseModel):
 
         if mode == "hybrid":
             effects.append(InpaintEffect(blur_dict))
+            effects.append(BlurEffect(blur_dict))
         elif mode == "propainter":
+            # ProPainter already fills the ROI; a follow-up blur smears any
+            # residual dark fill into letter-shaped blobs.
             effects.append(ProPainterInpaintEffect(blur_dict))
-
-        effects.append(BlurEffect(blur_dict))
+        else:
+            effects.append(BlurEffect(blur_dict))
         return effects

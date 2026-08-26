@@ -6,6 +6,28 @@ import { useUIStore } from '../store/uiStore';
 import { API_URL, getWsBase } from '../shared/api/config';
 import type { SubtitleItem, WebSocketMessage } from '../types';
 
+function activeJobIds(): string[] {
+  const { activeOcrJobId, activeBlurJobId } = useProcessingStore.getState();
+  return [activeOcrJobId, activeBlurJobId].filter((id): id is string => !!id);
+}
+
+/** Ignore WS/status events that belong to another job (or arrive before our job_id is set). */
+function isRelevantJobEvent(jobId: string | undefined, opts?: { allowUntagged?: boolean }): boolean {
+  const { isProcessing } = useProcessingStore.getState();
+  if (!isProcessing) {
+    return true;
+  }
+  const ids = activeJobIds();
+  if (ids.length === 0) {
+    // Enqueue in flight — never apply a stale finish/progress from a previous job.
+    return false;
+  }
+  if (!jobId) {
+    return opts?.allowUntagged === true;
+  }
+  return ids.includes(jobId);
+}
+
 function applyFinishState(
   data: Extract<WebSocketMessage, { type: 'finish' }>,
   deps: {
@@ -29,13 +51,16 @@ function applyFinishState(
   setActiveBlurJobId(null);
 
   if (data.success) {
-    if (data.subtitles?.length) {
+    // OCR finish may carry subtitles; blur finish must not overwrite the editor list.
+    const isOcrJob = !data.job_id || data.job_id.startsWith('ocr_');
+    if (isOcrJob && data.subtitles?.length) {
       setSubtitles(data.subtitles);
     }
     const { current, total } = useProcessingStore.getState().progress;
     const done = Math.max(current, total, 1);
     updateProgress(done, done, '00:00');
-    if (data.download_url) {
+    const isBlurJob = !data.job_id || data.job_id.startsWith('blur_');
+    if (isBlurJob && data.download_url) {
       setRenderedVideoUrl(data.download_url);
       if (showToast) addToast('Render completed successfully', 'success');
     } else if (showToast) {
@@ -72,14 +97,24 @@ export const useProcessingSocket = (clientId: string | null) => {
       const state = res.last_state as WebSocketMessage | null | undefined;
       const local = useProcessingStore.getState();
 
-      if (res.has_active_job && state?.type === 'progress') {
-        updateProgress(state.current, state.total, state.eta);
-        if (!local.isProcessing) setProcessing(true);
+      // Active job: only restore progress for THAT job. Never apply a stale finish.
+      if (res.has_active_job) {
+        if (
+          state?.type === 'progress'
+          && (!state.job_id || state.job_id === res.job_id)
+        ) {
+          updateProgress(state.current, state.total, state.eta);
+          lastProgressAt.current = Date.now();
+          if (!local.isProcessing) setProcessing(true);
+        }
         return;
       }
 
       // Job finished while tab was hidden / WS dropped.
       if (state?.type === 'finish') {
+        if (local.isProcessing && !isRelevantJobEvent(state.job_id)) {
+          return;
+        }
         const alreadyDone = !local.isProcessing && (
           !!local.renderedVideoUrl || (local.progress.current === local.progress.total && local.progress.total > 0)
         );
@@ -164,22 +199,28 @@ export const useProcessingSocket = (clientId: string | null) => {
 
     switch (data.type) {
       case 'log':
+        if (!isRelevantJobEvent(data.job_id, { allowUntagged: true })) break;
         addLog(data.message);
         break;
       case 'progress':
+        if (!isRelevantJobEvent(data.job_id)) break;
         lastProgressAt.current = Date.now();
         updateProgress(data.current, data.total, data.eta);
         break;
       case 'subtitle_new':
+        if (!isRelevantJobEvent(data.job_id)) break;
         addSubtitle(data.item);
         break;
       case 'subtitle_update':
+        if (!isRelevantJobEvent(data.job_id)) break;
         updateSubtitle(data.item);
         break;
       case 'subtitles_replace':
+        if (!isRelevantJobEvent(data.job_id)) break;
         setSubtitles(data.items);
         break;
       case 'finish':
+        if (!isRelevantJobEvent(data.job_id)) break;
         applyFinishState(data, {
           setProcessing, setActiveOcrJobId, setActiveBlurJobId,
           updateProgress, setRenderedVideoUrl, setSubtitles, addToast,

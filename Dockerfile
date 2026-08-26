@@ -60,7 +60,7 @@ RUN cmake -D CMAKE_BUILD_TYPE=RELEASE \
           -D BUILD_opencv_python3=ON \
           -D PYTHON3_EXECUTABLE=/usr/bin/python3.12 \
           /opencv-src/opencv-4.10.0 \
- && make -j6 \
+ && make -j2 \
  && make install \
  && ldconfig
 
