@@ -1,6 +1,7 @@
 import logging
 import uuid
 import os
+import json
 import asyncio
 from fastapi import APIRouter, HTTPException, UploadFile, File, Request, BackgroundTasks
 from fastapi.responses import StreamingResponse
@@ -17,6 +18,19 @@ from subvision.processing.presets import get_all_presets, get_supported_language
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+async def _register_active_job(redis_conn, client_id: str, job_id: str, filename: str) -> None:
+    """Mark job active and clear stale finish so UI cannot resurrect a previous OCR result."""
+    safe_filename = os.path.basename(filename)
+    await redis_conn.sadd(f"pending_jobs:{safe_filename}", job_id)
+    await redis_conn.set(f"active_job:{client_id}", job_id)
+    await redis_conn.delete(f"client_last_state:{client_id}")
+    seed = json.dumps(
+        {"type": "progress", "current": 0, "total": 0, "eta": "...", "job_id": job_id},
+        default=str,
+    )
+    await redis_conn.setex(f"job_status:{job_id}", 86400, seed)
 
 
 class StopRequest(BaseModel):
@@ -63,11 +77,8 @@ async def start_process(config: ProcessConfig, request: Request):
         job_id = f"ocr_{config.client_id}_{uuid.uuid4().hex[:8]}"
         await pool.enqueue_job("process_ocr_task", config.model_dump(), _job_id=job_id)
 
-        safe_filename = os.path.basename(config.filename)
         redis_conn = request.app.state.redis
-
-        await redis_conn.sadd(f"pending_jobs:{safe_filename}", job_id)
-        await redis_conn.set(f"active_job:{config.client_id}", job_id)
+        await _register_active_job(redis_conn, config.client_id, job_id, config.filename)
 
         return {"status": "queued", "job_id": job_id}
     except Exception as e:
@@ -134,11 +145,8 @@ async def render_blur_video(config: RenderConfig, request: Request):
         job_id = f"blur_{config.client_id}_{uuid.uuid4().hex[:8]}"
         await pool.enqueue_job("render_blur_task", config.model_dump(), _job_id=job_id)
 
-        safe_filename = os.path.basename(config.filename)
         redis_conn = request.app.state.redis
-
-        await redis_conn.sadd(f"pending_jobs:{safe_filename}", job_id)
-        await redis_conn.set(f"active_job:{config.client_id}", job_id)
+        await _register_active_job(redis_conn, config.client_id, job_id, config.filename)
 
         return {"status": "queued", "job_id": job_id}
     except Exception as e:

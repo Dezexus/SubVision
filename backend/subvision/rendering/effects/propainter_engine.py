@@ -7,7 +7,7 @@ import sys
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -47,12 +47,13 @@ def _check_torch() -> bool:
 
 @dataclass
 class ProPainterConfig:
-    neighbor_length: int = 6
-    ref_stride: int = 10
-    subvideo_length: int = 30
+    neighbor_length: int = 8
+    ref_stride: int = 8
+    subvideo_length: int = 40
     fp16: bool = True
-    mask_dilation: int = 4
-    raft_iter: int = 20
+    mask_dilation: int = 6
+    raft_iter: int = 12
+    max_width: int = 640
 
 
 def is_propainter_available() -> bool:
@@ -68,14 +69,27 @@ def get_last_inference_ms() -> float:
     return _last_inference_ms
 
 
-def _resize_frames(frames: List[Image.Image], size: Optional[Tuple[int, int]] = None):
+def _resize_frames(
+    frames: List[Image.Image],
+    size: Optional[Tuple[int, int]] = None,
+    max_width: Optional[int] = None,
+):
     if size is not None:
         out_size = size
         process_size = (out_size[0] - out_size[0] % 8, out_size[1] - out_size[1] % 8)
         frames = [f.resize(process_size) for f in frames]
     else:
         out_size = frames[0].size
-        process_size = (out_size[0] - out_size[0] % 8, out_size[1] - out_size[1] % 8)
+        process_w, process_h = out_size
+        if max_width and process_w > max_width:
+            scale = max_width / float(process_w)
+            process_w = max_width - (max_width % 8)
+            process_h = int(round(process_h * scale))
+            process_h = max(8, process_h - (process_h % 8))
+        else:
+            process_w = process_w - (process_w % 8)
+            process_h = process_h - (process_h % 8)
+        process_size = (process_w, process_h)
         if out_size != process_size:
             frames = [f.resize(process_size) for f in frames]
     return frames, process_size, out_size
@@ -180,8 +194,12 @@ class ProPainterEngine:
         frames_bgr: List[np.ndarray],
         masks: List[np.ndarray],
         config: Optional[ProPainterConfig] = None,
+        progress_cb: Optional[Callable[[float], None]] = None,
     ) -> List[np.ndarray]:
-        """Inpaint a clip; frames/masks must share the same H×W."""
+        """Inpaint a clip; frames/masks must share the same H×W.
+
+        progress_cb(fraction in [0,1]) is called during the slow transformer loop.
+        """
         import time
 
         import torch
@@ -197,11 +215,19 @@ class ProPainterEngine:
         pil_frames = [Image.fromarray(f.astype(np.uint8), mode="RGB") for f in frames_rgb]
 
         frames_len = len(pil_frames)
-        pil_frames, size, out_size = _resize_frames(pil_frames, None)
+        pil_frames, size, out_size = _resize_frames(pil_frames, None, max_width=cfg.max_width)
         flow_masks, masks_dilated = _read_masks(
             masks, frames_len, size, cfg.mask_dilation, cfg.mask_dilation
         )
         w, h = size
+        logger.info(
+            "ProPainter inpaint: %d frames, process=%sx%s (out=%sx%s)",
+            frames_len,
+            w,
+            h,
+            out_size[0],
+            out_size[1],
+        )
 
         frames_inp = [np.array(f).astype(np.uint8) for f in pil_frames]
         frames = to_tensors()(pil_frames).unsqueeze(0) * 2 - 1
@@ -212,19 +238,22 @@ class ProPainterEngine:
         masks_dilated_t = masks_dilated_t.to(self.device)
 
         video_length = frames.size(1)
+        if progress_cb is not None:
+            progress_cb(0.02)
+
         with torch.no_grad():
+            # Keep RAFT windows small — large tensors on 6GB often stall under memory pressure.
             if frames.size(-1) <= 640:
-                short_clip_len = 12
-            elif frames.size(-1) <= 720:
                 short_clip_len = 8
-            elif frames.size(-1) <= 1280:
-                short_clip_len = 4
+            elif frames.size(-1) <= 720:
+                short_clip_len = 6
             else:
-                short_clip_len = 2
+                short_clip_len = 4
 
             if frames.size(1) > short_clip_len:
                 gt_flows_f_list, gt_flows_b_list = [], []
-                for f in range(0, video_length, short_clip_len):
+                raft_steps = max(1, (video_length + short_clip_len - 1) // short_clip_len)
+                for step_i, f in enumerate(range(0, video_length, short_clip_len)):
                     end_f = min(video_length, f + short_clip_len)
                     if f == 0:
                         flows_f, flows_b = self.fix_raft(frames[:, f:end_f], iters=cfg.raft_iter)
@@ -232,11 +261,15 @@ class ProPainterEngine:
                         flows_f, flows_b = self.fix_raft(frames[:, f - 1 : end_f], iters=cfg.raft_iter)
                     gt_flows_f_list.append(flows_f)
                     gt_flows_b_list.append(flows_b)
-                    if torch.cuda.is_available():
+                    if progress_cb is not None:
+                        progress_cb(0.02 + 0.28 * (step_i + 1) / raft_steps)
+                    if torch.cuda.is_available() and (step_i + 1) % 2 == 0:
                         torch.cuda.empty_cache()
                 gt_flows_bi = (torch.cat(gt_flows_f_list, dim=1), torch.cat(gt_flows_b_list, dim=1))
             else:
                 gt_flows_bi = self.fix_raft(frames, iters=cfg.raft_iter)
+                if progress_cb is not None:
+                    progress_cb(0.30)
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
 
@@ -246,11 +279,15 @@ class ProPainterEngine:
                 masks_dilated_t = masks_dilated_t.half()
                 gt_flows_bi = (gt_flows_bi[0].half(), gt_flows_bi[1].half())
 
+            if progress_cb is not None:
+                progress_cb(0.32)
+
             flow_length = gt_flows_bi[0].size(1)
             if flow_length > cfg.subvideo_length:
                 pred_flows_f, pred_flows_b = [], []
                 pad_len = 5
-                for f in range(0, flow_length, cfg.subvideo_length):
+                flow_steps = max(1, (flow_length + cfg.subvideo_length - 1) // cfg.subvideo_length)
+                for step_i, f in enumerate(range(0, flow_length, cfg.subvideo_length)):
                     s_f = max(0, f - pad_len)
                     e_f = min(flow_length, f + cfg.subvideo_length + pad_len)
                     pad_len_s = max(0, f) - s_f
@@ -266,7 +303,9 @@ class ProPainterEngine:
                     )
                     pred_flows_f.append(pred_flows_bi_sub[0][:, pad_len_s : e_f - s_f - pad_len_e])
                     pred_flows_b.append(pred_flows_bi_sub[1][:, pad_len_s : e_f - s_f - pad_len_e])
-                    if torch.cuda.is_available():
+                    if progress_cb is not None:
+                        progress_cb(0.32 + 0.08 * (step_i + 1) / flow_steps)
+                    if torch.cuda.is_available() and (step_i + 1) % 2 == 0:
                         torch.cuda.empty_cache()
                 pred_flows_bi = (torch.cat(pred_flows_f, dim=1), torch.cat(pred_flows_b, dim=1))
             else:
@@ -274,6 +313,9 @@ class ProPainterEngine:
                 pred_flows_bi = self.fix_flow_complete.combine_flow(gt_flows_bi, pred_flows_bi, flow_masks_t)
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
+
+            if progress_cb is not None:
+                progress_cb(0.40)
 
             masked_frames = frames * (1 - masks_dilated_t)
             subvideo_length_img_prop = min(100, cfg.subvideo_length)
@@ -321,7 +363,7 @@ class ProPainterEngine:
         neighbor_stride = max(1, cfg.neighbor_length // 2)
         ref_num = cfg.subvideo_length // cfg.ref_stride if video_length > cfg.subvideo_length else -1
 
-        for f in range(0, video_length, neighbor_stride):
+        for step_i, f in enumerate(range(0, video_length, neighbor_stride)):
             neighbor_ids = list(range(max(0, f - neighbor_stride), min(video_length, f + neighbor_stride + 1)))
             ref_ids = _get_ref_index(f, neighbor_ids, video_length, cfg.ref_stride, ref_num)
             selected_imgs = updated_frames[:, neighbor_ids + ref_ids, :, :, :]
@@ -337,20 +379,35 @@ class ProPainterEngine:
                 pred_img = self.model(selected_imgs, selected_pred_flows_bi, selected_masks, selected_update_masks, l_t)
                 pred_img = pred_img.view(-1, 3, h, w)
                 pred_img = (pred_img + 1) / 2
-                pred_img = pred_img.cpu().permute(0, 2, 3, 1).numpy() * 255
-                binary_masks = (
-                    masks_dilated_t[0, neighbor_ids, :, :, :].cpu().permute(0, 2, 3, 1).numpy().astype(np.uint8)
+                # Compose in float32: fp16→uint8 truncates mask 0.99→0 and can
+                # leave holes unfilled (black glyph silhouettes for subtitle masks).
+                pred_np = (
+                    torch.clamp(pred_img.float(), 0.0, 1.0).cpu().permute(0, 2, 3, 1).numpy()
                 )
+                pred_np = np.nan_to_num(pred_np, nan=0.0, posinf=1.0, neginf=0.0)
+                binary_masks = (
+                    masks_dilated_t[0, neighbor_ids, :, :, :]
+                    .float()
+                    .cpu()
+                    .permute(0, 2, 3, 1)
+                    .numpy()
+                )
+                binary_masks = (binary_masks > 0.5).astype(np.float32)
                 for i, idx in enumerate(neighbor_ids):
-                    img = np.array(pred_img[i]).astype(np.uint8) * binary_masks[i] + ori_frames[idx] * (
-                        1 - binary_masks[i]
-                    )
+                    ori = ori_frames[idx].astype(np.float32) / 255.0
+                    img = pred_np[i] * binary_masks[i] + ori * (1.0 - binary_masks[i])
+                    img_u8 = np.clip(img * 255.0, 0, 255).astype(np.uint8)
                     if comp_frames[idx] is None:
-                        comp_frames[idx] = img
+                        comp_frames[idx] = img_u8
                     else:
                         comp_frames[idx] = (
-                            comp_frames[idx].astype(np.float32) * 0.5 + img.astype(np.float32) * 0.5
+                            comp_frames[idx].astype(np.float32) * 0.5
+                            + img_u8.astype(np.float32) * 0.5
                         ).astype(np.uint8)
+            if progress_cb is not None:
+                # RAFT/flow ~40%, transformer loop ~60% of this clip.
+                n_steps = max(1, (video_length + neighbor_stride - 1) // neighbor_stride)
+                progress_cb(0.4 + 0.6 * min(1.0, (step_i + 1) / n_steps))
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 

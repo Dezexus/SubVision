@@ -48,7 +48,7 @@ export function calculateTextRect(
 
   const fontSizePx = settings.font_size;
   const widthMultiplier = settings.width_multiplier ?? 1.0;
-  const heightMultiplier = settings.height_multiplier ?? 1.0;
+  const heightMultiplier = settings.height_multiplier ?? 1.5;
 
   const lines = text.split('\n');
   let maxLineWidth = 0;

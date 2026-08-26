@@ -10,6 +10,7 @@ import type { ProcessConfig } from '../../../types';
 export function useStartOcr() {
   const setProcessing = useProcessingStore((s) => s.setProcessing);
   const setActiveOcrJobId = useProcessingStore((s) => s.setActiveOcrJobId);
+  const setActiveBlurJobId = useProcessingStore((s) => s.setActiveBlurJobId);
   const addLog = useProcessingStore((s) => s.addLog);
   const addToast = useUIStore((s) => s.addToast);
 
@@ -19,6 +20,7 @@ export function useStartOcr() {
     },
     onMutate: () => {
       setProcessing(true);
+      setActiveBlurJobId(null);
       addLog('--- Starting Process ---');
     },
     onSuccess: (data) => {
@@ -26,6 +28,7 @@ export function useStartOcr() {
     },
     onError: (err: any) => {
       setProcessing(false);
+      setActiveOcrJobId(null);
       const msg = err.response?.data?.detail || err.message || 'Failed to start OCR';
       addToast(msg, 'error');
       addLog(`Error: ${msg}`);

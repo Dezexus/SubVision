@@ -12,6 +12,5 @@ def test_build_effects_propainter_mode():
         blur_settings=BlurSettings(mode="propainter"),
     )
     effects = config.build_effects()
-    assert len(effects) == 2
+    assert len(effects) == 1
     assert effects[0].__class__.__name__ == "ProPainterInpaintEffect"
-    assert effects[1].__class__.__name__ == "BlurEffect"

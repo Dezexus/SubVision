@@ -103,6 +103,62 @@ def extract_frame_cv2(video_path: str, frame_index: int, dar: Optional[float] = 
     return _extract_frame_cached(video_path, mtime, frame_index, dar)
 
 
+def decode_frames_range(
+    video_path: str,
+    start_f: int,
+    end_f: int,
+    *,
+    use_hwaccel: bool = True,
+) -> Dict[int, np.ndarray]:
+    """Decode [start_f, end_f) in one sequential pass (seek once).
+
+    Random per-frame seeks via extract_frame_cv2 are orders of magnitude slower
+    for ProPainter clip loading — do not use them for contiguous ranges.
+    """
+    if end_f <= start_f or not video_path or not os.path.exists(video_path):
+        return {}
+
+    dar = get_video_dar(video_path)
+    out: Dict[int, np.ndarray] = {}
+    try:
+        with _open_video_container(video_path, use_hwaccel=use_hwaccel) as container:
+            stream = container.streams.video[0]
+            stream.thread_type = "AUTO"
+            fps = float(stream.average_rate) if stream.average_rate else 25.0
+            if start_f > 0 and stream.time_base is not None:
+                target_timestamp = int((start_f / fps) / stream.time_base)
+                try:
+                    container.seek(target_timestamp, stream=stream, backward=True)
+                except Exception:
+                    pass
+
+            first = True
+            current_idx = 0
+            for frame in container.decode(stream):
+                if first:
+                    if frame.pts is not None and stream.time_base is not None:
+                        current_idx = int(round((frame.pts * float(stream.time_base)) * fps))
+                    else:
+                        current_idx = max(0, start_f - 2)
+                    first = False
+
+                if current_idx < start_f:
+                    current_idx += 1
+                    continue
+                if current_idx >= end_f:
+                    break
+
+                img = frame.to_ndarray(format="bgr24")
+                h, w = img.shape[:2]
+                if dar is not None and abs(dar - (w / h)) > 1e-3:
+                    img = _correct_sar(img, w, h, dar)
+                out[current_idx] = img
+                current_idx += 1
+    except Exception as exc:
+        logger.error("decode_frames_range failed (%s..%s): %s", start_f, end_f, exc)
+    return out
+
+
 @contextmanager
 def _open_video_container(video_path: str, use_hwaccel: bool = True) -> Iterator[av.container.InputContainer]:
     """Open a video container, optionally with CUDA NVDEC hardware decoding."""

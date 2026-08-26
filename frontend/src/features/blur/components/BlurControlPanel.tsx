@@ -137,23 +137,37 @@ export const BlurControlPanel = () => {
               <Slider
                 label="Neighbor Length"
                 min={4} max={12} step={2}
-                value={blurSettings.propainter_neighbor_length ?? 6}
+                value={blurSettings.propainter_neighbor_length ?? 8}
                 suffix="fr"
                 onChange={(e) => setBlurSettings({ propainter_neighbor_length: Number(e.target.value) })}
               />
               <Slider
                 label="Subvideo Length"
                 min={20} max={80} step={10}
-                value={blurSettings.propainter_subvideo_length ?? 30}
+                value={blurSettings.propainter_subvideo_length ?? 40}
                 suffix="fr"
                 onChange={(e) => setBlurSettings({ propainter_subvideo_length: Number(e.target.value) })}
               />
               <Slider
+                label="Ref Stride"
+                min={4} max={16} step={2}
+                value={blurSettings.propainter_ref_stride ?? 8}
+                suffix="fr"
+                onChange={(e) => setBlurSettings({ propainter_ref_stride: Number(e.target.value) })}
+              />
+              <Slider
                 label="ROI Padding"
                 min={16} max={64} step={8}
-                value={blurSettings.propainter_roi_pad ?? 32}
+                value={blurSettings.propainter_roi_pad ?? 40}
                 suffix="px"
                 onChange={(e) => setBlurSettings({ propainter_roi_pad: Number(e.target.value) })}
+              />
+              <Slider
+                label="Mask Dilation"
+                min={2} max={12} step={1}
+                value={blurSettings.propainter_mask_dilation ?? 6}
+                suffix="px"
+                onChange={(e) => setBlurSettings({ propainter_mask_dilation: Number(e.target.value) })}
               />
               <label className="flex items-center gap-2 text-xs text-txt-muted cursor-pointer">
                 <input

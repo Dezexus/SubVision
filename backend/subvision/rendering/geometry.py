@@ -37,7 +37,7 @@ def calculate_text_roi(text: str, width: int, height: int, settings: Dict[str, A
 
     font_size_px = int(settings.get("font_size", 21))
     width_multiplier = float(settings.get("width_multiplier", 1.0))
-    height_multiplier = float(settings.get("height_multiplier", 1.0))
+    height_multiplier = float(settings.get("height_multiplier", 1.5))
 
     lines = text.split("\n")
     max_line_width = 0

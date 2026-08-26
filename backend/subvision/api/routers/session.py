@@ -32,10 +32,11 @@ async def get_session_status(client_id: str, request: Request):
                 last_state = json.loads(state_bytes)
             except json.JSONDecodeError:
                 pass
-
-    # Fallback: finished jobs clear active_job, but client may have missed the WS finish
-    # (background tab). Restore from per-client snapshot.
-    if last_state is None:
+        # While a job is active, never fall back to a previous job's finish
+        # (e.g. OCR finish must not abort a newly started blur render).
+    else:
+        # Fallback only when idle: finished jobs clear active_job, but client may
+        # have missed the WS finish (background tab).
         client_state = await redis_conn.get(f"client_last_state:{client_id}")
         if client_state:
             try:

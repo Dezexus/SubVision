@@ -9,7 +9,7 @@
 | GPU | NVIDIA с compute capability **7.5+** (RTX 2060 и новее) |
 | VRAM | **6 GB** (рекомендуется запас для ProPainter) |
 | RAM | **16 GB** |
-| CPU | 6 ядер (сборка OpenCV использует `-j6`) |
+| CPU | 6 ядер (сборка OpenCV использует `-j2`, чтобы не ронять Docker Desktop) |
 | Driver | NVIDIA **≥ 550** + [Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) |
 | Disk | ~15 GB под Docker-образы и модели Paddle |
 
