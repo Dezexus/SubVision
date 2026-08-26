@@ -25,8 +25,9 @@ class RenderTaskConfig(BaseModel):
         mode = blur_dict.get("mode", "hybrid")
 
         if mode == "hybrid":
+            # InpaintEffect already applies residual ring-blur; full-ROI BlurEffect
+            # would soap the reconstructed background.
             effects.append(InpaintEffect(blur_dict))
-            effects.append(BlurEffect(blur_dict))
         elif mode == "propainter":
             # ProPainter already fills the ROI; a follow-up blur smears any
             # residual dark fill into letter-shaped blobs.

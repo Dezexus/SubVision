@@ -78,11 +78,12 @@ export const useBlurPreview = (
     }
 
     const time = currentFrameIndex / metadata.fps;
-    const sub = subtitles.find(s => time >= s.start && time <= s.end);
-    const text = sub ? sub.text : "Preview Mode";
+    const activeSubs = subtitles.filter(s => time >= s.start && time <= s.end && s.text?.trim());
+    const texts = activeSubs.map(s => s.text.trim());
+    const text = texts[0] ?? "";
 
     const settingsKey = JSON.stringify(blurSettings);
-    const cacheKey = `${metadata.filename}_${currentFrameIndex}_${text}_${settingsKey}`;
+    const cacheKey = `${metadata.filename}_${currentFrameIndex}_${texts.join("|")}_${settingsKey}`;
 
     if (blurCache.has(cacheKey)) {
       const url = blurCache.get(cacheKey)!;
@@ -108,7 +109,8 @@ export const useBlurPreview = (
             filename: metadata.filename,
             frame_index: currentFrameIndex,
             blur_settings: blurSettings,
-            subtitle_text: text
+            subtitle_text: text,
+            subtitle_texts: texts,
           }, abortController.signal);
         }
 

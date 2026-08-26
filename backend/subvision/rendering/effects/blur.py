@@ -45,12 +45,42 @@ def _inner_roi_relative(bx: int, by: int, bw: int, bh: int, inner_roi: Optional[
     return inset, inset, max(1, bw - 2 * inset), max(1, bh - 2 * inset)
 
 
+def _resolve_blend_mask(
+    bx: int,
+    by: int,
+    bw: int,
+    bh: int,
+    feather: int,
+    alpha: float,
+    inner_roi: Optional[Tuple[int, int, int, int]],
+    region_mask: Optional[np.ndarray],
+) -> Optional[np.ndarray]:
+    if region_mask is not None:
+        mask = (region_mask.astype(np.float32) / 255.0) * alpha
+        if mask.shape[:2] != (bh, bw):
+            mask = cv2.resize(mask, (bw, bh), interpolation=cv2.INTER_LINEAR)
+        return mask
+    if feather > 0 or alpha < 1.0:
+        safe_feather_w = int(bw * 0.45)
+        safe_feather_h = int(bh * 0.45)
+        eff_feather = min(feather, safe_feather_w, safe_feather_h)
+        irx, iry, irw, irh = _inner_roi_relative(bx, by, bw, bh, inner_roi, eff_feather)
+        return _get_cached_mask(bw, bh, eff_feather, irx, iry, irw, irh) * alpha
+    return None
+
+
 def _apply_cuda_blur(
-    frame: np.ndarray, roi: Tuple[int, int, int, int], original_roi: np.ndarray, sigma: int, feather: int, alpha: float, inner_roi: Optional[Tuple[int, int, int, int]] = None
+    frame: np.ndarray,
+    roi: Tuple[int, int, int, int],
+    original_roi: np.ndarray,
+    sigma: int,
+    feather: int,
+    alpha: float,
+    inner_roi: Optional[Tuple[int, int, int, int]] = None,
+    region_mask: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """Apply GPU-accelerated box blur with cached masking."""
     bx, by, bw, bh = roi
-    h, w = frame.shape[:2]
     gpu_frame = cv2.cuda_GpuMat()
     gpu_frame.upload(frame)
 
@@ -65,15 +95,8 @@ def _apply_cuda_blur(
     else:
         processed_roi = gpu_roi.clone()
 
-    if feather > 0 or alpha < 1.0:
-        safe_feather_w = int(bw * 0.45)
-        safe_feather_h = int(bh * 0.45)
-        eff_feather = min(feather, safe_feather_w, safe_feather_h)
-
-        irx, iry, irw, irh = _inner_roi_relative(bx, by, bw, bh, inner_roi, eff_feather)
-        base_mask = _get_cached_mask(bw, bh, eff_feather, irx, iry, irw, irh)
-        mask = base_mask * alpha
-
+    mask = _resolve_blend_mask(bx, by, bw, bh, feather, alpha, inner_roi, region_mask)
+    if mask is not None:
         gpu_mask = cv2.cuda_GpuMat()
         gpu_mask.upload(mask)
 
@@ -101,11 +124,17 @@ def _apply_cuda_blur(
 
 
 def _apply_cpu_blur(
-    frame: np.ndarray, roi: Tuple[int, int, int, int], original_roi: np.ndarray, sigma: int, feather: int, alpha: float, inner_roi: Optional[Tuple[int, int, int, int]] = None
+    frame: np.ndarray,
+    roi: Tuple[int, int, int, int],
+    original_roi: np.ndarray,
+    sigma: int,
+    feather: int,
+    alpha: float,
+    inner_roi: Optional[Tuple[int, int, int, int]] = None,
+    region_mask: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """Apply CPU-based box blur with cached masking and downscale optimization."""
     bx, by, bw, bh = roi
-    h, w = frame.shape[:2]
     roi_img = frame[by : by + bh, bx : bx + bw]
 
     if sigma > 0:
@@ -129,20 +158,11 @@ def _apply_cpu_blur(
     else:
         processed_roi = roi_img.copy()
 
-    if feather > 0 or alpha < 1.0:
-        safe_feather_w = int(bw * 0.45)
-        safe_feather_h = int(bh * 0.45)
-        eff_feather = min(feather, safe_feather_w, safe_feather_h)
-
-        irx, iry, irw, irh = _inner_roi_relative(bx, by, bw, bh, inner_roi, eff_feather)
-        base_mask = _get_cached_mask(bw, bh, eff_feather, irx, iry, irw, irh)
-        mask = base_mask * alpha
-
+    mask = _resolve_blend_mask(bx, by, bw, bh, feather, alpha, inner_roi, region_mask)
+    if mask is not None:
         mask_3ch = cv2.merge([mask, mask, mask])
-
         original_float = original_roi.astype(np.float32)
         blur_float = processed_roi.astype(np.float32)
-
         blended = blur_float * mask_3ch + original_float * (1.0 - mask_3ch)
         frame[by : by + bh, bx : bx + bw] = blended.astype(np.uint8)
     else:
@@ -151,8 +171,15 @@ def _apply_cpu_blur(
     return frame
 
 
-def apply_blur_to_frame(frame: np.ndarray, roi: Tuple[int, int, int, int], settings: Dict[str, Any], alpha: float = 1.0, inner_roi: Optional[Tuple[int, int, int, int]] = None) -> np.ndarray:
-    """Entry point for applying blur."""
+def apply_blur_to_frame(
+    frame: np.ndarray,
+    roi: Tuple[int, int, int, int],
+    settings: Dict[str, Any],
+    alpha: float = 1.0,
+    inner_roi: Optional[Tuple[int, int, int, int]] = None,
+    region_mask: Optional[np.ndarray] = None,
+) -> np.ndarray:
+    """Entry point for applying blur. Optional region_mask limits blend to glyph/ring area."""
     bx, by, bw, bh = roi
     if bw <= 0 or bh <= 0 or alpha <= 0.0:
         return frame
@@ -162,16 +189,18 @@ def apply_blur_to_frame(frame: np.ndarray, roi: Tuple[int, int, int, int], setti
     sigma = int(settings.get("sigma", 5))
     feather = int(settings.get("feather", 30))
 
-    if inner_roi is None and feather > 0:
+    if region_mask is None and inner_roi is None and feather > 0:
         inner_roi = compute_feather_inner_roi((bx, by, bw, bh), feather)
 
     if has_cuda():
         try:
-            return _apply_cuda_blur(frame, roi, original_roi, sigma, feather, alpha, inner_roi)
+            return _apply_cuda_blur(
+                frame, roi, original_roi, sigma, feather, alpha, inner_roi, region_mask
+            )
         except cv2.error:
             pass
 
-    return _apply_cpu_blur(frame, roi, original_roi, sigma, feather, alpha, inner_roi)
+    return _apply_cpu_blur(frame, roi, original_roi, sigma, feather, alpha, inner_roi, region_mask)
 
 
 class BlurEffect:

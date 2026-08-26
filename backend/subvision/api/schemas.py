@@ -48,7 +48,8 @@ class BlurPreviewConfig(BaseModel):
     filename: str
     frame_index: int
     blur_settings: BlurSettings
-    subtitle_text: str
+    subtitle_text: str = ""
+    subtitle_texts: List[str] = Field(default_factory=list)
 
 
 class WebSocketMessage(BaseModel):

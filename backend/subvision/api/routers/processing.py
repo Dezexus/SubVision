@@ -125,7 +125,14 @@ async def preview_blur_frame(config: BlurPreviewConfig):
     video_path = get_video_path(config.filename)
 
     try:
-        preview_image = await asyncio.to_thread(generate_blur_preview, video_path=video_path, frame_index=config.frame_index, settings=config.blur_settings.model_dump(), text=config.subtitle_text)
+        preview_image = await asyncio.to_thread(
+            generate_blur_preview,
+            video_path=video_path,
+            frame_index=config.frame_index,
+            settings=config.blur_settings.model_dump(),
+            text=config.subtitle_text,
+            subtitle_texts=config.subtitle_texts or None,
+        )
         if preview_image is None:
             raise HTTPException(status_code=500, detail="Failed to generate preview")
 

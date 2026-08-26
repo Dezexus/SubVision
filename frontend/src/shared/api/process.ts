@@ -27,7 +27,8 @@ export const processApi = {
     filename: string;
     frame_index: number;
     blur_settings: BlurSettings;
-    subtitle_text: string;
+    subtitle_text?: string;
+    subtitle_texts?: string[];
   }, signal?: AbortSignal) => {
     const response = await axios.post(`${API_URL}/process/preview_blur`, config, {
       responseType: 'blob',
