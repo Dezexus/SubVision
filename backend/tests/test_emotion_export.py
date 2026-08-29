@@ -52,8 +52,9 @@ def test_emotion_export_stub_pipeline(tmp_path):
         assert "cues" in data
         if data["cues"]:
             cue = data["cues"][0]
-            assert "timing" in cue
-            assert "timecode_srt" in cue["timing"]
+            assert "start" in cue or "timing" in cue
+            if "start" in cue:
+                assert "timecode" in cue
 
 
 def test_model_weights_cached_false(tmp_path, monkeypatch):

@@ -14,13 +14,19 @@ SpeakerGender = Literal["male", "female", "unknown"]
 GenderSource = Literal["auto", "manual", "stub"]
 
 
+TextSentimentLanguage = Literal["auto", "en", "ru"]
+
+
 class TextSentimentSettings(BaseModel):
     """Local text sentiment (optional HF transformers pipeline)."""
 
     enabled: bool = False
+    language: TextSentimentLanguage = "auto"
     model_id: str = "cointegrated/rubert-tiny-sentiment"
+    model_id_en: str = "distilbert-base-uncased-finetuned-sst-2-english"
     confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
     include_in_json: bool = True
+    multimodal_fusion_enabled: bool = True
 
 
 class GenderSettings(BaseModel):
