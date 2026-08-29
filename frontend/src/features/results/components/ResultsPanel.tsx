@@ -1,18 +1,23 @@
-import React from 'react';
-import { Download, ScanFace, ArrowLeft, Upload, FileVideo, Play, EyeOff, Undo, Redo, Scissors } from 'lucide-react';
+import React, { useState } from 'react';
+import { ScanFace, ArrowLeft, Upload, FileVideo, Play, EyeOff, Undo, Redo, Scissors } from 'lucide-react';
 import { GlassPanel, Button } from '../../../shared/ui';
 import { SubtitleList } from '../../subtitles';
+import { EmotionExportDialog } from '../../export/components/EmotionExportDialog';
+import { ExportMenu } from './ExportMenu';
 import { useVideoStore } from '../../../store/videoStore';
 import { useProcessingStore } from '../../../store/processingStore';
 import { useBlurStore } from '../../../store/blurStore';
 import { useExportSrt } from '../mutations/useExportSrt';
 import { useImportSrt } from '../mutations/useImportSrt';
 import { API_BASE } from '../../../shared/api';
+import { useTranslation } from '../../../i18n';
+import { cn, exportStem, exportWithSuffix } from '../../../shared/lib';
+import { useEmotionExportStore } from '../../../store/emotionExportStore';
+import { useUIStore } from '../../../store/uiStore';
+import { readEmotionJsonSpeakers } from '../../export/lib/emotionJsonImport';
 
-/**
- * Displays the results panel containing the subtitle list and global editing actions.
- */
 export const ResultsPanel = () => {
+  const { t } = useTranslation();
   const metadata = useVideoStore((s) => s.metadata);
   const isProcessing = useProcessingStore((s) => s.isProcessing);
   const subtitles = useProcessingStore((s) => s.subtitles);
@@ -32,6 +37,11 @@ export const ResultsPanel = () => {
   const { execute: importSrt } = useImportSrt();
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [emotionOpen, setEmotionOpen] = useState(false);
+  const setSpeakerProfileOverrides = useEmotionExportStore((s) => s.setSpeakerProfileOverrides);
+  const addToast = useUIStore((s) => s.addToast);
+
+  const actionsDisabled = isProcessing || !metadata || subtitles.length === 0;
 
   const handleImportSrt = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -47,26 +57,41 @@ export const ResultsPanel = () => {
       : `${API_BASE}${renderedVideoUrl}`;
     const link = document.createElement('a');
     link.href = downloadLink;
-    const safeName = metadata.filename.replace(/\.[^/.]+$/, "");
-    link.download = `blurred_${safeName}`;
+    const stem = exportStem(metadata.original_filename, metadata.filename);
+    const ext = metadata.filename.match(/\.[^.]+$/)?.[0] || '.mp4';
+    link.download = exportWithSuffix(stem, `_blurred${ext}`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
+  const handleImportEmotionJson = async (file: File) => {
+    try {
+      const overrides = await readEmotionJsonSpeakers(file);
+      setSpeakerProfileOverrides(overrides);
+      addToast(t('results.importEmotionJsonSuccess', { count: Object.keys(overrides).length }), 'success');
+      setEmotionOpen(true);
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : t('results.importEmotionJsonFailed'), 'error');
+    }
+  };
+
   return (
-    <GlassPanel className="flex flex-col h-full bg-bg-main">
+    <GlassPanel className="flex flex-col h-full min-h-0 bg-bg-main">
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-main bg-bg-surface/50">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 text-txt-main">
             <Scissors size={14} className="text-brand-500" />
-            <span className="text-xs font-bold uppercase tracking-wider">Editor</span>
+            <span className="text-xs font-bold uppercase tracking-wider">{t('results.editor')}</span>
+            {subtitles.length > 0 && (
+              <span className="text-[10px] font-mono text-txt-subtle ml-1">{subtitles.length}</span>
+            )}
           </div>
           <div className="flex items-center gap-1 border-l border-border-strong pl-3">
             <button
               onClick={undo}
               disabled={pastSubtitles.length === 0}
-              className="p-1.5 rounded-md text-txt-muted hover:text-txt-main hover:bg-bg-hover disabled:opacity-30 disabled:hover:bg-transparent transition-all"
+              className="p-1.5 rounded-md text-txt-muted hover:text-txt-main hover:bg-bg-hover disabled:opacity-30 transition-all"
               title="Undo (Ctrl+Z)"
             >
               <Undo size={14} />
@@ -74,99 +99,83 @@ export const ResultsPanel = () => {
             <button
               onClick={redo}
               disabled={futureSubtitles.length === 0}
-              className="p-1.5 rounded-md text-txt-muted hover:text-txt-main hover:bg-bg-hover disabled:opacity-30 disabled:hover:bg-transparent transition-all"
+              className="p-1.5 rounded-md text-txt-muted hover:text-txt-main hover:bg-bg-hover disabled:opacity-30 transition-all"
               title="Redo (Ctrl+Y)"
             >
               <Redo size={14} />
+            </button>
+            <button
+              onClick={() => setPreviewMode(!isPreviewMode)}
+              disabled={actionsDisabled}
+              className={cn(
+                'p-1.5 rounded-md transition-all',
+                isPreviewMode
+                  ? 'text-red-400 bg-red-500/10'
+                  : 'text-txt-muted hover:text-txt-main hover:bg-bg-hover',
+                actionsDisabled && 'opacity-30 cursor-not-allowed',
+              )}
+              title={isPreviewMode ? t('results.closePreview') : t('results.openPreview')}
+            >
+              {isPreviewMode ? <EyeOff size={14} /> : <Play size={14} />}
             </button>
           </div>
         </div>
         <button
           onClick={() => fileInputRef.current?.click()}
           className="flex items-center gap-1.5 text-[10px] font-bold bg-bg-panel border border-border-strong hover:border-brand-500 hover:text-brand-400 text-txt-muted px-3 py-1.5 rounded-md transition-colors uppercase tracking-wide shadow-sm"
-          title="Import .SRT"
         >
           <Upload size={12} />
-          Import SRT
+          {t('results.importSrt')}
         </button>
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleImportSrt}
-          accept=".srt"
-          className="hidden"
-        />
+        <input type="file" ref={fileInputRef} onChange={handleImportSrt} accept=".srt" className="hidden" />
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 scrollbar-hide bg-bg-main">
         <SubtitleList />
       </div>
 
-      <div className="p-4 border-t border-border-main bg-bg-panel space-y-4 shrink-0">
-        {subtitles.length > 0 && (
-          <div className="flex justify-between items-center text-xs text-txt-subtle font-mono px-1">
-            <span className="uppercase tracking-wider text-[10px] font-bold">Total Lines</span>
-            <b className="text-txt-main text-sm">{subtitles.length}</b>
+      <div className="p-3 border-t border-border-main bg-bg-panel shrink-0">
+        {!isBlurMode ? (
+          <div className="flex gap-2">
+            <ExportMenu
+              disabled={actionsDisabled}
+              onExportSrt={exportSrt}
+              onExportEmotion={() => setEmotionOpen(true)}
+              onImportEmotionJson={handleImportEmotionJson}
+            />
+            <Button
+              variant="secondary"
+              className="flex-1 h-10 text-xs font-semibold bg-purple-600/10 hover:bg-purple-600/20 text-purple-300 border-purple-500/30"
+              disabled={actionsDisabled}
+              onClick={() => setBlurMode(true)}
+              icon={<ScanFace size={14} />}
+            >
+              {t('results.smartBlur')}
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {renderedVideoUrl && (
+              <Button
+                variant="success"
+                className="w-full h-10 text-sm font-semibold"
+                onClick={handleDownloadVideo}
+                icon={<FileVideo size={16} />}
+              >
+                {t('results.downloadVideo')}
+              </Button>
+            )}
+            <Button
+              variant="secondary"
+              className="w-full h-10 text-sm font-semibold"
+              onClick={() => setBlurMode(false)}
+              icon={<ArrowLeft size={14} />}
+            >
+              {t('results.backToSubtitles')}
+            </Button>
           </div>
         )}
-        <div className="flex flex-col gap-3">
-          {!isBlurMode ? (
-            <>
-              <Button
-                variant={isPreviewMode ? "danger" : "secondary"}
-                className={`w-full py-3 h-11 text-xs font-semibold shadow-md border ${isPreviewMode ? 'border-red-500/50' : 'border-border-strong bg-bg-surface hover:bg-bg-input-hover text-white'}`}
-                disabled={isProcessing || !metadata || subtitles.length === 0}
-                onClick={() => setPreviewMode(!isPreviewMode)}
-                icon={isPreviewMode ? <EyeOff size={16} /> : <Play size={16} />}
-              >
-                {isPreviewMode ? 'CLOSE PREVIEW' : 'OPEN PREVIEW'}
-              </Button>
-
-              <div className="grid grid-cols-2 gap-3">
-                <Button
-                  variant="primary"
-                  className="py-3 h-11 text-xs font-semibold shadow-md"
-                  disabled={isProcessing || !metadata || subtitles.length === 0}
-                  onClick={exportSrt}
-                  icon={<Download size={14} />}
-                >
-                  EXPORT SRT
-                </Button>
-
-                <Button
-                  variant="secondary"
-                  className="py-3 h-11 text-xs font-semibold shadow-md bg-purple-600/10 hover:bg-purple-600/20 text-purple-300 border-purple-500/30 transition-colors"
-                  disabled={isProcessing || !metadata || subtitles.length === 0}
-                  onClick={() => setBlurMode(true)}
-                  icon={<ScanFace size={14} />}
-                >
-                  SMART BLUR
-                </Button>
-              </div>
-            </>
-          ) : (
-            <div className="space-y-3">
-              {renderedVideoUrl && (
-                <Button
-                  variant="success"
-                  className="w-full py-3 h-11 text-sm font-semibold shadow-lg animate-in fade-in slide-in-from-bottom-2"
-                  onClick={handleDownloadVideo}
-                  icon={<FileVideo size={18} />}
-                >
-                  DOWNLOAD VIDEO
-                </Button>
-              )}
-              <Button
-                variant="secondary"
-                className="w-full py-3 h-11 text-sm font-semibold shadow-md bg-bg-surface hover:bg-bg-input-hover border-border-strong"
-                onClick={() => setBlurMode(false)}
-                icon={<ArrowLeft size={16} />}
-              >
-                BACK TO SUBTITLES
-              </Button>
-            </div>
-          )}
-        </div>
+        <EmotionExportDialog open={emotionOpen} onClose={() => setEmotionOpen(false)} />
       </div>
     </GlassPanel>
   );

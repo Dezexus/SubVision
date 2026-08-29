@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { exportStem, exportWithSuffix } from '../../../shared/lib';
 import { useProcessingStore } from '../../../store/processingStore';
 import { useVideoStore } from '../../../store/videoStore';
 import { useUIStore } from '../../../store/uiStore';
@@ -34,7 +35,8 @@ export function useExportSrt() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${metadata.filename.replace(/\.[^/.]+$/, '')}_edited.srt`;
+    const stem = exportStem(metadata.original_filename, metadata.filename);
+    a.download = exportWithSuffix(stem, '_edited.srt');
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

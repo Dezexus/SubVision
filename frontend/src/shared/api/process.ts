@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { API_URL } from './config';
 import type { ProcessConfig, RenderConfig, SubtitleItem, BlurSettings, Preset, Language, OcrSettings, WebSocketMessage } from '../../types';
+import type { EmotionAnalysisSettings } from '../../types/emotion';
 
 export const processApi = {
   getPresets: async (): Promise<Preset[]> => {
@@ -86,5 +87,26 @@ export const processApi = {
   cancelSessionJob: async (jobId: string, clientId: string): Promise<{ status: string }> => {
     const response = await axios.post(`${API_URL}/session/jobs/${jobId}/cancel`, { client_id: clientId });
     return response.data;
-  }
+  },
+
+  getEmotionDefaults: async (): Promise<EmotionAnalysisSettings> => {
+    const response = await axios.get(`${API_URL}/process/emotion-defaults`);
+    return response.data;
+  },
+
+  exportEmotion: async (config: {
+    filename: string;
+    client_id: string;
+    subtitles: SubtitleItem[];
+    emotion_settings?: EmotionAnalysisSettings;
+    speaker_gender_overrides?: Record<string, import('../../types/emotion').SpeakerGender>;
+    speaker_profile_overrides?: Record<string, import('../../types/emotion').SpeakerProfileOverride>;
+    original_filename?: string;
+  }) => {
+    const response = await axios.post<{ status: string; job_id: string }>(
+      `${API_URL}/process/export_emotion`,
+      config,
+    );
+    return response.data;
+  },
 };

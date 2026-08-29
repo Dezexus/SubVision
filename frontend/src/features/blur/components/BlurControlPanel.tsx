@@ -57,6 +57,7 @@ export const BlurControlPanel = () => {
     updateProgress(0, metadata.total_frames, "Starting...");
     startBlurRender({
       filename: metadata.filename,
+      original_filename: metadata.original_filename || metadata.filename,
       client_id: clientId,
       subtitles: subtitles,
       blur_settings: blurSettings,

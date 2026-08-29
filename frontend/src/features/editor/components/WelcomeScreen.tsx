@@ -1,14 +1,15 @@
 import React, { useState, useCallback } from 'react';
-import { Upload, AlertCircle, Loader2, Video, FileText, Wand2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Upload, AlertCircle, Loader2, Video, FileText, Wand2, Shield, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '../../../shared/lib';
 import { useUploadVideo } from '../mutations/useUploadVideo';
 import { useAllowedExtensionsQuery } from '../queries/useAllowedExtensionsQuery';
+import { LanguageSwitcher } from '../../../components/LanguageSwitcher';
+import { useTranslation } from '../../../i18n';
 
-/**
- * Initial screen displaying the drag-and-drop zone for video uploads.
- */
 export const WelcomeScreen = () => {
+  const { t } = useTranslation();
   const { data: allowedExtensions = [] } = useAllowedExtensionsQuery();
   const { execute, isLoading, progress } = useUploadVideo();
   const [isDragging, setIsDragging] = useState(false);
@@ -22,8 +23,8 @@ export const WelcomeScreen = () => {
     setErrorMsg(null);
     try {
       await execute(file);
-    } catch (err: any) {
-      setErrorMsg(err.message);
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : String(err));
     }
   }, [execute]);
 
@@ -50,16 +51,17 @@ export const WelcomeScreen = () => {
 
   const containerVariants = {
     hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: { staggerChildren: 0.05 }
-    }
+    visible: { opacity: 1, transition: { staggerChildren: 0.05 } },
   };
 
   const itemVariants = {
     hidden: { opacity: 0, y: 10 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } }
+    visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } },
   };
+
+  const dropTitle = isLoading
+    ? (progress === 100 ? t('welcome.processing') : t('welcome.uploading', { progress }))
+    : t('welcome.dropTitle');
 
   return (
     <div
@@ -68,6 +70,17 @@ export const WelcomeScreen = () => {
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
     >
+      <div className="absolute top-4 right-4 z-20 flex items-center gap-3">
+        <LanguageSwitcher />
+        <Link
+          to="/admin"
+          className="flex items-center gap-1.5 text-xs font-medium text-txt-muted hover:text-brand-400 bg-bg-panel border border-border-main px-3 py-1.5 rounded-md transition-colors"
+        >
+          <Shield size={14} />
+          {t('welcome.admin')}
+        </Link>
+      </div>
+
       <motion.div
         variants={containerVariants}
         initial="hidden"
@@ -76,21 +89,21 @@ export const WelcomeScreen = () => {
       >
         <motion.div variants={itemVariants} className="text-center mb-8 space-y-2">
           <h1 className="text-3xl font-semibold text-txt-main tracking-tight">
-            SubVision Workspace
+            {t('welcome.title')}
           </h1>
           <p className="text-txt-subtle text-sm max-w-md mx-auto">
-            Extract hardcoded subtitles, edit timings, or apply smart bounding box blur to your videos.
+            {t('welcome.subtitle')}
           </p>
         </motion.div>
 
-         <motion.div
+        <motion.div
           variants={itemVariants}
           className={cn(
-            "w-full aspect-video rounded-xl border-2 border-dashed flex flex-col items-center justify-center transition-all duration-200 relative overflow-hidden group cursor-pointer",
+            'w-full aspect-video rounded-xl border-2 border-dashed flex flex-col items-center justify-center transition-all duration-200 relative overflow-hidden group cursor-pointer',
             isDragging
-              ? "border-brand-500 bg-brand-500/5 scale-[1.01]"
-              : "border-border-strong bg-bg-main hover:border-brand-500/50 hover:bg-bg-hover",
-            errorMsg && "border-red-500/50 hover:border-red-500/50 bg-red-500/5"
+              ? 'border-brand-500 bg-brand-500/5 scale-[1.01]'
+              : 'border-border-strong bg-bg-main hover:border-brand-500/50 hover:bg-bg-hover',
+            errorMsg && 'border-red-500/50 hover:border-red-500/50 bg-red-500/5',
           )}
         >
           <input
@@ -101,16 +114,19 @@ export const WelcomeScreen = () => {
             disabled={isLoading}
             onChange={onFileInputChange}
           />
-          <label htmlFor="central-upload" className={cn(
-            "flex flex-col items-center gap-5 w-full h-full justify-center absolute inset-0 cursor-pointer",
-            isLoading && "cursor-wait"
-           )}>
+          <label
+            htmlFor="central-upload"
+            className={cn(
+              'flex flex-col items-center gap-5 w-full h-full justify-center absolute inset-0 cursor-pointer',
+              isLoading && 'cursor-wait',
+            )}
+          >
             <div className={cn(
-              "w-16 h-16 rounded-full flex items-center justify-center transition-transform duration-200",
+              'w-16 h-16 rounded-full flex items-center justify-center transition-transform duration-200',
               isLoading
-                ? "bg-bg-panel"
-                : "bg-bg-input group-hover:bg-brand-500 group-hover:text-white text-txt-muted shadow-sm group-hover:shadow-md group-hover:-translate-y-1"
-             )}>
+                ? 'bg-bg-panel'
+                : 'bg-bg-input group-hover:bg-brand-500 group-hover:text-white text-txt-muted shadow-sm group-hover:shadow-md group-hover:-translate-y-1',
+            )}>
               {isLoading ? (
                 <Loader2 size={28} className="animate-spin text-brand-500" />
               ) : (
@@ -118,11 +134,9 @@ export const WelcomeScreen = () => {
               )}
             </div>
             <div className="text-center space-y-1.5 px-4 relative z-10">
-               <h2 className="text-lg font-medium text-txt-main">
-                {isLoading ? (progress === 100 ? 'Processing...' : `Uploading ${progress}%...`) : 'Select or drop video'}
-              </h2>
-              <p className={cn("text-xs", isLoading ? "text-amber-500 animate-pulse font-medium" : "text-txt-subtle")}>
-                {isLoading ? 'Analyzing file structure...' : displayExts}
+              <h2 className="text-lg font-medium text-txt-main">{dropTitle}</h2>
+              <p className={cn('text-xs', isLoading ? 'text-amber-500 animate-pulse font-medium' : 'text-txt-subtle')}>
+                {isLoading ? t('welcome.dropHint') : displayExts}
               </p>
               {errorMsg && (
                 <div className="flex items-center justify-center gap-1.5 text-red-400 text-xs mt-3 font-medium bg-red-500/10 py-1 px-3 rounded border border-red-500/20">
@@ -134,11 +148,12 @@ export const WelcomeScreen = () => {
           </label>
         </motion.div>
 
-        <motion.div variants={itemVariants} className="flex gap-3 mt-8">
+        <motion.div variants={itemVariants} className="flex flex-wrap justify-center gap-3 mt-8">
           {[
-            { icon: <FileText size={14} />, text: 'AI OCR Extraction' },
-            { icon: <Wand2 size={14} />, text: 'Smart Inpaint Blur' },
-            { icon: <Video size={14} />, text: 'SRT Export' }
+            { icon: <FileText size={14} />, text: t('welcome.badgeOcr') },
+            { icon: <Wand2 size={14} />, text: t('welcome.badgeBlur') },
+            { icon: <Video size={14} />, text: t('welcome.badgeSrt') },
+            { icon: <Sparkles size={14} />, text: t('welcome.badgeEmotion') },
           ].map((badge, i) => (
             <div key={i} className="flex items-center gap-2 text-xs font-medium text-txt-muted bg-bg-panel border border-border-main px-3 py-1.5 rounded-md shadow-sm">
               <span className="text-brand-500">{badge.icon}</span>

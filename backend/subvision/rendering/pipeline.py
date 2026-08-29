@@ -6,6 +6,7 @@ import time
 from typing import List, Optional
 
 from subvision.rendering.interfaces import Reporter, Storage, CancellationToken
+from subvision.core.export_names import export_stem, export_with_suffix
 from subvision.rendering.models import RenderTaskConfig
 from subvision.rendering.effects.interface import Effect
 from subvision.rendering.video_writer import AsyncVideoWriter
@@ -119,7 +120,9 @@ async def render_blur_pipeline(
 ) -> str:
     filename = task_config.filename
     safe_filename = os.path.basename(filename)
-    output_filename = f"blurred_{safe_filename}"
+    ext = os.path.splitext(safe_filename)[1] or ".mp4"
+    stem = export_stem(task_config.original_filename, safe_filename)
+    output_filename = export_with_suffix(stem, f"_blurred{ext}")
 
     overall_start = time.time()
 

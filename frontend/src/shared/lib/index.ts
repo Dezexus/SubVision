@@ -4,4 +4,4 @@
 export * from './cn';
 export * from './clientId';
 export * from './format';
-export * from './textGeometry';
+export * from './exportNames';

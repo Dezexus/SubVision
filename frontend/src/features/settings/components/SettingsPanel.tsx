@@ -88,7 +88,7 @@ export const SettingsPanel = () => {
   const hasActiveJob = !!activeOcrJobId || !!activeBlurJobId;
 
   return (
-    <GlassPanel className={`transition-all duration-300 ease-in-out flex flex-col h-full z-20 bg-bg-main ${isCollapsed ? 'w-[64px]' : 'w-[360px]'}`}>
+    <GlassPanel className={`transition-all duration-300 ease-in-out flex flex-col h-full min-h-0 z-20 bg-bg-main ${isCollapsed ? 'w-[64px]' : 'w-[360px]'}`}>
       <div className="p-4 border-b border-border-main flex justify-between items-center bg-bg-panel h-14 shrink-0">
         {!isCollapsed && (
           <h2 className="font-bold text-txt-main uppercase tracking-wider text-sm whitespace-nowrap overflow-hidden">

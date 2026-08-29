@@ -1,6 +1,7 @@
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from subvision.domain.models import BlurSettings
+from subvision.domain.emotion_models import EmotionAnalysisSettings
 
 
 class VideoMetadata(BaseModel):
@@ -42,6 +43,7 @@ class RenderConfig(BaseModel):
     client_id: str
     subtitles: List[dict]
     blur_settings: BlurSettings
+    original_filename: Optional[str] = None
 
 
 class BlurPreviewConfig(BaseModel):
@@ -55,3 +57,13 @@ class BlurPreviewConfig(BaseModel):
 class WebSocketMessage(BaseModel):
     type: str
     payload: Optional[Dict[str, Any]] = None
+
+
+class EmotionExportConfig(BaseModel):
+    filename: str
+    client_id: str
+    subtitles: List[dict]
+    emotion_settings: Optional[Dict[str, Any]] = None
+    speaker_gender_overrides: Optional[Dict[str, str]] = None
+    speaker_profile_overrides: Optional[Dict[str, Dict[str, str]]] = None
+    original_filename: Optional[str] = None

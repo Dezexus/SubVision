@@ -49,6 +49,8 @@ def job_kind(job_id: str) -> str:
         return "blur"
     if job_id.startswith("ocr_"):
         return "ocr"
+    if job_id.startswith("emotion_"):
+        return "emotion"
     return "unknown"
 
 

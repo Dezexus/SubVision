@@ -2,13 +2,15 @@ import { useEffect, useCallback, useRef } from 'react';
 import useWebSocket from 'react-use-websocket';
 import axios from 'axios';
 import { useProcessingStore } from '../store/processingStore';
+import { useEmotionExportStore } from '../store/emotionExportStore';
 import { useUIStore } from '../store/uiStore';
-import { API_URL, getWsBase } from '../shared/api/config';
+import { API_URL, API_BASE, getWsBase } from '../shared/api/config';
 import type { SubtitleItem, WebSocketMessage } from '../types';
 
 function activeJobIds(): string[] {
   const { activeOcrJobId, activeBlurJobId } = useProcessingStore.getState();
-  return [activeOcrJobId, activeBlurJobId].filter((id): id is string => !!id);
+  const { activeEmotionJobId } = useEmotionExportStore.getState();
+  return [activeOcrJobId, activeBlurJobId, activeEmotionJobId].filter((id): id is string => !!id);
 }
 
 function bindActiveJobId(jobId: string | null | undefined) {
@@ -17,10 +19,27 @@ function bindActiveJobId(jobId: string | null | undefined) {
   if (jobId.startsWith('ocr_')) {
     if (store.activeOcrJobId !== jobId) store.setActiveOcrJobId(jobId);
     if (store.activeBlurJobId) store.setActiveBlurJobId(null);
+    useEmotionExportStore.getState().setActiveEmotionJobId(null);
   } else if (jobId.startsWith('blur_')) {
     if (store.activeBlurJobId !== jobId) store.setActiveBlurJobId(jobId);
     if (store.activeOcrJobId) store.setActiveOcrJobId(null);
+    useEmotionExportStore.getState().setActiveEmotionJobId(null);
+  } else if (jobId.startsWith('emotion_')) {
+    const emo = useEmotionExportStore.getState();
+    if (emo.activeEmotionJobId !== jobId) emo.setActiveEmotionJobId(jobId);
+    if (store.activeOcrJobId) store.setActiveOcrJobId(null);
+    if (store.activeBlurJobId) store.setActiveBlurJobId(null);
   }
+}
+
+function triggerDownload(url: string, filename: string) {
+  const href = url.startsWith('http') ? url : `${API_BASE}${url}`;
+  const link = document.createElement('a');
+  link.href = href;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 /** Deny-by-default: only accept events for our known active job ids. */
@@ -74,8 +93,10 @@ function applyFinishState(
   setProcessing(false);
   setActiveOcrJobId(null);
   setActiveBlurJobId(null);
+  useEmotionExportStore.getState().setActiveEmotionJobId(null);
 
   if (data.success) {
+    const isEmotionJob = !!data.job_id && data.job_id.startsWith('emotion_');
     const isOcrJob = !data.job_id || data.job_id.startsWith('ocr_');
     if (isOcrJob && replaceSubtitles && data.subtitles?.length) {
       setSubtitles(data.subtitles);
@@ -84,7 +105,11 @@ function applyFinishState(
     const done = Math.max(current, total, 1);
     updateProgress(done, done, '00:00');
     const isBlurJob = !data.job_id || data.job_id.startsWith('blur_');
-    if (isBlurJob && data.download_url) {
+    if (isEmotionJob && data.download_url) {
+      const name = data.emotion_json ?? data.download_filename ?? 'emotion.json';
+      triggerDownload(data.download_url, name);
+      if (showToast) addToast('Emotion JSON готов', 'success');
+    } else if (isBlurJob && data.download_url) {
       setRenderedVideoUrl(data.download_url);
       if (showToast) addToast('Render completed successfully', 'success');
     } else if (showToast) {
@@ -187,6 +212,7 @@ export const useProcessingSocket = (clientId: string | null) => {
         setProcessing(false);
         setActiveOcrJobId(null);
         setActiveBlurJobId(null);
+        useEmotionExportStore.getState().setActiveEmotionJobId(null);
         const { current, total } = local.progress;
         if (total > 0) updateProgress(Math.max(current, total), Math.max(current, total), '00:00');
       }

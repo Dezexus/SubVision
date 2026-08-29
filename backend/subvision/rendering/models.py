@@ -13,6 +13,7 @@ class RenderTaskConfig(BaseModel):
     client_id: str
     blur_settings: BlurSettings
     subtitles: List[Dict[str, Any]]
+    original_filename: str | None = None
 
     def build_effects(self) -> List[Any]:
         """Builds rendering effects based on config."""

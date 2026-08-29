@@ -5,6 +5,7 @@ import { ResultsPanel } from './features/results';
 import { ToastContainer } from './shared/ui';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SessionRecoveryModal } from './components/SessionRecoveryModal';
+import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { useVideoStore } from './store/videoStore';
 import { useProcessingStore } from './store/processingStore';
 import { useProcessingSocket } from './hooks/useProcessingSocket';
@@ -64,23 +65,28 @@ function App() {
     <div className="w-full h-screen bg-bg-main flex flex-col text-txt-main overflow-hidden">
       {clientId && <SessionRecoveryModal />}
       <div className="h-1 w-full bg-brand-500 flex-shrink-0" />
-      <div className="flex h-full p-4 gap-4">
+      {isProjectLoaded && (
+        <div className="flex justify-end px-4 pt-2 flex-shrink-0">
+          <LanguageSwitcher />
+        </div>
+      )}
+      <div className="flex flex-1 min-h-0 p-4 gap-4 overflow-hidden">
         {isProjectLoaded && (
-          <div className="h-full z-20 flex-shrink-0">
+          <div className="h-full min-h-0 z-20 flex-shrink-0">
             <ErrorBoundary>
               <SettingsPanel />
             </ErrorBoundary>
           </div>
         )}
         
-        <div className="flex-1 h-full z-10 min-w-0">
+        <div className="flex-1 min-h-0 min-w-0 z-10 overflow-hidden">
           <ErrorBoundary>
             <EditorPanel />
           </ErrorBoundary>
         </div>
 
         {isProjectLoaded && (
-          <div className="h-full z-20 flex-shrink-0 w-[420px] min-w-[380px]">
+          <div className="h-full min-h-0 z-20 flex-shrink-0 w-[420px] min-w-[380px]">
             <ErrorBoundary>
               <ResultsPanel />
             </ErrorBoundary>

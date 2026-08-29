@@ -66,6 +66,7 @@ RUN cmake -D CMAKE_BUILD_TYPE=RELEASE \
 
 FROM nvidia/cuda:12.6.2-cudnn-devel-ubuntu22.04 AS worker
 ARG CUDA_ARCH_BIN=7.5
+ARG INSTALL_EMOTION_DEPS=0
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -94,12 +95,20 @@ RUN --mount=type=cache,target=/root/.cache/pip \
  && python -m pip install paddlepaddle-gpu==3.3.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/ \
  && python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126 \
  && python -m pip install -r requirements.txt \
- && python -m pip install -r requirements-worker.txt
+ && python -m pip install -r requirements-worker.txt \
+ && if [ "$INSTALL_EMOTION_DEPS" = "1" ]; then \
+      python -m pip install gigaam "pyannote.audio>=3.1"; \
+    fi
 
 COPY backend ./backend
 RUN git clone --depth 1 https://github.com/sczhou/ProPainter.git /app/backend/third_party/ProPainter || true
 ENV PYTHONPATH="/app/backend/third_party/ProPainter"
 RUN python /app/backend/scripts/download_propainter_weights.py || true
+RUN if [ "$INSTALL_EMOTION_DEPS" = "1" ]; then \
+      python /app/backend/scripts/download_gigaam_weights.py \
+        --cache-dir /app/backend/uploads/models/gigaam \
+        --export-onnx --onnx-dtype fp32; \
+    fi
 WORKDIR /app/backend
 
 CMD ["arq", "subvision.worker.WorkerSettings"]
