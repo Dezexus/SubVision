@@ -9,9 +9,10 @@ from io import BytesIO
 import cv2
 from pydantic import BaseModel
 
-from subvision.api.schemas import ProcessConfig, RenderConfig, BlurPreviewConfig, BlurSettings
+from subvision.api.schemas import ProcessConfig, RenderConfig, BlurPreviewConfig, BlurSettings, EmotionExportConfig
 from subvision.api.dependencies import get_video_path
 from subvision.core.jobs import cancel_job, set_active_job
+from subvision.core.admin_config import get_effective_emotion_settings
 from subvision.rendering.blur_preview import generate_blur_preview
 from subvision.processing.subtitle_parser import parse_srt
 from subvision.processing.presets import get_all_presets, get_supported_languages, get_preset_config
@@ -57,6 +58,44 @@ async def get_languages():
 async def get_blur_defaults():
     """Get default blur settings."""
     return BlurSettings().model_dump()
+
+
+@router.get("/emotion-defaults")
+async def get_emotion_defaults(request: Request):
+    """Effective emotion export defaults (env + admin Redis)."""
+    redis_conn = request.app.state.redis
+    effective = await get_effective_emotion_settings(redis_conn)
+    return effective.model_dump()
+
+
+@router.post("/export_emotion")
+async def export_emotion(config: EmotionExportConfig, request: Request):
+    """Enqueue emotion JSON sidecar export."""
+    from subvision.core.config import settings as app_settings
+
+    if not app_settings.emotion_export_enabled:
+        raise HTTPException(status_code=503, detail="Emotion export is disabled")
+    if not config.subtitles:
+        raise HTTPException(status_code=400, detail="No subtitles to export")
+
+    video_path = get_video_path(config.filename)
+    del video_path  # validated exists
+
+    try:
+        pool = request.app.state.arq_pool
+        redis_conn = request.app.state.redis
+        job_id = f"emotion_{config.client_id}_{uuid.uuid4().hex[:8]}"
+        payload = config.model_dump()
+        effective = await get_effective_emotion_settings(redis_conn, config.emotion_settings)
+        payload["emotion_settings"] = effective.model_dump()
+        await pool.enqueue_job("emotion_export_task", payload, _job_id=job_id)
+        await _register_active_job(redis_conn, pool, config.client_id, job_id, config.filename)
+        return {"status": "queued", "job_id": job_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to enqueue emotion export: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/process-defaults")

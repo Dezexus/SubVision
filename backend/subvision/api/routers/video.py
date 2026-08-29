@@ -72,6 +72,7 @@ async def complete_upload(req: UploadCompleteRequest, request: Request) -> Video
     orig_bytes = await redis_conn.get(f"session:{safe_filename}")
     original_name = orig_bytes.decode("utf-8") if orig_bytes else safe_filename
     await redis_conn.delete(f"session:{safe_filename}")
+    await redis_conn.setex(f"original_name:{safe_filename}", 7776000, original_name)
 
     success = await storage_manager.complete_local_upload(safe_filename)
     if not success:
@@ -124,13 +125,28 @@ async def delete_video(filename: str, request: Request):
     return {"status": "deleted"}
 
 
+def _download_media_type(filename: str) -> str:
+    ext = os.path.splitext(filename)[1].lower()
+    if ext == ".json":
+        return "application/json"
+    if ext in (".srt", ".vtt"):
+        return "text/plain; charset=utf-8"
+    return "video/mp4"
+
+
 @router.get("/download/{filename}")
 async def download_file(filename: str):
     safe_filename = validate_filename(filename)
     file_path = os.path.join(settings.cache_dir, safe_filename)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found in storage.")
-    return FileResponse(path=file_path, filename=safe_filename, media_type="video/mp4", headers={"Content-Disposition": f'attachment; filename="{safe_filename}"'})
+    media_type = _download_media_type(safe_filename)
+    return FileResponse(
+        path=file_path,
+        filename=safe_filename,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{safe_filename}"'},
+    )
 
 
 @router.get("/frame/{filename}/{frame_index}")

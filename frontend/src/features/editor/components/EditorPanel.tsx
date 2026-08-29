@@ -43,7 +43,7 @@ export const EditorPanel = () => {
   }
 
   return (
-    <div className="flex-1 h-full relative overflow-hidden flex flex-col gap-4">
+    <div className="w-full h-full min-h-0 relative overflow-hidden flex flex-col gap-4">
       <GlobalProgress />
       
       {isPreviewMode ? (
