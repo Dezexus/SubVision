@@ -67,9 +67,12 @@ export interface GenderSettings {
 
 export interface TextSentimentSettings {
   enabled: boolean;
+  language: 'auto' | 'en' | 'ru';
   model_id: string;
+  model_id_en: string;
   confidence_threshold: number;
   include_in_json: boolean;
+  multimodal_fusion_enabled: boolean;
 }
 
 export interface SpeakerProfileOverride {

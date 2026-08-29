@@ -21,9 +21,11 @@ from subvision.processing.diarization_engine import DiarizationEngine, map_cue_t
 from subvision.processing.emotion_engine import EmotionEngine, postprocess_emotion
 from subvision.processing.emotion_json_format import (
     build_structured_cue,
+    speakers_list_from_profiles,
     speakers_registry_from_profiles,
     wav_rms_intensity,
 )
+from subvision.processing.emotion_fusion import fuse_multimodal_emotion
 from subvision.processing.gender_engine import (
     GenderEngine,
     normalize_speaker_profile_overrides,
@@ -49,16 +51,21 @@ def _video_duration(video_path: str) -> Optional[float]:
     return None
 
 
-def _cache_get(redis_client: Optional[redis.Redis], key: str) -> Optional[Dict[str, float]]:
+def _cache_get(redis_client: Optional[redis.Redis], key: str) -> Optional[Dict[str, Any]]:
     if not redis_client:
         return None
     raw = redis_client.get(key)
     if not raw:
         return None
     try:
-        return json.loads(raw)
+        data = json.loads(raw)
     except json.JSONDecodeError:
         return None
+    if isinstance(data, dict) and "probs" in data:
+        return data
+    if isinstance(data, dict):
+        return {"probs": data}
+    return None
 
 
 def _cache_set(
@@ -66,10 +73,14 @@ def _cache_set(
     key: str,
     probs: Dict[str, float],
     ttl: int,
+    intensity: Optional[float] = None,
 ) -> None:
     if not redis_client:
         return
-    redis_client.setex(key, ttl, json.dumps(probs))
+    payload: Dict[str, Any] = {"probs": probs}
+    if intensity is not None:
+        payload["intensity"] = intensity
+    redis_client.setex(key, ttl, json.dumps(payload))
 
 
 def run_emotion_export(
@@ -164,23 +175,36 @@ def run_emotion_export(
 
         emotion_block: Optional[Dict[str, Any]] = None
         intensity: Optional[float] = None
+        text_sentiment_result = None
         if not skip and cfg.analyze_emotion:
             cache_key = f"emotion:cache:{filename}:{start:.3f}:{end:.3f}:{s_hash}"
-            probs = None
-            if cfg.use_cache:
-                probs = _cache_get(redis_client, cache_key)
-            if probs is None:
+            cached = _cache_get(redis_client, cache_key) if cfg.use_cache else None
+            probs = cached.get("probs") if cached else None
+            if cached and analysis.json_format.include_audio_intensity:
+                intensity = cached.get("intensity")
+
+            need_wav = probs is None or (
+                analysis.json_format.include_audio_intensity and intensity is None
+            )
+            if need_wav:
                 wav = extract_audio_segment(video_path, win_start, win_end, cfg)
                 if wav is None:
                     skip = True
                     skip_reason = skip_reason or "extract_failed"
                 else:
                     try:
-                        probs = emotion_engine.analyze_wav(wav)
-                        if analysis.json_format.include_audio_intensity:
+                        if probs is None:
+                            probs = emotion_engine.analyze_wav(wav)
+                        if analysis.json_format.include_audio_intensity and intensity is None:
                             intensity = wav_rms_intensity(wav)
                         if cfg.use_cache and probs:
-                            _cache_set(redis_client, cache_key, probs, cfg.cache_ttl_sec)
+                            _cache_set(
+                                redis_client,
+                                cache_key,
+                                probs,
+                                cfg.cache_ttl_sec,
+                                intensity=intensity,
+                            )
                     finally:
                         if wav.exists():
                             wav.unlink(missing_ok=True)
@@ -189,6 +213,23 @@ def run_emotion_export(
         elif skip and skip_reason == "too_short":
             pass
 
+        if (
+            text_sentiment_engine
+            and text.strip()
+        ):
+            text_sentiment_result = text_sentiment_engine.analyze(text)
+
+        if (
+            emotion_block
+            and analysis.text_sentiment.multimodal_fusion_enabled
+            and text_sentiment_result
+        ):
+            emotion_block = fuse_multimodal_emotion(
+                emotion_block,
+                intensity=intensity,
+                text_sentiment=text_sentiment_result,
+            )
+
         if skip and not analysis.json_format.include_skipped_cues:
             continue
 
@@ -196,16 +237,15 @@ def run_emotion_export(
         if speaker_id and speaker_id in gender_profiles:
             speaker_gender_val = str(gender_profiles[speaker_id].get("gender"))
 
-        text_analysis_block: Optional[Dict[str, Any]] = None
+        text_sentiment_block: Optional[Dict[str, Any]] = None
         if (
-            text_sentiment_engine
-            and text.strip()
+            text_sentiment_result
             and analysis.text_sentiment.include_in_json
         ):
-            ts = text_sentiment_engine.analyze(text)
-            text_analysis_block = {
-                "sentiment": ts.sentiment,
-                "confidence": round(ts.confidence, 3),
+            text_sentiment_block = {
+                "label": text_sentiment_result.sentiment,
+                "score": round(text_sentiment_result.confidence, 3),
+                "language": text_sentiment_result.language,
             }
 
         jfmt = analysis.json_format
@@ -223,7 +263,7 @@ def run_emotion_export(
                 speaker_gender=speaker_gender_val,
                 emotion_block=emotion_block if isinstance(emotion_block, dict) else None,
                 intensity=intensity,
-                text_analysis=text_analysis_block,
+                text_sentiment=text_sentiment_block,
                 skipped=skip,
                 skip_reason=skip_reason,
                 fmt=jfmt,
@@ -278,6 +318,8 @@ def run_emotion_export(
             "metadata": metadata,
             "cues": cues_out,
         }
+        if gender_profiles and analysis.gender.include_in_json:
+            payload["speakers"] = speakers_list_from_profiles(gender_profiles)
     else:
         payload = {
             "version": jfmt.schema_version,
