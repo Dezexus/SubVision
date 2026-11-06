@@ -94,3 +94,4 @@ temp/
 *.pdb
 *.sqlite
 *.sqlite3
+.docker-config/
