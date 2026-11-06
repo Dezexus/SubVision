@@ -15,7 +15,6 @@ from arq import create_pool
 from arq.connections import RedisSettings
 
 from subvision.api.routers import video, processing, session, admin
-from subvision.api.websockets.manager import connection_manager
 from subvision.api.schemas import WebSocketMessage
 from subvision.core.config import settings
 from subvision.core.logging_config import setup_logging
@@ -100,7 +99,7 @@ async def health_check(request: Request):
 async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
     """Websocket connection endpoint supporting auto-reconnect."""
     redis_client = websocket.app.state.redis
-    await connection_manager.connect(websocket, client_id)
+    await websocket.accept()
     pubsub = None
     reader_task = None
     ping_task = None
@@ -116,7 +115,9 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
                             raw_data = message["data"]
                             data_str = raw_data.decode("utf-8") if isinstance(raw_data, bytes) else raw_data
                             data = json.loads(data_str)
-                            await connection_manager.send_json(client_id, data)
+                            # Each connection has its own subscription, so it must
+                            # write to its own socket or events arrive once per connection.
+                            await websocket.send_json(data)
                 except asyncio.CancelledError:
                     break
                 except Exception as e:
@@ -128,7 +129,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
             while True:
                 await asyncio.sleep(25)
                 try:
-                    await connection_manager.send_json(client_id, {"type": "pong"})
+                    await websocket.send_json({"type": "pong"})
                 except Exception:
                     break
 
@@ -141,7 +142,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
             try:
                 message = WebSocketMessage.model_validate_json(data)
                 if message.type == "ping":
-                    await connection_manager.send_json(client_id, {"type": "pong"})
+                    await websocket.send_json({"type": "pong"})
             except ValidationError:
                 logger.debug("Invalid WS message from %s", client_id)
     except (WebSocketDisconnect, asyncio.TimeoutError):
@@ -149,7 +150,6 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
     except Exception as e:
         logger.warning("WebSocket error for %s: %s", client_id, e)
     finally:
-        connection_manager.disconnect(client_id, websocket)
         if ping_task:
             ping_task.cancel()
         if reader_task:
