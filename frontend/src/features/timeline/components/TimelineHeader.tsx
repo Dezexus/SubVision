@@ -1,4 +1,3 @@
-import React from 'react';
 import { 
   ChevronLeft, ChevronRight, Clock, ZoomIn, ZoomOut, 
   Play, Pause, Volume2, Magnet 

@@ -99,8 +99,6 @@ export const processApi = {
     client_id: string;
     subtitles: SubtitleItem[];
     emotion_settings?: EmotionAnalysisSettings;
-    speaker_gender_overrides?: Record<string, import('../../types/emotion').SpeakerGender>;
-    speaker_profile_overrides?: Record<string, import('../../types/emotion').SpeakerProfileOverride>;
     original_filename?: string;
   }) => {
     const response = await axios.post<{ status: string; job_id: string }>(

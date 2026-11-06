@@ -66,10 +66,20 @@ def test_aggregator_majority_vote():
 
 def test_aggregator_min_event_duration_mixed():
     agg = SubtitleAggregator(min_conf=0.5, fps=24.0, min_event_frames_mult=1.5, step=1)
-    agg.add_result("Hi", 0.99, 0.0)
-    agg.add_result("Hi", 0.99, 0.08)
+    agg.add_result("Hello", 0.99, 0.0)
+    agg.add_result("Hello", 0.99, 0.08)
     agg.finalize()
     assert len(agg.srt_data) == 1
+
+
+def test_aggregator_drops_flickering_short_text_keeps_real_short_cue():
+    agg = SubtitleAggregator(min_conf=0.8, fps=30.0, step=3)
+    agg.add_result("RA", 0.96, 1.0)
+    for i in range(6):
+        agg.add_result("", 0.0, 1.1 + i * 0.1)
+    for i in range(8):
+        agg.add_result("No", 0.99, 3.0 + i * 0.1)
+    assert [item["text"] for item in agg.finalize()] == ["No"]
 
 
 def test_aggregator_sample_duration_covers_step_window():
@@ -122,29 +132,118 @@ def test_aggregator_abuts_one_sample_residual_keeps_pauses():
 
 
 
-def test_forced_ocr_runs_when_motion_skipped():
-    """When ROI is unchanged, forced OCR still invokes the engine if crop is valid."""
-    calls: list[bool] = []
+def test_smart_skip_reuses_result_without_ocr(monkeypatch):
+    from subvision.processing.pipeline import run_ocr_pipeline
+
+    class FakeVideo:
+        def __init__(self, _path, step=1):
+            self.width, self.height, self.fps = 100, 20, 1.0
+            self.total_frames = 2
+
+        def __iter__(self):
+            frame = np.zeros((20, 100, 3), dtype=np.uint8)
+            yield 0, 0.0, frame
+            yield 1, 1.0, frame
+
+        def release(self):
+            return None
 
     class FakeEngine:
-        def predict_batch(self, frames, use_det=True):
-            calls.append(use_det)
-            return [None]
+        calls = 0
 
-    pipeline_cfg = {"smart_skip": True, "denoise_strength": 0, "scale_factor": 1.0, "motion_mse_thresh": 15.0}
-    pipeline = ImagePipeline(roi=[0, 0, 0, 0], config=pipeline_cfg)
-    frame = np.zeros((20, 100, 3), dtype=np.uint8)
+        def predict_batch(self, frames):
+            self.calls += 1
+            return [[]]
 
-    pipeline.check_motion(frame)
-    motion_skipped = pipeline.check_motion(frame)
-    assert motion_skipped is True
+    class Reporter:
+        def set_total(self, total):
+            pass
 
-    final_img = pipeline.apply_filters_to_roi(frame)
-    assert final_img is not None
+        def progress(self, *args):
+            pass
+
+        def log(self, *args):
+            pass
+
+        def subtitle(self, *args):
+            pass
+
+        def subtitles_replace(self, *args):
+            pass
+
+    class Cancellation:
+        def is_cancelled_sync(self):
+            return False
 
     engine = FakeEngine()
-    engine.predict_batch([final_img], use_det=True)
-    assert len(calls) == 1
+    monkeypatch.setattr("subvision.processing.pipeline.VideoProvider", FakeVideo)
+    monkeypatch.setattr("subvision.processing.pipeline.get_paddle_engine", lambda **kwargs: engine)
+    monkeypatch.setattr(
+        "subvision.processing.pipeline.refine_subtitle_boundaries",
+        lambda items, **kwargs: items,
+    )
+
+    result = run_ocr_pipeline(
+        "unused.mp4",
+        {"preset": "⚖️ Balance", "smart_skip": True, "denoise_strength": 0, "step": 1},
+        Reporter(),
+        Cancellation(),
+    )
+
+    assert result == []
+    assert engine.calls == 1
+
+
+def test_failed_inference_is_not_repeated_by_smart_skip(monkeypatch):
+    from subvision.processing.pipeline import run_ocr_pipeline
+
+    ok = [{"rec_texts": ["Hello there"], "rec_scores": [0.99], "rec_boxes": []}]
+    results = [None, ok]
+
+    class FakeVideo:
+        def __init__(self, _path, step=1):
+            self.width, self.height, self.fps = 100, 20, 10.0
+            self.total_frames = 8
+
+        def __iter__(self):
+            frame = np.zeros((20, 100, 3), dtype=np.uint8)
+            for i in range(self.total_frames):
+                yield i, i / self.fps, frame
+
+        def release(self):
+            return None
+
+    class FakeEngine:
+        calls = 0
+
+        def predict_batch(self, frames):
+            self.calls += 1
+            return [results[self.calls - 1]]
+
+    class Quiet:
+        def __getattr__(self, _name):
+            return lambda *args, **kwargs: None
+
+    class Cancellation:
+        def is_cancelled_sync(self):
+            return False
+
+    engine = FakeEngine()
+    monkeypatch.setattr("subvision.processing.pipeline.VideoProvider", FakeVideo)
+    monkeypatch.setattr("subvision.processing.pipeline.get_paddle_engine", lambda **kwargs: engine)
+    monkeypatch.setattr("subvision.processing.pipeline.refine_subtitle_boundaries", lambda items, **kwargs: items)
+
+    items = run_ocr_pipeline(
+        "unused.mp4",
+        {"preset": "⚖️ Balance", "smart_skip": True, "denoise_strength": 0, "step": 1},
+        Quiet(),
+        Cancellation(),
+    )
+
+    # Frame 0 fails, so frame 1 must be re-OCRed rather than skipped as "no text".
+    assert engine.calls == 2
+    assert [item["text"] for item in items] == ["Hello there"]
+    assert items[0]["end"] >= 0.7
 
 
 def test_text_matches_cue_and_edge_search():

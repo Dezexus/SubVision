@@ -6,6 +6,11 @@ from subvision.processing.text_utils import is_similar, SUBTITLE_SIMILARITY_THRE
 
 SubtitleItem = dict[str, Any]
 
+# Scene detail misread as 1-2 characters ("7", "RA") scores high but only lasts a
+# few samples; real short lines ("No") stay on screen long enough to be read.
+SHORT_TEXT_MAX_LEN = 2
+SHORT_TEXT_MIN_DURATION = 0.5
+
 
 class SubtitleEvent:
     """Represents a tracked subtitle event."""
@@ -113,8 +118,11 @@ class SubtitleAggregator:
         """Finalize the current active event and add it to the dataset."""
         if self.active_event:
             min_duration = self.frame_duration * self.min_event_frames_mult
-            if self.active_event.end - self.active_event.start >= min_duration:
-                text, conf = self.active_event.resolved_text_and_conf()
+            duration = self.active_event.end - self.active_event.start
+            text, conf = self.active_event.resolved_text_and_conf()
+            if len(text) <= SHORT_TEXT_MAX_LEN:
+                min_duration = max(min_duration, SHORT_TEXT_MIN_DURATION)
+            if duration >= min_duration:
                 item: SubtitleItem = {
                     "id": len(self.srt_data) + 1,
                     "start": self.active_event.start,

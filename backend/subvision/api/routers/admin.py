@@ -20,7 +20,6 @@ from subvision.core.admin_config import (
 )
 from subvision.core.config import settings
 from subvision.core.config_merge import _deep_merge
-from subvision.processing.diarization_engine import pyannote_available
 from subvision.processing.emotion_engine import gigaam_available, model_weights_cached
 
 logger = logging.getLogger(__name__)
@@ -29,8 +28,7 @@ router = APIRouter(dependencies=[Depends(require_admin)])
 
 class EmotionConfigPatch(BaseModel):
     export: Optional[Dict[str, Any]] = None
-    diarization: Optional[Dict[str, Any]] = None
-    gender: Optional[Dict[str, Any]] = None
+    text_sentiment: Optional[Dict[str, Any]] = None
     json_format: Optional[Dict[str, Any]] = None
 
 
@@ -47,10 +45,8 @@ async def admin_status(request: Request) -> Dict[str, Any]:
         "redis": redis_ok,
         "admin_enabled": settings.admin_enabled,
         "emotion_export_enabled": settings.emotion_export_enabled,
-        "hf_token_configured": bool(settings.hf_token),
         "gigaam_available": gigaam_available(),
         "gigaam_weights_cached": model_weights_cached(),
-        "pyannote_available": pyannote_available(),
     }
 
 

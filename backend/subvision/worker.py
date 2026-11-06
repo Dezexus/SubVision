@@ -11,19 +11,23 @@ import redis
 from arq.connections import RedisSettings
 import numpy as np
 
-from subvision.core.config import settings
-from subvision.core.logging_config import setup_logging
-from subvision.core.storage import storage_manager
-from subvision.core.exceptions import TaskCancelledError
-from subvision.core.jobs import (
+from subvision.core.ml_compat import apply_ml_compat
+
+apply_ml_compat()
+
+from subvision.core.config import settings  # noqa: E402
+from subvision.core.logging_config import setup_logging  # noqa: E402
+from subvision.core.storage import storage_manager  # noqa: E402
+from subvision.core.exceptions import TaskCancelledError  # noqa: E402
+from subvision.core.jobs import (  # noqa: E402
     clear_active_job_if_match,
     parse_client_id_from_job_id,
     touch_active_job,
 )
-from subvision.processing.pipeline import run_ocr_pipeline
-from subvision.processing.ocr_engine import get_paddle_engine
-from subvision.rendering.pipeline import render_blur_pipeline
-from subvision.rendering.models import RenderTaskConfig
+from subvision.processing.pipeline import run_ocr_pipeline  # noqa: E402
+from subvision.processing.ocr_engine import get_paddle_engine  # noqa: E402
+from subvision.rendering.pipeline import render_blur_pipeline  # noqa: E402
+from subvision.rendering.models import RenderTaskConfig  # noqa: E402
 setup_logging(settings.log_level)
 
 _sync_redis_client = None
@@ -309,8 +313,6 @@ async def emotion_export_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> No
                 progress_cb=progress_cb,
                 cancel_check=cancel_check,
                 redis_client=sync_redis,
-                speaker_gender_overrides=config.get("speaker_gender_overrides"),
-                speaker_profile_overrides=config.get("speaker_profile_overrides"),
             )
 
             if cancellation.is_cancelled_sync():

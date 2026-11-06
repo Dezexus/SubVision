@@ -1,7 +1,7 @@
 /**
  * Renders a virtualized list of subtitle cards that auto-scrolls with the active video frame.
  */
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Unlock, FileText } from 'lucide-react';
 import { useProcessingStore } from '../../../store/processingStore';
@@ -19,6 +19,8 @@ export const SubtitleList = () => {
 
   const [autoScroll, setAutoScroll] = useState(true);
 
+  // TanStack Virtual intentionally returns functions that React Compiler cannot memoize.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
     count: subtitles.length,
     getScrollElement: () => parentRef.current,

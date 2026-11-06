@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { exportStem, exportWithSuffix } from '../../../shared/lib';
+import { translate } from '../../../i18n';
 import { useProcessingStore } from '../../../store/processingStore';
 import { useVideoStore } from '../../../store/videoStore';
 import { useUIStore } from '../../../store/uiStore';
@@ -22,7 +23,7 @@ export function useExportSrt() {
 
   const execute = useCallback(() => {
     if (!metadata || subtitles.length === 0) {
-      addToast('No subtitles to export', 'error');
+      addToast(translate('toasts.noSubtitlesExport'), 'error');
       return;
     }
     let srt = '';
@@ -41,7 +42,7 @@ export function useExportSrt() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    addToast('SRT exported', 'success');
+    addToast(translate('toasts.srtExported'), 'success');
   }, [subtitles, metadata, addToast]);
 
   return { execute };

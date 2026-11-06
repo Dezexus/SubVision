@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Shield } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import { adminApi } from '../../../shared/api/admin';
 import { GlassPanel } from '../../../shared/ui';
 import { LanguageSwitcher } from '../../../components/LanguageSwitcher';
@@ -81,7 +80,6 @@ export const AdminPanel: React.FC<{ adminKey: string }> = ({ adminKey }) => {
   const [draft, setDraft] = useState<EmotionAnalysisSettings | null>(null);
   const [tab, setTab] = useState<AdminTab>('system');
   const [emotionAdvanced, setEmotionAdvanced] = useState(false);
-  const [speakersAdvanced, setSpeakersAdvanced] = useState(false);
   const [jsonAdvanced, setJsonAdvanced] = useState(false);
 
   const { data: status } = useQuery({
@@ -100,6 +98,8 @@ export const AdminPanel: React.FC<{ adminKey: string }> = ({ adminKey }) => {
   });
 
   useEffect(() => {
+    // Hydrate the editable draft from the fetched server configuration.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (config?.effective) setDraft(config.effective);
   }, [config]);
 
@@ -153,7 +153,7 @@ export const AdminPanel: React.FC<{ adminKey: string }> = ({ adminKey }) => {
     cacheMutation.mutate();
   };
 
-  const settingsTabs: AdminTab[] = ['emotion', 'speakers', 'json'];
+  const settingsTabs: AdminTab[] = ['emotion', 'json'];
   const showActions = settingsTabs.includes(tab);
 
   if (isLoading || !draft) {
@@ -179,7 +179,7 @@ export const AdminPanel: React.FC<{ adminKey: string }> = ({ adminKey }) => {
       )}
 
       {tab === 'emotion' && (
-        <GlassPanel className="p-4 space-y-4">
+        <GlassPanel className="p-4 space-y-4 overflow-visible">
           <EmotionSettingsForm
             settings={draft}
             onChange={handleChange}
@@ -197,45 +197,8 @@ export const AdminPanel: React.FC<{ adminKey: string }> = ({ adminKey }) => {
         </GlassPanel>
       )}
 
-      {tab === 'speakers' && (
-        <GlassPanel className="p-4 space-y-4">
-          <EmotionSettingsForm
-            settings={draft}
-            onChange={handleChange}
-            sections={['diarization', 'gender']}
-            variant="admin"
-            quickOnly
-          />
-          <button
-            type="button"
-            className="text-xs text-brand-400 hover:text-brand-300"
-            onClick={() => setSpeakersAdvanced((v) => !v)}
-          >
-            {speakersAdvanced ? t('admin.hideAdvanced') : t('admin.showAdvanced')}
-          </button>
-          {speakersAdvanced && (
-            <>
-              <EmotionSettingsForm
-                settings={draft}
-                onChange={handleChange}
-                sections={['diarization', 'gender']}
-                variant="admin"
-                excludeQuick
-              />
-              <EmotionSettingsForm
-                settings={draft}
-                onChange={handleChange}
-                sections={['diarization', 'gender']}
-                variant="admin"
-                adminOnlyFields
-              />
-            </>
-          )}
-        </GlassPanel>
-      )}
-
       {tab === 'json' && (
-        <GlassPanel className="p-4 space-y-4">
+        <GlassPanel className="p-4 space-y-4 overflow-visible">
           <EmotionSettingsForm
             settings={draft}
             onChange={handleChange}
@@ -251,22 +214,13 @@ export const AdminPanel: React.FC<{ adminKey: string }> = ({ adminKey }) => {
             {jsonAdvanced ? t('admin.hideAdvanced') : t('admin.showAdvanced')}
           </button>
           {jsonAdvanced && (
-            <>
-              <EmotionSettingsForm
-                settings={draft}
-                onChange={handleChange}
-                sections={['json_format', 'text_sentiment']}
-                variant="admin"
-                excludeQuick
-              />
-              <EmotionSettingsForm
-                settings={draft}
-                onChange={handleChange}
-                sections={['json_format', 'text_sentiment']}
-                variant="admin"
-                adminOnlyFields
-              />
-            </>
+            <EmotionSettingsForm
+              settings={draft}
+              onChange={handleChange}
+              sections={['json_format', 'text_sentiment']}
+              variant="admin"
+              excludeQuick
+            />
           )}
         </GlassPanel>
       )}

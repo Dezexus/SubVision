@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
-from subvision.core.video_io import decode_frames_range
+from subvision.core.video_io import extract_frame_cv2, get_video_dar
 from subvision.rendering.geometry import calculate_text_roi
 
 logger = logging.getLogger(__name__)
@@ -383,15 +383,15 @@ class InpaintEffect:
                     }
                 )
 
-            decoded = decode_frames_range(
-                video_path, min(sample_idxs), max(sample_idxs) + 1, use_hwaccel=False
-            )
+            dar = get_video_dar(video_path)
             sample_masks: List[np.ndarray] = []
             for idx in sample_idxs:
-                f_bgr = decoded.get(idx)
-                if f_bgr is None:
+                extracted = extract_frame_cv2(video_path, idx, dar=dar)
+                if extracted is None:
                     continue
-                sample_masks.append(generate_text_mask(f_bgr, roi, self.font_size_px))
+                # Only the five sparse samples are decoded and retained, rather
+                # than every frame between the cue's first and last sample.
+                sample_masks.append(generate_text_mask(extracted[0], roi, self.font_size_px))
 
             stable = median_masks(sample_masks)
             if stable is None or _mask_coverage(stable) <= 0.0:

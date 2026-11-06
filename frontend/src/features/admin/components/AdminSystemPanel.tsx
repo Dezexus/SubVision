@@ -44,11 +44,6 @@ export const AdminSystemPanel: React.FC<Props> = ({ status, onClearCache, cacheP
           tone={status.redis ? 'ok' : 'error'}
         />
         <StatusCard
-          label={t('admin.statusHf')}
-          value={status.hf_token_configured ? t('admin.configured') : t('admin.notConfigured')}
-          tone={status.hf_token_configured ? 'ok' : 'warn'}
-        />
-        <StatusCard
           label={t('admin.statusGigaam')}
           value={status.gigaam_available ? t('admin.installed') : t('admin.stub')}
           tone={status.gigaam_available ? 'ok' : 'warn'}
@@ -58,14 +53,8 @@ export const AdminSystemPanel: React.FC<Props> = ({ status, onClearCache, cacheP
           value={status.gigaam_weights_cached ? t('admin.cached') : t('admin.notCached')}
           tone={status.gigaam_weights_cached ? 'ok' : 'warn'}
         />
-        <StatusCard
-          label={t('admin.statusPyannote')}
-          value={status.pyannote_available ? t('admin.installed') : t('admin.stub')}
-          tone={status.pyannote_available ? 'ok' : 'warn'}
-        />
       </div>
       <GlassPanel className="p-4 space-y-3">
-        <p className="text-xs text-txt-subtle">{t('admin.hfHint')}</p>
         <button
           type="button"
           disabled={cachePending}

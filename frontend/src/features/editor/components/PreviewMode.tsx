@@ -18,17 +18,17 @@ export const PreviewMode = () => {
   const setCurrentFrame = useVideoStore((s) => s.setCurrentFrame);
   const previewVolume = useVideoStore((s) => s.previewVolume);
   const setPreviewVolume = useVideoStore((s) => s.setPreviewVolume);
-  
+
   const subtitles = useProcessingStore((s) => s.subtitles);
   const updateSubtitle = useProcessingStore((s) => s.updateSubtitle);
   const deleteSubtitle = useProcessingStore((s) => s.deleteSubtitle);
   const saveHistory = useProcessingStore((s) => s.saveHistory);
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const animationFrameRef = useRef<number>();
+  const animationFrameRef = useRef<number | undefined>(undefined);
   const lastThrottleTimeRef = useRef<number>(0);
   const prevTimeRef = useRef<number>(0);
-  
+
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -50,28 +50,16 @@ export const PreviewMode = () => {
     autoPauseRef.current = isAutoPauseEnabled;
   }, [isAutoPauseEnabled]);
 
-  useEffect(() => {
-    if (activeSub && activeSub.id !== prevActiveSubIdRef.current) {
-      setLocalText(activeSub.text);
-      prevActiveSubIdRef.current = activeSub.id;
-    } else if (!activeSub) {
-      prevActiveSubIdRef.current = null;
-    }
-  }, [activeSub]);
-
   const updateActiveSubtitle = useCallback(
     (time: number) => {
-      if (subtitles.length === 0) {
-        setActiveSub(null);
-        return;
+      const next = subtitles.find((sub) => time >= sub.start && time <= sub.end) ?? null;
+      if (next && next.id !== prevActiveSubIdRef.current) {
+        setLocalText(next.text);
+        prevActiveSubIdRef.current = next.id;
+      } else if (!next) {
+        prevActiveSubIdRef.current = null;
       }
-      for (let i = 0; i < subtitles.length; i++) {
-        if (time >= subtitles[i].start && time <= subtitles[i].end) {
-          setActiveSub(subtitles[i]);
-          return;
-        }
-      }
-      setActiveSub(null);
+      setActiveSub(next);
     },
     [subtitles]
   );
@@ -148,6 +136,8 @@ export const PreviewMode = () => {
     if (metadata) {
       if (file) {
         const url = URL.createObjectURL(file);
+        // The object URL represents an external browser resource.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setVideoUrl(url);
         return () => URL.revokeObjectURL(url);
       } else {

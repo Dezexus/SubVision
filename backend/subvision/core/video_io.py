@@ -112,8 +112,8 @@ def decode_frames_range(
 ) -> Dict[int, np.ndarray]:
     """Decode [start_f, end_f) in one sequential pass (seek once).
 
-    Random per-frame seeks via extract_frame_cv2 are orders of magnitude slower
-    for ProPainter clip loading — do not use them for contiguous ranges.
+    Random per-frame seeks via extract_frame_cv2 are substantially slower
+    for contiguous ranges.
     """
     if end_f <= start_f or not video_path or not os.path.exists(video_path):
         return {}
@@ -213,7 +213,7 @@ def get_frame_image(video_path: str, frame_index: int) -> np.ndarray | None:
     return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
 
-def generate_video_preview(video_path: str, frame_index: int, roi_override: list[int] | None, scale_factor: float) -> np.ndarray | None:
+def generate_video_preview(video_path: str, frame_index: int, roi_override: list[int] | None) -> np.ndarray | None:
     """Generate a processed preview image applying ROI and filters."""
     if not video_path:
         return None
@@ -252,6 +252,4 @@ def generate_video_preview(video_path: str, frame_index: int, roi_override: list
         denoised = cv2.fastNlMeansDenoisingColored(frame_roi, None, 3.0, 3.0, 7, 21)
 
     processed = denoised
-    if scale_factor > 1.0 and processed is not None:
-        processed = cv2.resize(processed, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC)
     return processed

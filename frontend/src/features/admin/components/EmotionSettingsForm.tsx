@@ -16,8 +16,6 @@ interface Props {
   excludeQuick?: boolean;
   /** Hide admin-only fields (export dialog). */
   hideAdminOnly?: boolean;
-  /** Show only admin-only fields (admin advanced collapsible). */
-  adminOnlyFields?: boolean;
   /** Let parent handle scroll — no inner max-height. */
   compact?: boolean;
 }
@@ -26,7 +24,7 @@ function getSectionValue(settings: EmotionAnalysisSettings, section: Section): R
   return settings[section] as unknown as Record<string, unknown>;
 }
 
-const SECTION_ORDER: Section[] = ['export', 'diarization', 'gender', 'text_sentiment', 'json_format'];
+const SECTION_ORDER: Section[] = ['export', 'text_sentiment', 'json_format'];
 
 export const EmotionSettingsForm: React.FC<Props> = ({
   settings,
@@ -36,7 +34,6 @@ export const EmotionSettingsForm: React.FC<Props> = ({
   quickOnly = false,
   excludeQuick = false,
   hideAdminOnly = false,
-  adminOnlyFields = false,
   compact = false,
 }) => {
   const { t, field, option } = useTranslation();
@@ -44,8 +41,7 @@ export const EmotionSettingsForm: React.FC<Props> = ({
 
   const fields = EMOTION_SETTINGS_META.filter((f) => {
     if (!sections.includes(f.section)) return false;
-    if (adminOnlyFields && !f.adminOnly) return false;
-    if (!adminOnlyFields && hideAdminOnly && f.adminOnly && !isAdmin) return false;
+    if (hideAdminOnly && f.adminOnly && !isAdmin) return false;
     if (quickOnly && !f.quick) return false;
     if (excludeQuick && f.quick) return false;
     return true;
@@ -124,8 +120,12 @@ export const EmotionSettingsForm: React.FC<Props> = ({
     );
   }
 
+  const scrollClass = isAdmin || compact
+    ? 'space-y-4'
+    : 'space-y-4 max-h-[60vh] overflow-y-auto pr-1 scrollbar-hide';
+
   return (
-    <div className={compact ? 'space-y-3' : 'space-y-4 max-h-[60vh] overflow-y-auto pr-1 scrollbar-hide'}>
+    <div className={scrollClass}>
       {grouped.map(({ section, fields: sectionFields }) => (
         <div
           key={section}

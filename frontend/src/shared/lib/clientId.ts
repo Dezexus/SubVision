@@ -23,5 +23,7 @@ export const getClientId = (): string => {
 export const resetClientId = (): void => {
   try {
     localStorage.removeItem('subvision_client_id');
-  } catch {}
+  } catch {
+    // Storage can be unavailable in private or restricted browsing contexts.
+  }
 };

@@ -6,7 +6,6 @@ DEFAULT_CONFIG: ConfigType = {
     "step": 3,
     "min_conf": 82,
     "denoise_strength": 2,
-    "scale_factor": 1.5,
     "smart_skip": True,
     "motion_mse_thresh": 22.0,
     "gap_tolerance": 3,
@@ -20,13 +19,10 @@ _PRESET_ALIASES: dict[str, str] = {
 
 PRESETS_DELTAS: dict[str, dict[str, Any]] = {
     "🎯 Quality": {
-        "label": "Quality",
-        "desc": "Frame-perfect timing",
         "config": {
             "step": 1,
             "min_conf": 85,
             "denoise_strength": 5,
-            "scale_factor": 2.5,
             "smart_skip": False,
             "motion_mse_thresh": 12.0,
             "gap_tolerance": 5,
@@ -34,13 +30,10 @@ PRESETS_DELTAS: dict[str, dict[str, Any]] = {
         },
     },
     "⚖️ Balance": {
-        "label": "Balance",
-        "desc": "Anime & live-action ROI",
         "config": {
             "step": 3,
             "min_conf": 82,
             "denoise_strength": 2,
-            "scale_factor": 1.5,
             "smart_skip": True,
             "motion_mse_thresh": 22.0,
             "gap_tolerance": 3,
@@ -63,7 +56,6 @@ SUPPORTED_LANGUAGES: list[dict[str, str]] = [
 _OVERRIDE_KEYS: tuple[str, ...] = (
     "step",
     "min_conf",
-    "scale_factor",
     "denoise_strength",
     "smart_skip",
     "motion_mse_thresh",
@@ -108,7 +100,7 @@ def get_all_presets() -> list[dict[str, Any]]:
     for preset_id, preset_data in PRESETS_DELTAS.items():
         full_config = DEFAULT_CONFIG.copy()
         full_config.update(preset_data.get("config", {}))
-        presets_list.append({"id": preset_id, "label": preset_data["label"], "desc": preset_data["desc"], "config": full_config})
+        presets_list.append({"id": preset_id, "config": full_config})
     return presets_list
 
 

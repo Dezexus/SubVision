@@ -131,9 +131,20 @@ def refine_subtitle_boundaries(
     if not needed:
         return items
 
+    # Each frame belongs only to a few nearby edges. Indexing those edges
+    # avoids comparing every OCR result with every cue in the whole video.
+    cues_by_frame: dict[int, list[int]] = {}
+    for i, item in enumerate(items):
+        s = _time_to_frame(item["start"], fps)
+        e = _time_to_frame(item["end"], fps)
+        for boundary in (s, e):
+            lo = max(0, boundary - window_frames)
+            hi = min(max(0, total_frames - 1), boundary + window_frames)
+            for frame_idx in range(lo, hi + 1):
+                cues_by_frame.setdefault(frame_idx, []).append(i)
+
     max_needed = max(needed)
     presence_by_cue: list[dict[int, bool]] = [{} for _ in items]
-    ocr_at: dict[int, str] = {}
 
     reporter_log_every = max(1, len(needed) // 10)
     scanned = 0
@@ -154,12 +165,11 @@ def refine_subtitle_boundaries(
             if roi is not None:
                 final_img = image_pipeline.apply_filters_to_roi(roi)
                 if final_img is not None:
-                    raw = ocr_engine.predict_batch([final_img], use_det=True)
+                    raw = ocr_engine.predict_batch([final_img])
                     text, _conf = PaddleWrapper.parse_results(raw[0], min_conf)
 
-            ocr_at[frame_idx] = text
-            for i, item in enumerate(items):
-                presence_by_cue[i][frame_idx] = text_matches_cue(text, str(item.get("text", "")))
+            for i in cues_by_frame.get(frame_idx, []):
+                presence_by_cue[i][frame_idx] = text_matches_cue(text, str(items[i].get("text", "")))
 
             scanned += 1
             if on_progress and scanned % reporter_log_every == 0:

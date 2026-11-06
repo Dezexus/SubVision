@@ -7,7 +7,7 @@
 | Компонент | Минимум |
 |-----------|---------|
 | GPU | NVIDIA с compute capability **7.5+** (RTX 2060 и новее) |
-| VRAM | **6 GB** (рекомендуется запас для ProPainter) |
+| VRAM | **6 GB** |
 | RAM | **16 GB** |
 | CPU | 6 ядер (сборка OpenCV использует `-j2`, чтобы не ронять Docker Desktop) |
 | Driver | NVIDIA **≥ 550** + [Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) |
@@ -27,14 +27,14 @@ CUDA_ARCH_BIN=7.5
 
 - Лимит загрузки видео: **4 GB** (nginx + backend синхронизированы)
 - Первая сборка worker: **45–90 мин** (OpenCV CUDA); повторные сборки быстрее за счёт BuildKit cache
-- При OOM в режиме ProPainter: уменьшите `PADDLE_GPU_MEMORY_FRACTION` до `0.30` или увеличьте `SHM_SIZE=3gb`
+- При нехватке RAM: уменьшите длину обрабатываемого видео или освободите другие приложения
 
 ## Архитектура
 
 ```
 nginx:7860 → api (FastAPI) → Valkey/Redis
                 ↓ enqueue
-             worker (ARQ + PaddleOCR + OpenCV CUDA + ProPainter)
+             worker (ARQ + PaddleOCR + OpenCV CUDA)
                 ↓
            uploads/ (shared volume)
 ```
@@ -91,6 +91,6 @@ ruff format subvision tests
 ## Зависимости
 
 - **API**: FastAPI, PyAV, OpenCV headless (CPU), ONNX Runtime CPU
-- **Worker**: PaddlePaddle GPU 3.3 (cu126), PaddleOCR, OpenCV CUDA (сборка), ONNX Runtime GPU
+- **Worker**: PaddlePaddle GPU 3.3 (cu126), PaddleOCR 3.7 (PP-OCRv6; для ru/korean — PP-OCRv5), OpenCV CUDA (сборка), ONNX Runtime GPU
 
 Версии закреплены в `requirements.txt` / `requirements-worker.txt`. Исходники для пересборки — `requirements.in`.

@@ -4,6 +4,7 @@ import { useVideoStore } from '../../../store/videoStore';
 import { useProcessingStore } from '../../../store/processingStore';
 import { useBlurStore } from '../../../store/blurStore';
 import { api } from '../../../shared/api';
+import { getApiErrorMessage } from '../../../shared/lib/errors';
 import { useUIStore } from '../../../store/uiStore';
 import { clearFrameCache } from '../hooks/useVideoFrame';
 import { useAllowedExtensionsQuery } from '../queries/useAllowedExtensionsQuery';
@@ -37,17 +38,19 @@ export function useUploadVideo() {
       clearFrameCache();
       setUploadProgress(0);
 
-      return await api.uploadVideo(file, '', (pct) => setUploadProgress(pct));
+      return await api.uploadVideo(file, (pct) => setUploadProgress(pct));
     },
     onSuccess: (metadata, file) => {
       setMetadata(metadata);
       setFile(file);
       addToast('Video uploaded successfully', 'success');
     },
-    onError: (err: any) => {
-      const msg = err.code === 'ERR_NETWORK'
-        ? 'Server is offline. Please start the backend.'
-        : (err.response?.data?.detail || err.message || 'Failed to process video.');
+    onError: (err: unknown) => {
+      const msg = getApiErrorMessage(
+        err,
+        'Failed to process video.',
+        'Server is offline. Please start the backend.',
+      );
       addToast(msg, 'error');
     }
   });

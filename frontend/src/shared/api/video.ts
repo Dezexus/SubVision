@@ -8,10 +8,10 @@ export const videoApi = {
     return response.data;
   },
 
-  uploadVideo: async (file: File, clientId: string, onProgress?: (pct: number) => void): Promise<VideoMetadata> => {
+  uploadVideo: async (file: File, onProgress?: (pct: number) => void): Promise<VideoMetadata> => {
     const configRes = await axios.get(`${API_URL}/video/config`);
     const { chunk_size: chunkSize } = configRes.data;
-    
+
     const totalChunks = Math.ceil(file.size / chunkSize);
     const initRes = await axios.post(`${API_URL}/video/upload/init`, {
       filename: file.name,
@@ -42,7 +42,7 @@ export const videoApi = {
       }
     }
 
-    const completePayload: any = {
+    const completePayload = {
       filename: storage_filename,
       upload_id: upload_id,
       total_chunks: totalChunks
@@ -63,7 +63,6 @@ export const videoApi = {
     filename: string;
     frame_index: number;
     roi: number[];
-    scale_factor: number;
   }, signal?: AbortSignal) => {
     const response = await axios.post(`${API_URL}/video/preview`, config, {
       responseType: 'blob',

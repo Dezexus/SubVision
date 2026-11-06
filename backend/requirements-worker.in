@@ -1,2 +1,1 @@
-paddleocr>=2.9.0
-onnxruntime-gpu>=1.19.0
+paddleocr>=3.7.0,<4

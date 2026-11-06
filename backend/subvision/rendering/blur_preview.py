@@ -66,12 +66,6 @@ def generate_blur_preview(
                 apply_residual_blur=True,
                 blur_settings=settings,
             )
-        elif mode == "propainter":
-            from subvision.rendering.effects.propainter import apply_propainter_preview
-
-            frame = apply_propainter_preview(
-                frame, frame_index, text_roi, font_size_px, video_path, settings
-            )
         else:
             feather = int(settings.get("feather", 30))
             inner_roi = compute_feather_inner_roi(text_roi, feather)

@@ -4,11 +4,8 @@ from subvision.domain.emotion_models import EmotionExportSettings, EmotionJsonFo
 from subvision.processing.emotion_json_format import (
     build_structured_cue,
     chars_per_second,
-    detect_text_language,
     format_srt_range,
     format_srt_timestamp,
-    speakers_list_from_profiles,
-    speakers_registry_from_profiles,
 )
 from subvision.processing.emotion_engine import postprocess_emotion
 
@@ -23,11 +20,6 @@ def test_format_srt_range():
 
 def test_chars_per_second():
     assert chars_per_second("SKY-BREAK!", 1.8) == 5.56
-
-
-def test_detect_text_language():
-    assert detect_text_language("Protect Xuanfang!") == "en"
-    assert detect_text_language("Защитите Сюаньфан!") == "ru"
 
 
 def test_postprocess_maps_positive_to_happiness():
@@ -49,9 +41,6 @@ def test_build_structured_cue_flat_with_flags():
         end=138.866,
         text="SKY-BREAK!",
         ocr_conf=1.0,
-        speaker_id="SPEAKER_00",
-        speaker_ids=["SPEAKER_00"],
-        speaker_gender="unknown",
         emotion_block={
             "primary": "happiness",
             "confidence": 0.755657,
@@ -67,7 +56,6 @@ def test_build_structured_cue_flat_with_flags():
         skipped=False,
         skip_reason=None,
         fmt=fmt,
-        allow_multi_speaker=False,
     )
     assert cue["duration"] == 1.8
     assert cue["timecode"] == "00:02:17,066 --> 00:02:18,866"
@@ -90,42 +78,13 @@ def test_build_structured_cue_respects_disabled_flags():
         end=1.0,
         text="hello",
         ocr_conf=0.9,
-        speaker_id=None,
-        speaker_ids=[],
-        speaker_gender=None,
         emotion_block=None,
         intensity=0.5,
         text_sentiment=None,
         skipped=False,
         skip_reason=None,
         fmt=fmt,
-        allow_multi_speaker=False,
     )
     assert "start" not in cue
     assert "chars_per_second" not in cue
     assert "audio_intensity" not in cue
-
-
-def test_speakers_list_from_profiles():
-    items = speakers_list_from_profiles({
-        "SPEAKER_00": {
-            "gender": "female",
-            "gender_confidence": 0.9,
-            "gender_source": "manual",
-            "suggested_role": "Anna",
-        },
-    })
-    assert items[0]["id"] == "SPEAKER_00"
-    assert items[0]["suggested_role"] == "Anna"
-
-
-def test_speakers_registry_includes_suggested_role():
-    registry = speakers_registry_from_profiles({
-        "SPEAKER_00": {
-            "gender": "female",
-            "gender_confidence": 0.9,
-            "gender_source": "manual",
-            "suggested_role": "Anna",
-        },
-    })
-    assert registry["SPEAKER_00"]["suggested_role"] == "Anna"

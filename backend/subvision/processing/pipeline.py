@@ -12,8 +12,6 @@ from subvision.processing.presets import resolve_config
 
 logger = logging.getLogger(__name__)
 
-DET_REFRESH_INTERVAL = 30
-
 
 def run_ocr_pipeline(video_path: str, params: dict[str, Any], reporter: OCRReporter, cancellation: CancellationToken) -> list[dict[str, Any]] | None:
     logger.info("Starting OCR pipeline")
@@ -54,7 +52,6 @@ def run_ocr_pipeline(video_path: str, params: dict[str, Any], reporter: OCRRepor
     total_frames = video.total_frames
     last_text = ""
     last_conf = 0.0
-    frames_since_det = DET_REFRESH_INTERVAL
 
     try:
         for frame_idx, timestamp, frame in video:
@@ -73,21 +70,23 @@ def run_ocr_pipeline(video_path: str, params: dict[str, Any], reporter: OCRRepor
                 continue
 
             motion_skipped = pipeline.check_motion(roi_crop)
+            if motion_skipped and pipeline.smart_skip:
+                # The ROI is unchanged: reuse the last observation without
+                # repeating denoise and OCR. Periodic forced frames are still
+                # controlled by ImagePipeline.max_continuous_skips.
+                aggregator.add_result(last_text, last_conf, timestamp)
+                continue
 
-            # Forced OCR on every sampled frame (step boundary)
             final_img = pipeline.apply_filters_to_roi(roi_crop)
             if final_img is not None:
-                use_det = frames_since_det >= DET_REFRESH_INTERVAL or not last_text
-                raw_results = ocr_engine.predict_batch([final_img], use_det=use_det)
+                raw_results = ocr_engine.predict_batch([final_img])
+                if raw_results[0] is None:
+                    # Inference failed, so "no text" is unknown: re-OCR the next
+                    # sample instead of letting smart skip repeat this result.
+                    pipeline.last_raw_roi = None
                 text, conf = PaddleWrapper.parse_results(raw_results[0], min_conf)
                 last_text, last_conf = text, conf
                 aggregator.add_result(text, conf, timestamp)
-                if use_det:
-                    frames_since_det = 0
-                else:
-                    frames_since_det += step
-            elif motion_skipped and pipeline.smart_skip:
-                aggregator.add_result(last_text, last_conf, timestamp)
             else:
                 last_text, last_conf = "", 0.0
                 aggregator.add_result("", 0.0, timestamp)

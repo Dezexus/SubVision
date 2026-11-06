@@ -7,7 +7,8 @@ import re
 import struct
 import wave
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
+
 
 _CYRILLIC_RE = re.compile(r"[\u0400-\u04FF]")
 
@@ -79,40 +80,6 @@ def wav_rms_intensity(wav_path: Path) -> Optional[float]:
         return None
 
 
-def speakers_registry_from_profiles(profiles: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-    """Keyed speaker registry for metadata."""
-    registry: Dict[str, Dict[str, Any]] = {}
-    for sid, profile in profiles.items():
-        entry: Dict[str, Any] = {
-            "gender": profile.get("gender", "unknown"),
-            "gender_confidence": profile.get("gender_confidence"),
-            "gender_source": profile.get("gender_source"),
-        }
-        role = profile.get("suggested_role")
-        if role:
-            entry["suggested_role"] = role
-        registry[sid] = entry
-    return registry
-
-
-def speakers_list_from_profiles(profiles: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Root-level speakers array."""
-    items: List[Dict[str, Any]] = []
-    for sid in sorted(profiles):
-        profile = profiles[sid]
-        entry: Dict[str, Any] = {
-            "id": sid,
-            "gender": profile.get("gender", "unknown"),
-            "gender_confidence": profile.get("gender_confidence"),
-            "gender_source": profile.get("gender_source"),
-        }
-        role = profile.get("suggested_role")
-        if role:
-            entry["suggested_role"] = role
-        items.append(entry)
-    return items
-
-
 def build_structured_cue(
     *,
     cue_id: Any,
@@ -120,16 +87,12 @@ def build_structured_cue(
     end: float,
     text: str,
     ocr_conf: float,
-    speaker_id: Optional[str],
-    speaker_ids: List[str],
-    speaker_gender: Optional[str],
     emotion_block: Optional[Dict[str, Any]],
     intensity: Optional[float],
     text_sentiment: Optional[Dict[str, Any]],
     skipped: bool,
     skip_reason: Optional[str],
     fmt: Any,
-    allow_multi_speaker: bool,
 ) -> Dict[str, Any]:
     """Flat cue object; optional blocks controlled by json_format flags."""
     duration = cue_duration(start, end)
@@ -155,13 +118,6 @@ def build_structured_cue(
         if cps is not None:
             entry["chars_per_second"] = cps
 
-    if fmt.include_speaker_id:
-        entry["speaker_id"] = speaker_id
-        if allow_multi_speaker and speaker_ids:
-            entry["speaker_ids"] = speaker_ids
-    if fmt.include_speaker_gender and speaker_gender:
-        entry["speaker_gender"] = speaker_gender
-
     if emotion_block:
         emotion_out: Dict[str, Any] = {
             "primary": emotion_block.get("primary"),
@@ -180,8 +136,5 @@ def build_structured_cue(
 
     if text_sentiment:
         entry["text_sentiment"] = text_sentiment
-
-    if fmt.include_translations_block:
-        entry["translations"] = {}
 
     return entry

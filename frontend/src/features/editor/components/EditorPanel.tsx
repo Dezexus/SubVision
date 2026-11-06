@@ -1,7 +1,7 @@
 /**
  * Main editor panel managing the video canvas, filter preview, and timeline components.
  */
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { VideoCanvas } from './VideoCanvas';
 import { FilterPreview } from './FilterPreview';
 import { WelcomeScreen } from './WelcomeScreen';

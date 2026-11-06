@@ -11,19 +11,20 @@ _MAX_ENGINE_CACHE = 3
 
 class PaddleWrapper:
     DET_PARAMS = {
-        "det_limit_side_len": 2500,
-        "det_limit_type": "max",
-        "det_db_thresh": 0.3,
-        "det_db_box_thresh": 0.6,
-        "det_db_unclip_ratio": 1.5,
-        "rec_batch_num": 8,
+        "text_det_limit_side_len": 2500,
+        "text_det_limit_type": "max",
+        "text_det_thresh": 0.3,
+        "text_det_box_thresh": 0.6,
+        "text_det_unclip_ratio": 1.5,
+        "text_recognition_batch_size": 8,
     }
 
     def __init__(self, lang: str = "en", use_gpu: bool = True) -> None:
         self.use_gpu = use_gpu
+        self.lang = lang
         self._inference_lock = threading.Lock()
-        self._batch_size = int(self.DET_PARAMS["rec_batch_num"])
-        self._init_device()
+        self._batch_size = int(self.DET_PARAMS["text_recognition_batch_size"])
+        self.device = self._select_device()
 
         try:
             from paddleocr import PaddleOCR
@@ -34,40 +35,30 @@ class PaddleWrapper:
 
         self.ocr = PaddleOCR(
             lang=lang,
+            device=self.device,
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
             use_textline_orientation=False,
             **self.DET_PARAMS,
         )
 
-    def _init_device(self) -> None:
+    def _select_device(self) -> str:
         try:
             import paddle
         except ImportError:
-            return
+            return "cpu"
 
         if not self.use_gpu:
-            paddle.set_device("cpu")
-            return
+            return "cpu"
 
         try:
             if paddle.is_compiled_with_cuda():
-                paddle.set_device("gpu")
-            else:
-                paddle.set_device("cpu")
+                return "gpu"
         except Exception as e:
-            logging.warning("Failed to set Paddle device, falling back to CPU: %s", e)
-            paddle.set_device("cpu")
+            logging.warning("Failed to detect Paddle CUDA support, falling back to CPU: %s", e)
+        return "cpu"
 
-    def _predict_one(self, frame: np.ndarray, use_det: bool = True) -> Any:
-        safe_frame = np.ascontiguousarray(frame)
-        if hasattr(self.ocr, "predict"):
-            return self.ocr.predict(safe_frame)
-        if use_det:
-            return self.ocr.ocr(safe_frame)
-        return self.ocr.ocr(safe_frame, det=False, cls=False)
-
-    def predict_batch(self, frames: list[np.ndarray], use_det: bool = True) -> list[Any]:
+    def predict_batch(self, frames: list[np.ndarray]) -> list[Any]:
         if not frames:
             return []
 
@@ -77,7 +68,7 @@ class PaddleWrapper:
                 chunk = frames[start : start + self._batch_size]
                 for frame in chunk:
                     try:
-                        results.append(self._predict_one(frame, use_det=use_det))
+                        results.append(self.ocr.predict(np.ascontiguousarray(frame)))
                     except Exception as e:
                         logging.error("OCR inference failed for frame: %s", e)
                         results.append(None)

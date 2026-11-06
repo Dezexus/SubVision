@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import logging
-import os
 import subprocess
-import tempfile
 import uuid
 from pathlib import Path
 from typing import Optional, Tuple
@@ -83,16 +81,21 @@ def extract_audio_segment(
         "-i",
         video_path,
         "-map",
-        f"0:a:{track}?" if track else "0:a:0?",
+        f"0:a:{track}?",
         "-vn",
         "-ac",
         str(cfg.channels),
         "-ar",
         str(cfg.sample_rate_hz),
+    ]
+    if cfg.normalize_audio:
+        # Normalize in the same FFmpeg process, once per cue.
+        cmd.extend(["-af", "dynaudnorm"])
+    cmd.extend([
         "-f",
         "wav",
         str(out_path),
-    ]
+    ])
     try:
         proc = subprocess.run(
             cmd,
@@ -104,65 +107,7 @@ def extract_audio_segment(
         if proc.returncode != 0 or not out_path.exists() or out_path.stat().st_size < 44:
             logger.debug("ffmpeg extract failed: %s", proc.stderr[-500:] if proc.stderr else "")
             return None
-        if cfg.normalize_audio:
-            _peak_normalize_wav(out_path)
         return out_path
     except (subprocess.SubprocessError, OSError) as exc:
         logger.warning("Audio extract error: %s", exc)
-        return None
-
-
-def _peak_normalize_wav(path: Path) -> None:
-    """Simple peak normalize in-place via ffmpeg."""
-    tmp = path.with_suffix(".norm.wav")
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-i",
-        str(path),
-        "-af",
-        "dynaudnorm",
-        str(tmp),
-    ]
-    try:
-        proc = subprocess.run(cmd, capture_output=True, timeout=60, check=False)
-        if proc.returncode == 0 and tmp.exists():
-            tmp.replace(path)
-        elif tmp.exists():
-            tmp.unlink(missing_ok=True)
-    except (subprocess.SubprocessError, OSError):
-        if tmp.exists():
-            tmp.unlink(missing_ok=True)
-
-
-def extract_full_audio_wav(
-    video_path: str,
-    cfg: EmotionExportSettings,
-    out_path: Optional[Path] = None,
-) -> Optional[Path]:
-    """Extract full audio track for diarization."""
-    temp_dir = _resolve_temp_dir(cfg)
-    if out_path is None:
-        out_path = temp_dir / f"full_{uuid.uuid4().hex}.wav"
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-i",
-        video_path,
-        "-map",
-        f"0:a:{cfg.audio_track_index}?" if cfg.audio_track_index else "0:a:0?",
-        "-vn",
-        "-ac",
-        "1",
-        "-ar",
-        str(cfg.sample_rate_hz),
-        str(out_path),
-    ]
-    try:
-        proc = subprocess.run(cmd, capture_output=True, timeout=600, check=False)
-        if proc.returncode != 0 or not out_path.exists():
-            return None
-        return out_path
-    except (subprocess.SubprocessError, OSError) as exc:
-        logger.warning("Full audio extract failed: %s", exc)
         return None

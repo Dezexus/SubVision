@@ -1,10 +1,11 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { SettingsPanel } from './features/settings';
 import { EditorPanel } from './features/editor';
 import { ResultsPanel } from './features/results';
 import { ToastContainer } from './shared/ui';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SessionRecoveryModal } from './components/SessionRecoveryModal';
+import { EmotionDownloadDialog } from './components/EmotionDownloadDialog';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { useVideoStore } from './store/videoStore';
 import { useProcessingStore } from './store/processingStore';
@@ -64,6 +65,7 @@ function App() {
   return (
     <div className="w-full h-screen bg-bg-main flex flex-col text-txt-main overflow-hidden">
       {clientId && <SessionRecoveryModal />}
+      <EmotionDownloadDialog />
       <div className="h-1 w-full bg-brand-500 flex-shrink-0" />
       {isProjectLoaded && (
         <div className="flex justify-end px-4 pt-2 flex-shrink-0">

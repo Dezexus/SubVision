@@ -1,8 +1,10 @@
 import { useMutation } from '@tanstack/react-query';
 import { api } from '../../../shared/api';
+import { getApiErrorMessage } from '../../../shared/lib/errors';
 import { useProcessingStore } from '../../../store/processingStore';
 import { useUIStore } from '../../../store/uiStore';
 import type { ProcessConfig } from '../../../types';
+import { translate } from '../../../i18n';
 
 /**
  * Mutation hook for initiating the OCR extraction process.
@@ -26,10 +28,10 @@ export function useStartOcr() {
     onSuccess: (data) => {
       setActiveOcrJobId(data.job_id);
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       setProcessing(false);
       setActiveOcrJobId(null);
-      const msg = err.response?.data?.detail || err.message || 'Failed to start OCR';
+      const msg = getApiErrorMessage(err, translate('toasts.ocrStartFailed'));
       addToast(msg, 'error');
       addLog(`Error: ${msg}`);
     }

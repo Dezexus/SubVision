@@ -20,6 +20,15 @@ function interpolate(text: string, vars?: Record<string, string | number>): stri
   return text.replace(/\{\{(\w+)\}\}/g, (_, key: string) => String(vars[key] ?? ''));
 }
 
+/** Resolve a translation key outside React (e.g. WebSocket handlers). */
+export function translate(key: string, vars?: Record<string, string | number>): string {
+  const locale = useLocaleStore.getState().locale;
+  const dict = dictionaries[locale] as Dict;
+  const value = getByPath(dict as unknown as Record<string, unknown>, key);
+  if (typeof value === 'string') return interpolate(value, vars);
+  return key;
+}
+
 export function useTranslation() {
   const locale = useLocaleStore((s) => s.locale);
   const setLocale = useLocaleStore((s) => s.setLocale);

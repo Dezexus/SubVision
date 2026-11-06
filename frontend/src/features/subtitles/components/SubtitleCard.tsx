@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Copy, Trash2, ArrowDownToLine } from 'lucide-react';
 import type { SubtitleItem } from '../../../types';
 import { useProcessingStore } from '../../../store/processingStore';

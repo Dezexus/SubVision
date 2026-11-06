@@ -9,11 +9,13 @@ import { useBlurPreview } from '../hooks/useBlurPreview';
 import { useStartBlurRender } from '../mutations/useStartBlurRender';
 import { useStopBlurRender } from '../mutations/useStopBlurRender';
 import { useDefaultBlurSettingsQuery } from '../queries/useDefaultBlurSettingsQuery';
+import { useTranslation } from '../../../i18n';
 
 /**
  * Control panel for configuring and starting the smart blur rendering process.
  */
 export const BlurControlPanel = () => {
+  const { t } = useTranslation();
   const metadata = useVideoStore((s) => s.metadata);
   const clientId = useVideoStore((s) => s.clientId);
   const currentFrameIndex = useVideoStore((s) => s.currentFrameIndex);
@@ -21,6 +23,7 @@ export const BlurControlPanel = () => {
 
   const isProcessing = useProcessingStore((s) => s.isProcessing);
   const activeBlurJobId = useProcessingStore((s) => s.activeBlurJobId);
+  const renderedVideoUrl = useProcessingStore((s) => s.renderedVideoUrl);
   const updateProgress = useProcessingStore((s) => s.updateProgress);
   const subtitles = useProcessingStore((s) => s.subtitles);
 
@@ -54,7 +57,7 @@ export const BlurControlPanel = () => {
 
   const handleRender = () => {
     if (!metadata || !clientId) return;
-    updateProgress(0, metadata.total_frames, "Starting...");
+    updateProgress(0, metadata.total_frames, t('blur.starting'));
     startBlurRender({
       filename: metadata.filename,
       original_filename: metadata.original_filename || metadata.filename,
@@ -83,9 +86,9 @@ export const BlurControlPanel = () => {
         <div className="w-full bg-bg-panel p-2 rounded-xl border border-border-main shadow-sm flex items-center relative overflow-hidden">
           <div className="flex-1 flex items-center">
             {isPreviewUpdating ? (
-              <span className="inline-flex items-center gap-1.5 text-[10px] text-brand-500 font-mono bg-brand-500/10 px-2.5 py-1 rounded shadow-inner" title="Preview is being updated.">
+              <span className="inline-flex items-center gap-1.5 text-[10px] text-brand-500 font-mono bg-brand-500/10 px-2.5 py-1 rounded shadow-inner">
                 <Loader2 size={12} className="animate-spin" />
-                UPDATING
+                {t('blur.updating')}
               </span>
             ) : (
                 <div className="w-32" />
@@ -95,23 +98,22 @@ export const BlurControlPanel = () => {
               <button
                 onClick={handleReset}
                 className="inline-flex items-center gap-1.5 text-[10px] font-bold text-txt-subtle hover:text-txt-main transition-colors bg-bg-surface hover:bg-bg-hover px-3.5 py-1.5 rounded-md border border-border-strong shadow-md active:scale-95"
-                title="Reset all blur settings to defaults"
+                title={t('blur.resetAllTitle')}
               >
                 <RotateCcw size={12} />
-                RESET ALL
+                {t('blur.resetAll')}
               </button>
           </div>
         </div>
 
         <div className="bg-bg-panel border border-border-main rounded-xl p-4 shadow-sm relative overflow-hidden">
           <div className="flex items-center gap-2 text-xs font-bold text-txt-main tracking-wide mb-3">
-            <Wand2 size={16} className="text-brand-500" /> Algorithm
+            <Wand2 size={16} className="text-brand-500" /> {t('blur.algorithm')}
           </div>
           <div className="grid grid-cols-2 gap-1.5 bg-bg-input p-1 rounded-lg border border-border-strong">
             {([
-              { mode: 'blur' as const, label: 'BOX BLUR' },
-              { mode: 'hybrid' as const, label: 'HYBRID' },
-              { mode: 'propainter' as const, label: 'PROPAINTER' },
+              { mode: 'blur' as const, label: t('blur.modeBlur') },
+              { mode: 'hybrid' as const, label: t('blur.modeHybrid') },
             ]).map(({ mode, label }) => (
               <button
                 key={mode}
@@ -129,73 +131,19 @@ export const BlurControlPanel = () => {
           </div>
         </div>
 
-        {blurSettings.mode === 'propainter' && (
-          <div className="bg-bg-panel border border-border-main rounded-xl p-4 shadow-sm">
-            <div className="flex items-center gap-2 text-xs font-bold text-txt-main tracking-wide mb-4">
-              <Wand2 size={16} className="text-purple-400" /> ProPainter
-            </div>
-            <div className="space-y-4">
-              <Slider
-                label="Neighbor Length"
-                min={4} max={12} step={2}
-                value={blurSettings.propainter_neighbor_length ?? 8}
-                suffix="fr"
-                onChange={(e) => setBlurSettings({ propainter_neighbor_length: Number(e.target.value) })}
-              />
-              <Slider
-                label="Subvideo Length"
-                min={20} max={80} step={10}
-                value={blurSettings.propainter_subvideo_length ?? 40}
-                suffix="fr"
-                onChange={(e) => setBlurSettings({ propainter_subvideo_length: Number(e.target.value) })}
-              />
-              <Slider
-                label="Ref Stride"
-                min={4} max={16} step={2}
-                value={blurSettings.propainter_ref_stride ?? 8}
-                suffix="fr"
-                onChange={(e) => setBlurSettings({ propainter_ref_stride: Number(e.target.value) })}
-              />
-              <Slider
-                label="ROI Padding"
-                min={16} max={64} step={8}
-                value={blurSettings.propainter_roi_pad ?? 40}
-                suffix="px"
-                onChange={(e) => setBlurSettings({ propainter_roi_pad: Number(e.target.value) })}
-              />
-              <Slider
-                label="Mask Dilation"
-                min={2} max={12} step={1}
-                value={blurSettings.propainter_mask_dilation ?? 6}
-                suffix="px"
-                onChange={(e) => setBlurSettings({ propainter_mask_dilation: Number(e.target.value) })}
-              />
-              <label className="flex items-center gap-2 text-xs text-txt-muted cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={blurSettings.propainter_fp16 ?? true}
-                  onChange={(e) => setBlurSettings({ propainter_fp16: e.target.checked })}
-                  className="rounded border-border-strong"
-                />
-                FP16 (рекомендуется для 6 GB VRAM)
-              </label>
-            </div>
-          </div>
-        )}
-
         <div className="bg-bg-panel border border-border-main rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 text-xs font-bold text-txt-main tracking-wide mb-4">
-            <ScanLine size={16} className="text-green-500" /> Target Area
+            <ScanLine size={16} className="text-green-500" /> {t('blur.targetArea')}
           </div>
           <div className="space-y-5">
             <Slider
-              label="Vertical Position (Y)"
+              label={t('blur.verticalPosition')}
               max={videoHeight}
               value={videoHeight - blurSettings.y}
               onChange={handleYChange}
             />
             <Slider
-              label="Text Height Base"
+              label={t('blur.textHeight')}
               min={10} max={100} step={1}
               value={blurSettings.font_size}
               suffix="px"
@@ -203,14 +151,14 @@ export const BlurControlPanel = () => {
             />
             <div className="grid grid-cols-2 gap-4 pt-2 border-t border-border-main/50">
                <Slider
-                label="Width Ratio"
+                label={t('blur.widthRatio')}
                 min={0.5} max={3.0} step={0.05}
                 value={blurSettings.width_multiplier}
                 suffix="x"
                 onChange={(e) => setBlurSettings({ width_multiplier: Number(e.target.value) })}
                />
               <Slider
-                label="Height Ratio"
+                label={t('blur.heightRatio')}
                 min={0.5} max={3.0} step={0.05}
                 value={blurSettings.height_multiplier ?? 1.0}
                 suffix="x"
@@ -222,18 +170,18 @@ export const BlurControlPanel = () => {
 
         <div className="bg-bg-panel border border-border-main rounded-xl p-4 shadow-sm">
            <div className="flex items-center gap-2 text-xs font-bold text-txt-main tracking-wide mb-4">
-            <Droplet size={16} className="text-brand-400" /> Appearance
+            <Droplet size={16} className="text-brand-400" /> {t('blur.appearance')}
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Slider
-              label="Intensity (Sigma)"
+              label={t('blur.intensity')}
               max={100}
                value={blurSettings.sigma}
               suffix="%"
               onChange={(e) => setBlurSettings({ sigma: Number(e.target.value) })}
             />
             <Slider
-              label="Edge Softness"
+              label={t('blur.edgeSoftness')}
               max={100}
                value={blurSettings.feather}
               suffix="px"
@@ -243,7 +191,8 @@ export const BlurControlPanel = () => {
         </div>
       </div>
       <div className="p-4 border-t border-border-main bg-bg-panel shrink-0">
-        {!isProcessing || !activeBlurJobId ? (
+        {/* Once the finished video is ready, the job is over — never offer Stop. */}
+        {!isProcessing || !activeBlurJobId || renderedVideoUrl ? (
           <Button
             variant="primary"
             className="w-full py-3.5 text-sm font-bold tracking-wide shadow-lg"
@@ -251,7 +200,7 @@ export const BlurControlPanel = () => {
             onClick={handleRender}
             disabled={isProcessing}
           >
-            START RENDER
+            {t('blur.startRender')}
           </Button>
         ) : (
           <Button
@@ -260,7 +209,7 @@ export const BlurControlPanel = () => {
             icon={<Square size={18} fill="currentColor" />}
             onClick={() => stopBlurRender()}
           >
-            STOP RENDER
+            {t('blur.stopRender')}
           </Button>
         )}
      </div>

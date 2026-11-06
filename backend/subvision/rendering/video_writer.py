@@ -60,6 +60,5 @@ class AsyncVideoWriter:
         try:
             for packet in self.stream.encode():
                 self.container.mux(packet)
-        except Exception:
-            pass
-        self.container.close()
+        finally:
+            self.container.close()

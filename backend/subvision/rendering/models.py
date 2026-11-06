@@ -19,20 +19,10 @@ class RenderTaskConfig(BaseModel):
         """Builds rendering effects based on config."""
         from subvision.rendering.effects.blur import BlurEffect
         from subvision.rendering.effects.inpainting import InpaintEffect
-        from subvision.rendering.effects.propainter import ProPainterInpaintEffect
 
-        effects = []
         blur_dict = self.blur_settings.model_dump()
-        mode = blur_dict.get("mode", "hybrid")
-
-        if mode == "hybrid":
+        if self.blur_settings.mode == "hybrid":
             # InpaintEffect already applies residual ring-blur; full-ROI BlurEffect
             # would soap the reconstructed background.
-            effects.append(InpaintEffect(blur_dict))
-        elif mode == "propainter":
-            # ProPainter already fills the ROI; a follow-up blur smears any
-            # residual dark fill into letter-shaped blobs.
-            effects.append(ProPainterInpaintEffect(blur_dict))
-        else:
-            effects.append(BlurEffect(blur_dict))
-        return effects
+            return [InpaintEffect(blur_dict)]
+        return [BlurEffect(blur_dict)]

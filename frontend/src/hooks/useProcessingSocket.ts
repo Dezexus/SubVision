@@ -4,8 +4,9 @@ import axios from 'axios';
 import { useProcessingStore } from '../store/processingStore';
 import { useEmotionExportStore } from '../store/emotionExportStore';
 import { useUIStore } from '../store/uiStore';
-import { API_URL, API_BASE, getWsBase } from '../shared/api/config';
+import { API_URL, getWsBase } from '../shared/api/config';
 import type { SubtitleItem, WebSocketMessage } from '../types';
+import { translate } from '../i18n';
 
 function activeJobIds(): string[] {
   const { activeOcrJobId, activeBlurJobId } = useProcessingStore.getState();
@@ -32,17 +33,6 @@ function bindActiveJobId(jobId: string | null | undefined) {
   }
 }
 
-function triggerDownload(url: string, filename: string) {
-  const href = url.startsWith('http') ? url : `${API_BASE}${url}`;
-  const link = document.createElement('a');
-  link.href = href;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-}
-
-/** Deny-by-default: only accept events for our known active job ids. */
 function isRelevantJobEvent(jobId: string | undefined, opts?: { allowUntagged?: boolean }): boolean {
   const { isProcessing, stoppedJobId } = useProcessingStore.getState();
   if (jobId && stoppedJobId && jobId === stoppedJobId) {
@@ -53,7 +43,6 @@ function isRelevantJobEvent(jobId: string | undefined, opts?: { allowUntagged?: 
   }
   const ids = activeJobIds();
   if (ids.length === 0) {
-    // Enqueue in flight — never apply a stale finish/progress from a previous job.
     return false;
   }
   if (!jobId) {
@@ -83,7 +72,7 @@ function applyFinishState(
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
     showToast: boolean;
     replaceSubtitles: boolean;
-  }
+  },
 ) {
   const {
     setProcessing, setActiveOcrJobId, setActiveBlurJobId,
@@ -107,23 +96,19 @@ function applyFinishState(
     const isBlurJob = !data.job_id || data.job_id.startsWith('blur_');
     if (isEmotionJob && data.download_url) {
       const name = data.emotion_json ?? data.download_filename ?? 'emotion.json';
-      triggerDownload(data.download_url, name);
-      if (showToast) addToast('Emotion JSON готов', 'success');
+      useEmotionExportStore.getState().setPendingDownload({ url: data.download_url, filename: name });
+      if (showToast) addToast(translate('toasts.emotionReady'), 'success');
     } else if (isBlurJob && data.download_url) {
       setRenderedVideoUrl(data.download_url);
-      if (showToast) addToast('Render completed successfully', 'success');
+      if (showToast) addToast(translate('toasts.renderCompleted'), 'success');
     } else if (showToast) {
-      addToast('Processing completed successfully', 'success');
+      addToast(translate('toasts.processCompleted'), 'success');
     }
   } else if (showToast) {
-    addToast(data.error || 'Task failed', 'error');
+    addToast(data.error || translate('toasts.taskFailed'), 'error');
   }
 }
 
-/**
- * Soft-recover artifacts after a missed finish without flipping UI into "Completed".
- * Used on cold idle refresh — then ACK so the terminal state is not replayed again.
- */
 function softRecoverFinish(data: Extract<WebSocketMessage, { type: 'finish' }>) {
   const store = useProcessingStore.getState();
   if (!data.success) return;
@@ -137,9 +122,6 @@ function softRecoverFinish(data: Extract<WebSocketMessage, { type: 'finish' }>) 
   }
 }
 
-/**
- * Hook to manage WebSocket connection and synchronize processing state.
- */
 export const useProcessingSocket = (clientId: string | null) => {
   const addLog = useProcessingStore(s => s.addLog);
   const updateProgress = useProcessingStore(s => s.updateProgress);
@@ -151,7 +133,7 @@ export const useProcessingSocket = (clientId: string | null) => {
   const setActiveBlurJobId = useProcessingStore(s => s.setActiveBlurJobId);
   const setRenderedVideoUrl = useProcessingStore(s => s.setRenderedVideoUrl);
   const addToast = useUIStore(s => s.addToast);
-  const lastProgressAt = useRef(Date.now());
+  const lastProgressAt = useRef(0);
 
   const wsBase = getWsBase();
 
@@ -163,7 +145,6 @@ export const useProcessingSocket = (clientId: string | null) => {
       const state = res.last_state as WebSocketMessage | null | undefined;
       const local = useProcessingStore.getState();
 
-      // Active job: bind job id immediately so live WS events are accepted.
       if (res.has_active_job && res.job_id) {
         bindActiveJobId(res.job_id);
         if (!local.isProcessing) setProcessing(true);
@@ -174,7 +155,6 @@ export const useProcessingSocket = (clientId: string | null) => {
           updateProgress(state.current, state.total, state.eta);
           lastProgressAt.current = Date.now();
         }
-        // If job_status already terminal while active_job briefly races, fall through carefully.
         if (state?.type === 'finish' && (!state.job_id || state.job_id === res.job_id)) {
           applyFinishState(state, {
             setProcessing, setActiveOcrJobId, setActiveBlurJobId,
@@ -187,10 +167,8 @@ export const useProcessingSocket = (clientId: string | null) => {
         return;
       }
 
-      // Idle + terminal snapshot.
       if (state?.type === 'finish') {
         if (local.isProcessing) {
-          // Missed WS finish while UI still thinks a job is running.
           applyFinishState(state, {
             setProcessing, setActiveOcrJobId, setActiveBlurJobId,
             updateProgress, setRenderedVideoUrl, setSubtitles, addToast,
@@ -201,13 +179,11 @@ export const useProcessingSocket = (clientId: string | null) => {
           return;
         }
 
-        // Cold idle refresh: recover artifacts quietly, never show fake Completed.
         softRecoverFinish(state);
         await ackTerminalState(clientId, state.job_id);
         return;
       }
 
-      // No active job — clear stuck UI (missed finish / zombie processing flag).
       if (!res.has_active_job && local.isProcessing) {
         setProcessing(false);
         setActiveOcrJobId(null);
@@ -233,7 +209,7 @@ export const useProcessingSocket = (clientId: string | null) => {
       onOpen: () => {
         void syncFromServer({ showToast: true });
       },
-    }
+    },
   );
 
   useEffect(() => {

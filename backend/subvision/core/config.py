@@ -21,7 +21,6 @@ class Settings(BaseSettings):
 
     admin_api_key: str = ""
     admin_enabled: bool = False
-    hf_token: str = ""
     emotion_export_enabled: bool = True
     emotion_preload_model: bool = False
     gigaam_model_cache_dir: str = "uploads/models/gigaam"

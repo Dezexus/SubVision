@@ -1,7 +1,8 @@
 import asyncio
-import os
 import logging
+import os
 from typing import List, Optional
+
 from subvision.rendering.interfaces import CancellationToken
 
 logger = logging.getLogger(__name__)
@@ -12,8 +13,13 @@ class FFmpegTranscoder:
 
     @staticmethod
     async def run_cmd(cmd: List[str], cancel: Optional[CancellationToken] = None) -> None:
-        """Executes an FFmpeg command asynchronously with cancellation support."""
-        process = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+        """Execute FFmpeg asynchronously without hiding its diagnostics."""
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stderr_task = asyncio.create_task(process.stderr.read()) if process.stderr else None
         try:
             while True:
                 if cancel and cancel.is_cancelled_sync():
@@ -33,21 +39,46 @@ class FFmpegTranscoder:
             if process.returncode is None:
                 process.kill()
                 await process.wait()
+            if stderr_task:
+                await stderr_task
             raise
         finally:
             if process.returncode is None:
                 process.kill()
                 await process.wait()
 
+        stderr = await stderr_task if stderr_task else b""
         if process.returncode != 0:
-            raise RuntimeError(f"Command failed with code {process.returncode}")
+            details = stderr.decode("utf-8", errors="replace").strip()
+            message = f"FFmpeg command failed with code {process.returncode}"
+            if details:
+                message = f"{message}: {details[-2000:]}"
+            raise RuntimeError(message)
 
     @staticmethod
     async def transcode_with_audio(temp_video: str, original_video: str, output_path: str, dar: Optional[float] = None, encoder: str = "auto", cancel: Optional[CancellationToken] = None) -> str:
         """Muxes the generated video with the original audio without re-encoding the video stream."""
         logger.info("Muxing video with original audio...")
 
-        cmd = ["ffmpeg", "-y", "-i", temp_video, "-i", original_video, "-map", "0:v:0", "-map", "1:a:0?", "-c:v", "copy", "-c:a", "aac"]
+        cmd = [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            temp_video,
+            "-i",
+            original_video,
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a:0?",
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
+        ]
 
         if dar is not None:
             cmd.extend(["-aspect", f"{dar:.6f}"])

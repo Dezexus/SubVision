@@ -10,7 +10,6 @@ const blurCache = new Map<string, string>();
 const generateLocalPreview = async (
   filename: string,
   frameIndex: number,
-  metadata: VideoMetadata,
   settings: BlurSettings,
   text: string,
   signal: AbortSignal
@@ -103,7 +102,7 @@ export const useBlurPreview = (
       try {
         let url: string;
         if (blurSettings.mode === 'blur') {
-          url = await generateLocalPreview(metadata.filename, currentFrameIndex, metadata, blurSettings, text, abortController.signal);
+          url = await generateLocalPreview(metadata.filename, currentFrameIndex, blurSettings, text, abortController.signal);
         } else {
           url = await api.getBlurPreview({
             filename: metadata.filename,

@@ -1,7 +1,6 @@
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from subvision.domain.models import BlurSettings
-from subvision.domain.emotion_models import EmotionAnalysisSettings
 
 
 class VideoMetadata(BaseModel):
@@ -19,7 +18,6 @@ class PreviewConfig(BaseModel):
     filename: str
     frame_index: int
     roi: List[int]
-    scale_factor: float
 
 
 class ProcessConfig(BaseModel):
@@ -31,7 +29,6 @@ class ProcessConfig(BaseModel):
     step: Optional[int] = None
     min_conf: Optional[float] = None
     conf_threshold: Optional[float] = None
-    scale_factor: Optional[float] = None
     denoise_strength: Optional[float] = None
     smart_skip: Optional[bool] = None
     motion_mse_thresh: Optional[float] = None
@@ -64,6 +61,4 @@ class EmotionExportConfig(BaseModel):
     client_id: str
     subtitles: List[dict]
     emotion_settings: Optional[Dict[str, Any]] = None
-    speaker_gender_overrides: Optional[Dict[str, str]] = None
-    speaker_profile_overrides: Optional[Dict[str, Dict[str, str]]] = None
     original_filename: Optional[str] = None

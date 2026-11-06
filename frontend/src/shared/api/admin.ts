@@ -9,10 +9,8 @@ export const adminApi = {
     const { data } = await axios.get(`${API_URL}/admin/status`, adminHeaders(adminKey));
     return data as {
       redis: boolean;
-      hf_token_configured: boolean;
       gigaam_available: boolean;
       gigaam_weights_cached: boolean;
-      pyannote_available: boolean;
       emotion_export_enabled: boolean;
     };
   },

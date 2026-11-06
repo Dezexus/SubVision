@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Upload, AlertCircle, Loader2, Video, FileText, Wand2, Shield, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -19,35 +19,35 @@ export const WelcomeScreen = () => {
   const acceptString = `video/*,${exts.join(',')}`;
   const displayExts = exts.map((e) => e.replace('.', '').toUpperCase()).join(', ');
 
-  const handleFile = useCallback(async (file: File) => {
+  const handleFile = async (file: File) => {
     setErrorMsg(null);
     try {
       await execute(file);
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : String(err));
     }
-  }, [execute]);
+  };
 
-  const onDrop = useCallback((e: React.DragEvent) => {
+  const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     if (e.dataTransfer.files?.[0]) {
-      handleFile(e.dataTransfer.files[0]);
+      void handleFile(e.dataTransfer.files[0]);
     }
-  }, [handleFile]);
+  };
 
-  const onDragOver = useCallback((e: React.DragEvent) => {
+  const onDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
-  }, []);
+  };
 
-  const onDragLeave = useCallback(() => setIsDragging(false), []);
+  const onDragLeave = () => setIsDragging(false);
 
-  const onFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const onFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
-      handleFile(e.target.files[0]);
+      void handleFile(e.target.files[0]);
     }
-  }, [handleFile]);
+  };
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -56,7 +56,7 @@ export const WelcomeScreen = () => {
 
   const itemVariants = {
     hidden: { opacity: 0, y: 10 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' as const } },
   };
 
   const dropTitle = isLoading

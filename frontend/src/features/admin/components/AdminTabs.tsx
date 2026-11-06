@@ -2,14 +2,14 @@ import React from 'react';
 import { cn } from '../../../shared/lib';
 import { useTranslation } from '../../../i18n';
 
-export type AdminTab = 'system' | 'emotion' | 'speakers' | 'json' | 'jobs';
+export type AdminTab = 'system' | 'emotion' | 'json' | 'jobs';
 
 interface Props {
   active: AdminTab;
   onChange: (tab: AdminTab) => void;
 }
 
-const TABS: AdminTab[] = ['system', 'emotion', 'speakers', 'json', 'jobs'];
+const TABS: AdminTab[] = ['system', 'emotion', 'json', 'jobs'];
 
 export const AdminTabs: React.FC<Props> = ({ active, onChange }) => {
   const { t } = useTranslation();

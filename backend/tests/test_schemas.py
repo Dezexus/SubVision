@@ -1,3 +1,6 @@
+import pytest
+from pydantic import ValidationError
+
 from subvision.api.schemas import ProcessConfig, RenderConfig
 from subvision.domain.models import BlurSettings
 
@@ -18,19 +21,12 @@ def test_render_config_validates_blur_settings():
         filename="v.mp4",
         client_id="c1",
         subtitles=[],
-        blur_settings=BlurSettings(mode="propainter"),
+        blur_settings=BlurSettings(mode="hybrid"),
     )
-    assert config.blur_settings.mode == "propainter"
+    assert config.blur_settings.mode == "hybrid"
+    assert config.blur_settings.height_multiplier == 1.5
 
 
-def test_blur_settings_propainter_defaults():
-    settings = BlurSettings(mode="propainter")
-    assert settings.height_multiplier == 1.5
-    assert settings.propainter_neighbor_length == 8
-    assert settings.propainter_ref_stride == 8
-    assert settings.propainter_subvideo_length == 40
-    assert settings.propainter_roi_pad == 40
-    assert settings.propainter_mask_dilation == 6
-    assert settings.propainter_max_width == 640
-    assert settings.propainter_max_clip_frames == 48
-    assert settings.propainter_fp16 is True
+def test_removed_render_mode_is_rejected():
+    with pytest.raises(ValidationError):
+        BlurSettings(mode="propainter")

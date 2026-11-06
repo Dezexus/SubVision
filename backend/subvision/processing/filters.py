@@ -1,6 +1,6 @@
 from typing import Any
 import numpy as np
-from subvision.core.filters import apply_scaling, denoise_frame
+from subvision.core.filters import denoise_frame
 from subvision.core.motion import detect_change_absolute
 
 
@@ -48,12 +48,9 @@ class ImagePipeline:
         return False
 
     def apply_filters_to_roi(self, roi_crop: np.ndarray) -> np.ndarray | None:
-        """Apply denoise and scale to an already cropped ROI."""
+        """Apply denoise to an already cropped ROI."""
         if roi_crop is None or roi_crop.size == 0:
             return None
 
         denoise_str = float(self.config.get("denoise_strength", 3))
-        scale_factor = float(self.config.get("scale_factor", 2.0))
-
-        denoised = denoise_frame(roi_crop, strength=denoise_str)
-        return apply_scaling(denoised, scale_factor=scale_factor)
+        return denoise_frame(roi_crop, strength=denoise_str)

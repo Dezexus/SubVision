@@ -9,7 +9,7 @@ interface DraggedEdge {
 }
 
 export const useSubtitleDrag = (
-  scrollContainerRef: React.RefObject<HTMLDivElement>,
+  scrollContainerRef: React.RefObject<HTMLDivElement | null>,
   isSnappingEnabled: boolean = true
 ) => {
   const [draggedEdge, setDraggedEdge] = useState<DraggedEdge | null>(null);

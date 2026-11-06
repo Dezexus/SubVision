@@ -1,14 +1,17 @@
-"""GigaAM-Emo inference with optional stub fallback."""
+"""GigaAM-Emo inference."""
 
 from __future__ import annotations
 
-import hashlib
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from subvision.core.config import settings
-from subvision.domain.emotion_models import EmotionExportSettings
+from subvision.core.ml_compat import apply_ml_compat
+
+apply_ml_compat()
+
+from subvision.core.config import settings  # noqa: E402
+from subvision.domain.emotion_models import EmotionExportSettings  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -109,9 +112,7 @@ class EmotionEngine:
     def __init__(self, cfg: EmotionExportSettings) -> None:
         self.cfg = cfg
         self._model: Any = None
-        self._backend: str = "stub"
-        self._onnx_sessions: Any = None
-        self._onnx_cfg: Any = None
+        self._backend: str = "unloaded"
 
     def _ensure_cache_dir(self) -> Path:
         cache = model_cache_path(self.cfg)
@@ -136,7 +137,9 @@ class EmotionEngine:
             device,
             requested,
         )
-        self._model = gigaam.load_model(
+        from subvision.processing.gigaam_loader import load_gigaam_model
+
+        self._model = load_gigaam_model(
             self.cfg.model_revision,
             download_root=str(cache),
             device=device,
@@ -147,17 +150,15 @@ class EmotionEngine:
         if self._model is not None:
             return
         if not gigaam_available():
-            logger.info("gigaam not installed — using stub emotion engine")
-            self._model = "stub"
-            self._backend = "stub"
-            return
+            raise RuntimeError(
+                "GigaAM is not installed. Rebuild the worker with INSTALL_EMOTION_DEPS=1 "
+                "or disable emotion analysis."
+            )
         cache = self._ensure_cache_dir()
         self._load_torch(cache)
 
     def analyze_wav(self, wav_path: Path) -> Dict[str, float]:
         self._load_model()
-        if self._backend == "stub":
-            return _stub_probs(wav_path, self.cfg.labels)
         probs = self._model.get_probs(str(wav_path))
         return {k: float(v) for k, v in probs.items()}
 
@@ -221,13 +222,3 @@ def postprocess_emotion(
     if confidence < cfg.confidence_threshold:
         primary = cfg.unknown_label
     return {"primary": primary, "confidence": confidence, "probs": normalized}
-
-
-def _stub_probs(wav_path: Path, labels: List[str]) -> Dict[str, float]:
-    """Deterministic pseudo-probs for dev/tests when gigaam is absent."""
-    digest = hashlib.sha256(str(wav_path).encode()).hexdigest()
-    raw = [int(digest[i : i + 2], 16) + 1 for i in range(0, min(len(labels) * 2, len(digest) - 1), 2)]
-    while len(raw) < len(labels):
-        raw.append(1)
-    total = float(sum(raw[: len(labels)]))
-    return {labels[i]: raw[i] / total for i in range(len(labels))}

@@ -1,7 +1,7 @@
-import React from 'react';
 import { Globe } from 'lucide-react';
 import { Slider, Switch } from '../../../shared/ui';
 import { useLanguagesQuery } from '../queries/useLanguagesQuery';
+import { useTranslation } from '../../../i18n';
 import type { OcrSettings } from '../../../types';
 
 interface Props {
@@ -10,46 +10,40 @@ interface Props {
   defaultConfig: OcrSettings;
 }
 
-/**
- * Advanced settings component for configuring OCR parameters and processing behavior.
- */
 export const AdvancedSettings = ({ config, setConfig, defaultConfig }: Props) => {
+  const { t } = useTranslation();
   const { data: availableLanguages = [] } = useLanguagesQuery();
 
   return (
     <div className="space-y-5">
       <div className="space-y-3">
-        <div className="flex justify-between items-end mb-1">
-          <label className="text-xs font-bold uppercase tracking-wide text-txt-muted select-none flex items-center gap-1.5">
-            <Globe size={12} /> OCR Language
-          </label>
-        </div>
+        <label className="text-xs font-bold uppercase tracking-wide text-txt-muted select-none flex items-center gap-1.5">
+          <Globe size={12} /> {t('settings.ocrLanguage')}
+        </label>
         <div className="relative">
           <select
-             value={config.languages || defaultConfig.languages || 'en'}
+            value={config.languages || defaultConfig.languages || 'en'}
             onChange={(e) => setConfig({ languages: e.target.value })}
             className="w-full bg-bg-input border border-border-strong rounded-md text-sm text-txt-main px-3 py-2 focus:outline-none focus:ring-1 focus:ring-brand-500 appearance-none cursor-pointer font-medium"
           >
             {availableLanguages.length === 0 ? (
-              <option value="en">English</option>
-           ) : (
+              <option value="en">{t('settings.langEn')}</option>
+            ) : (
               availableLanguages.map((lang) => (
                 <option key={lang.code} value={lang.code}>
                   {lang.name}
                 </option>
               ))
-             )}
+            )}
           </select>
-          <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-txt-subtle">
-            <svg className="w-4 h-4 fill-current" viewBox="0 0 20 20">
-              <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" fillRule="evenodd"></path>
-            </svg>
-           </div>
         </div>
+        <p className="text-[11px] leading-snug text-txt-muted select-none">
+          {t('settings.ocrEngineNote')}
+        </p>
       </div>
 
       <Slider
-        label="Min Confidence"
+        label={t('settings.minConfidence')}
         min={50} max={100} step={1}
         value={config.conf_threshold ?? defaultConfig.conf_threshold ?? 0}
         valueDisplay={`${config.conf_threshold ?? defaultConfig.conf_threshold ?? 0}%`}
@@ -57,23 +51,18 @@ export const AdvancedSettings = ({ config, setConfig, defaultConfig }: Props) =>
       />
 
       <Slider
-        label="Scan Step (Frames)"
+        label={t('settings.scanStep')}
         min={1} max={10} step={1}
         value={config.step ?? defaultConfig.step ?? 0}
-        valueDisplay={config.step ?? defaultConfig.step ?? 0}
+        valueDisplay={String(config.step ?? defaultConfig.step ?? 0)}
         onChange={(e) => setConfig({ step: Number(e.target.value) })}
       />
 
-      <div className="space-y-1 pt-2 border-t border-border-main">
+      <div className="pt-2 border-t border-border-main">
         <Switch
-          label="Smart Skip (Static Scenes)"
+          label={t('settings.smartSkip')}
           checked={config.smart_skip ?? defaultConfig.smart_skip ?? false}
           onChange={(val) => setConfig({ smart_skip: val })}
-        />
-        <Switch
-          label="Upscale (2x Resolution)"
-          checked={(config.scale_factor ?? defaultConfig.scale_factor ?? 1.0) > 1.5}
-          onChange={(val) => setConfig({ scale_factor: val ? 2.0 : 1.0 })}
         />
       </div>
     </div>

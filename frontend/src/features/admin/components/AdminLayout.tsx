@@ -29,8 +29,8 @@ export const AdminLayout: React.FC<Props> = ({
 }) => {
   const { t } = useTranslation();
   return (
-    <div className="min-h-screen bg-bg-main text-txt-main">
-      <header className="sticky top-0 z-20 bg-bg-main/95 backdrop-blur border-b border-border-main">
+    <div className="h-screen min-h-0 flex flex-col bg-bg-main text-txt-main overflow-hidden">
+      <header className="shrink-0 z-20 bg-bg-main/95 backdrop-blur border-b border-border-main">
         <div className="max-w-4xl mx-auto px-6 py-4 space-y-3">
           <div className="flex items-center justify-between gap-4">
             <h1 className="text-xl font-bold flex items-center gap-2">
@@ -60,7 +60,9 @@ export const AdminLayout: React.FC<Props> = ({
           )}
         </div>
       </header>
-      <main className="max-w-4xl mx-auto px-6 py-6">{children}</main>
+      <main className="flex-1 min-h-0 overflow-y-auto">
+        <div className="max-w-4xl mx-auto px-6 py-6 pb-16">{children}</div>
+      </main>
     </div>
   );
 };

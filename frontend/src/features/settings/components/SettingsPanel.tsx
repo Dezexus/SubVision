@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Play, Square, RefreshCw, ChevronLeft, ChevronRight, Settings2, AlertTriangle } from 'lucide-react';
 import { useVideoStore } from '../../../store/videoStore';
 import { useProcessingStore } from '../../../store/processingStore';
@@ -11,12 +11,14 @@ import { BlurControlPanel } from '../../blur';
 import { useStartOcr } from '../mutations/useStartOcr';
 import { useStopOcr } from '../mutations/useStopOcr';
 import { useDefaultProcessConfigQuery } from '../queries/useDefaultProcessConfigQuery';
+import { useTranslation } from '../../../i18n';
 import type { ProcessConfig } from '../../../types';
 
 /**
  * Renders the settings panel for configuring OCR options and navigating to blur settings.
  */
 export const SettingsPanel = () => {
+  const { t } = useTranslation();
   const metadata = useVideoStore((s) => s.metadata);
   const clientId = useVideoStore((s) => s.clientId);
   const roi = useVideoStore((s) => s.roi);
@@ -63,7 +65,6 @@ export const SettingsPanel = () => {
       languages: config.languages || 'en',
       step: config.step,
       conf_threshold: config.conf_threshold,
-      scale_factor: config.scale_factor,
       denoise_strength: config.denoise_strength,
       smart_skip: config.smart_skip,
       motion_mse_thresh: config.motion_mse_thresh,
@@ -92,7 +93,7 @@ export const SettingsPanel = () => {
       <div className="p-4 border-b border-border-main flex justify-between items-center bg-bg-panel h-14 shrink-0">
         {!isCollapsed && (
           <h2 className="font-bold text-txt-main uppercase tracking-wider text-sm whitespace-nowrap overflow-hidden">
-            {isBlurMode ? 'Blur Settings' : 'Project Settings'}
+            {isBlurMode ? t('settings.blurTitle') : t('settings.title')}
           </h2>
         )}
     
@@ -105,7 +106,7 @@ export const SettingsPanel = () => {
                  ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' 
                   : 'hover:bg-bg-surface text-txt-dim hover:text-txt-main'
               }`}
-              title={confirmReset ? "Click again to confirm" : "New Project"}
+              title={confirmReset ? t('settings.confirmResetHint') : t('settings.newProject')}
             >
               {confirmReset ? <AlertTriangle size={16} /> : <RefreshCw size={16} />}
             </button>
@@ -113,7 +114,7 @@ export const SettingsPanel = () => {
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
             className="p-2 hover:bg-bg-surface rounded text-txt-dim hover:text-txt-main transition-colors"
-            title={isCollapsed ? "Expand panel" : "Collapse panel"}
+            title={isCollapsed ? t('settings.expandPanel') : t('settings.collapsePanel')}
           >
             {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
           </button>
@@ -154,7 +155,7 @@ export const SettingsPanel = () => {
               icon={<Play size={20} fill="currentColor" />}
               disabled={!metadata || hasActiveJob}
             >
-              START PROCESSING
+              {t('settings.start')}
             </Button>
           ) : (
             <Button
@@ -163,7 +164,7 @@ export const SettingsPanel = () => {
               className="w-full py-3.5 text-base font-semibold shadow-lg"
               icon={<Square size={20} fill="currentColor" />}
             >
-              STOP
+              {t('settings.stop')}
             </Button>
           )}
         </div>
@@ -176,7 +177,7 @@ export const SettingsPanel = () => {
               onClick={handleStart} 
               disabled={!metadata || hasActiveJob} 
               className="p-2.5 bg-brand-500 text-white rounded-full disabled:opacity-50 disabled:grayscale transition-transform hover:scale-105 active:scale-95 shadow-md"
-              title="Start Processing"
+              title={t('settings.start')}
             >
               <Play size={18} fill="currentColor" />
             </button>
@@ -184,7 +185,7 @@ export const SettingsPanel = () => {
             <button 
               onClick={handleStop} 
               className="p-2.5 bg-red-500 text-white rounded-full transition-transform hover:scale-105 active:scale-95 shadow-md animate-pulse"
-              title="Stop Processing"
+              title={t('settings.stop')}
             >
               <Square size={18} fill="currentColor" />
             </button>

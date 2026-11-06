@@ -18,7 +18,6 @@ export interface PresetConfig {
   min_conf: number;
   smart_skip: boolean;
   denoise_strength: number;
-  scale_factor: number;
   motion_mse_thresh?: number;
   gap_tolerance?: number;
   min_event_frames_mult?: number;
@@ -26,8 +25,6 @@ export interface PresetConfig {
 
 export interface Preset {
   id: string;
-  label: string;
-  desc: string;
   config: PresetConfig;
 }
 
@@ -45,7 +42,6 @@ export interface ProcessConfig {
   step?: number;
   conf_threshold?: number;
   min_conf?: number;
-  scale_factor?: number;
   denoise_strength?: number;
   smart_skip?: boolean;
   motion_mse_thresh?: number;
@@ -56,7 +52,7 @@ export interface ProcessConfig {
 export type OcrSettings = Omit<ProcessConfig, 'filename' | 'client_id' | 'roi'>;
 
 export interface BlurSettings {
-  mode: string;
+  mode: 'blur' | 'hybrid';
   y: number;
   font_size: number;
   sigma: number;
@@ -64,14 +60,6 @@ export interface BlurSettings {
   width_multiplier: number;
   height_multiplier?: number;
   encoder: string;
-  propainter_neighbor_length?: number;
-  propainter_ref_stride?: number;
-  propainter_subvideo_length?: number;
-  propainter_fp16?: boolean;
-  propainter_roi_pad?: number;
-  propainter_mask_dilation?: number;
-  propainter_max_width?: number;
-  propainter_max_clip_frames?: number;
 }
 
 export interface RenderConfig {

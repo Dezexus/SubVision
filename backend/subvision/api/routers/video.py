@@ -165,7 +165,7 @@ async def get_frame(filename: str, frame_index: int):
 async def get_preview(config: PreviewConfig):
     """Legacy HTTP preview endpoint."""
     video_path = get_video_path(config.filename)
-    preview_image = await asyncio.to_thread(generate_video_preview, video_path=video_path, frame_index=config.frame_index, roi_override=config.roi, scale_factor=config.scale_factor)
+    preview_image = await asyncio.to_thread(generate_video_preview, video_path=video_path, frame_index=config.frame_index, roi_override=config.roi)
     if preview_image is None:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Processing failed")
     _, encoded_img = cv2.imencode(".jpg", preview_image)
@@ -182,7 +182,7 @@ async def preview_stream_endpoint(websocket: WebSocket, client_id: str):
             try:
                 config = PreviewConfig.model_validate_json(data)
                 video_path = get_video_path(config.filename)
-                preview_image = await asyncio.to_thread(generate_video_preview, video_path=video_path, frame_index=config.frame_index, roi_override=config.roi, scale_factor=config.scale_factor)
+                preview_image = await asyncio.to_thread(generate_video_preview, video_path=video_path, frame_index=config.frame_index, roi_override=config.roi)
                 if preview_image is not None:
                     _, encoded_img = cv2.imencode(".jpg", preview_image)
                     await connection_manager.send_bytes(client_id, encoded_img.tobytes())

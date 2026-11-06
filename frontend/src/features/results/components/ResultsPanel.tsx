@@ -12,9 +12,6 @@ import { useImportSrt } from '../mutations/useImportSrt';
 import { API_BASE } from '../../../shared/api';
 import { useTranslation } from '../../../i18n';
 import { cn, exportStem, exportWithSuffix } from '../../../shared/lib';
-import { useEmotionExportStore } from '../../../store/emotionExportStore';
-import { useUIStore } from '../../../store/uiStore';
-import { readEmotionJsonSpeakers } from '../../export/lib/emotionJsonImport';
 
 export const ResultsPanel = () => {
   const { t } = useTranslation();
@@ -38,8 +35,6 @@ export const ResultsPanel = () => {
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [emotionOpen, setEmotionOpen] = useState(false);
-  const setSpeakerProfileOverrides = useEmotionExportStore((s) => s.setSpeakerProfileOverrides);
-  const addToast = useUIStore((s) => s.addToast);
 
   const actionsDisabled = isProcessing || !metadata || subtitles.length === 0;
 
@@ -63,17 +58,6 @@ export const ResultsPanel = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  };
-
-  const handleImportEmotionJson = async (file: File) => {
-    try {
-      const overrides = await readEmotionJsonSpeakers(file);
-      setSpeakerProfileOverrides(overrides);
-      addToast(t('results.importEmotionJsonSuccess', { count: Object.keys(overrides).length }), 'success');
-      setEmotionOpen(true);
-    } catch (e) {
-      addToast(e instanceof Error ? e.message : t('results.importEmotionJsonFailed'), 'error');
-    }
   };
 
   return (
@@ -141,7 +125,6 @@ export const ResultsPanel = () => {
               disabled={actionsDisabled}
               onExportSrt={exportSrt}
               onExportEmotion={() => setEmotionOpen(true)}
-              onImportEmotionJson={handleImportEmotionJson}
             />
             <Button
               variant="secondary"

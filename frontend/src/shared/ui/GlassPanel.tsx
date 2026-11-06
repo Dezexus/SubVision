@@ -12,7 +12,7 @@ export const GlassPanel = ({ children, className, ...props }: GlassPanelProps) =
   return (
     <div
       className={cn(
-        "relative flex flex-col overflow-hidden",
+        "relative flex flex-col min-h-0",
         "rounded-xl",
         "bg-bg-panel",
         "border border-border-main",
