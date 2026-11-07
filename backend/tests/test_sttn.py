@@ -6,6 +6,7 @@ import pytest
 
 from subvision.domain.models import BlurSettings
 from subvision.rendering.effects import sttn
+from subvision.rendering.effects.inpainting import cue_mask_samples, cue_text_mask, generate_text_mask, hybrid_blend_alpha
 from subvision.rendering.effects.sttn import MODEL_HEIGHT, MODEL_WIDTH, STTNEffect, StripModel, strip_region
 from subvision.rendering.models import RenderTaskConfig
 
@@ -61,17 +62,24 @@ def test_strip_fits_a_frame_narrower_than_the_model():
     assert y + h <= 240
 
 
-def test_only_masked_pixels_change(monkeypatch):
+def test_changes_exactly_the_area_hybrid_changes(monkeypatch):
     frames = _frames(32)
     effect = _effect(monkeypatch, frames, lambda strips: [np.full_like(s, 200) for s in strips])
+    cue = effect.frame_cues[10][0]
 
     result = effect.apply(frames[10].copy(), 10)
     changed = np.any(result != frames[10], axis=2)
 
+    samples = [generate_text_mask(frames[i], cue.roi, FONT) for i in cue_mask_samples(cue.start_f, cue.end_f)]
+    work_roi, work_mask = cue_text_mask(samples, cue.roi, max(2, int(FONT * 0.2)))
+    (hx, hy, hw, hh), alpha = hybrid_blend_alpha(frames[10].shape, work_roi, FONT, work_mask)
+    hybrid_area = np.zeros(changed.shape, dtype=bool)
+    hybrid_area[hy : hy + hh, hx : hx + hw] = alpha > 0.01
+
     assert isinstance(next(iter(effect._models.values())), StripModel)
     assert changed.any()
-    assert not changed[:900].any()
-    assert not changed[:, :900].any()
+    assert not (changed[:hy].any() or changed[hy + hh :].any() or changed[:, :hx].any() or changed[:, hx + hw :].any())
+    assert changed[hybrid_area].mean() > 0.9
 
 
 def test_each_frame_gets_its_own_fill(monkeypatch):
@@ -101,16 +109,14 @@ def test_long_cue_is_split_into_passes(monkeypatch):
     assert sum(sizes) == 31 and max(sizes) == 10
 
 
-def test_empty_mask_falls_back_to_hybrid_without_running_the_model(monkeypatch):
+def test_cue_without_detectable_text_still_gets_hybrids_band(monkeypatch):
     flat = [np.full((H, W, 3), 60, dtype=np.uint8) for _ in range(32)]
+    effect = _effect(monkeypatch, flat, lambda strips: [np.full_like(s, 200) for s in strips])
 
-    def paint(_strips):
-        raise AssertionError("model must not run without a mask")
+    result = effect.apply(flat[5].copy(), 5)
 
-    effect = _effect(monkeypatch, flat, paint)
-    effect.apply(flat[5].copy(), 5)
-
-    assert list(effect._models.values()) == [None]
+    assert isinstance(next(iter(effect._models.values())), StripModel)
+    assert np.any(result != flat[5])
 
 
 def test_tampered_weights_are_rejected(monkeypatch, tmp_path):
@@ -133,36 +139,4 @@ def test_generator_matches_the_published_weights():
         out = generator.decoder(generator.transformer(feats))
 
     assert out.shape == (2, 3, MODEL_HEIGHT, MODEL_WIDTH)
-
-
-def test_mask_keeps_static_text_and_drops_moving_background():
-    rng = np.random.default_rng(3)
-    noise = rng.integers(0, 255, (8, 40, 3), dtype=np.uint8)
-    background = cv2.GaussianBlur(cv2.resize(noise, (440, 96), interpolation=cv2.INTER_CUBIC), (0, 0), 3)
-    grays = []
-    for shift in range(0, 96, 8):
-        frame = background[:, shift : shift + 320].copy()
-        cv2.putText(frame, "Subtitle", (70, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2, cv2.LINE_AA)
-        grays.append(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
-    text = np.zeros((96, 320), dtype=np.uint8)
-    cv2.putText(text, "Subtitle", (70, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.0, 255, 2, cv2.LINE_AA)
-    area = cv2.dilate(text, np.ones((5, 5), np.uint8)) > 0
-
-    mask = sttn.stable_text_mask(grays, 24) > 0
-
-    assert mask[area].mean() > 0.9
-    assert mask[~area].mean() < 0.2
-
-
-def test_dense_static_texture_falls_back_to_hybrid(monkeypatch):
-    noise = [np.random.default_rng(1).integers(0, 255, (H, W, 3), dtype=np.uint8)] * 32
-
-    def paint(_strips):
-        raise AssertionError("model must not run on texture")
-
-    effect = _effect(monkeypatch, noise, paint)
-    result = effect.apply(noise[5].copy(), 5)
-
-    assert list(effect._models.values()) == [None]
-    assert not np.array_equal(result, noise[5])
 

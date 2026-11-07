@@ -1,10 +1,10 @@
 """STTN subtitle removal (test mode): a video transformer repaints the text strip.
 
 The model sees neighbouring frames, so its fill stays consistent over time and it
-invents structure TELEA cannot. It runs once per cue on a strip around the text,
-and only the masked pixels of its output reach the frame. Hybrid is the fallback
-when no text mask can be built. Torch exists only in the worker image, so nothing
-here may import it at module level.
+invents structure TELEA cannot. It runs once per cue on a strip around the text.
+Its output replaces exactly what hybrid would replace, with the same text mask and
+the same soft band, so the two modes differ only in what fills that area. Torch
+exists only in the worker image, so nothing here may import it at module level.
 """
 
 from __future__ import annotations
@@ -23,7 +23,13 @@ import numpy as np
 
 from subvision.core.config import settings
 from subvision.core.video_io import iter_frames_range
-from subvision.rendering.effects.inpainting import _apply_hybrid_inpaint, _odd_kernel_size
+from subvision.rendering.effects.inpainting import (
+    _apply_hybrid_inpaint,
+    cue_mask_samples,
+    cue_text_mask,
+    generate_text_mask,
+    hybrid_blend_alpha,
+)
 from subvision.rendering.geometry import calculate_text_roi
 
 logger = logging.getLogger(__name__)
@@ -38,20 +44,12 @@ NEIGHBOR_STRIDE = 5
 REFERENCE_STEP = 10
 # Encoded frames stay on the GPU at about 5 MB each, so long cues go through in parts.
 MAX_FRAMES_PER_PASS = 200
-MASK_SAMPLES = 6
 # The model is trained on subtitles from whole frames scaled to its input, so it only
 # recognises letters of about that size: a tighter crop leaves them on screen as a ghost.
 STRIP_WIDTH_FONTS = 50.0
 # Same quality as float32 in testing, at twice the speed and under half the memory.
 USE_HALF_PRECISION = True
 
-MASK_VOTE_RATIO = 0.6
-# Text keeps its value between frames; textured background has edges but keeps changing.
-MAX_TEXT_STD = 8.0
-# Text leaves gaps between glyphs; a mask this dense is static texture, not text.
-MAX_MASK_COVERAGE = 0.9
-# Wide enough to take in the soft drop shadow, which is too faint to be voted in.
-MASK_GROW = 0.7
 
 
 @dataclass
@@ -64,7 +62,8 @@ class Cue:
 @dataclass
 class StripModel:
     region: Roi
-    mask: np.ndarray
+    blend_region: Roi
+    alpha: np.ndarray
     fills: Dict[int, np.ndarray] = field(default_factory=dict)
 
 
@@ -147,38 +146,13 @@ def run_model(strips: List[np.ndarray]) -> List[np.ndarray]:
     return [cv2.cvtColor(frame, cv2.COLOR_RGB2BGR) for frame in averaged]
 
 
-def glyph_mask(gray: np.ndarray, font_size_px: int) -> np.ndarray:
-    """Single-frame text candidates: edges, bright strokes and dark outlines."""
-    h, w = gray.shape[:2]
-    grad = cv2.morphologyEx(gray, cv2.MORPH_GRADIENT, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
-    stroke_k = _odd_kernel_size(max(5, int(font_size_px * 0.5)), min(h, w))
-    stroke = cv2.getStructuringElement(cv2.MORPH_RECT, (stroke_k, stroke_k))
-    tophat = cv2.morphologyEx(gray, cv2.MORPH_TOPHAT, stroke)
-    blackhat = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, stroke)
-    return (((grad > 25) | (tophat > 25) | (blackhat > 25)).astype(np.uint8)) * 255
-
-
-def stable_text_mask(grays: List[np.ndarray], font_size_px: int) -> np.ndarray:
-    """Keep what stays in place across the cue, so moving background drops out."""
-    votes = np.zeros(grays[0].shape, dtype=np.float32)
-    for gray in grays:
-        votes += glyph_mask(gray, font_size_px) > 0
-    steady = np.std(np.stack(grays, axis=0).astype(np.float32), axis=0) < MAX_TEXT_STD
-    mask = ((votes >= max(1.0, MASK_VOTE_RATIO * len(grays))) & steady).astype(np.uint8) * 255
-
-    h, w = mask.shape[:2]
-    close_k = _odd_kernel_size(max(3, int(font_size_px * 0.15)), min(h, w))
-    dilate_k = _odd_kernel_size(max(5, int(font_size_px * MASK_GROW)), min(h, w))
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (close_k, close_k)))
-    return cv2.dilate(mask, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (dilate_k, dilate_k)))
-
-
-def soft_alpha(mask: np.ndarray, font_size_px: int) -> np.ndarray:
-    """Blend weights that reach 1 on the mask; growing first keeps the seam off the glyphs."""
-    h, w = mask.shape[:2]
-    k = _odd_kernel_size(max(3, int(font_size_px * 0.15)), min(h, w))
-    grown = cv2.dilate(mask, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
-    return np.maximum(cv2.GaussianBlur(grown, (k, k), 0), mask).astype(np.float32)[..., None] / 255.0
+def _clip_to_strip(blend_region: Roi, alpha: np.ndarray, strip: Roi) -> Tuple[Roi, np.ndarray]:
+    """Keep the part of hybrid's region the model repainted; outside it stays untouched."""
+    bx, by, bw, bh = blend_region
+    sx, sy, sw, sh = strip
+    x0, y0 = max(bx, sx), max(by, sy)
+    x1, y1 = min(bx + bw, sx + sw), min(by + bh, sy + sh)
+    return (x0, y0, max(0, x1 - x0), max(0, y1 - y0)), alpha[y0 - by : y1 - by, x0 - bx : x1 - bx]
 
 
 def strip_region(roi: Roi, frame_shape: Tuple[int, ...], font_size_px: int) -> Roi:
@@ -225,42 +199,29 @@ class STTNEffect:
         load_generator()
         logger.info("STTNEffect indexed %d frames", len(self.frame_cues))
 
-    def _cue_mask(self, grays: List[np.ndarray], cue: Cue, region: Roi) -> Optional[np.ndarray]:
-        """Stable text inside the ROI, or None when no usable mask exists."""
-        # Votes run on the region so morphology has context, but only the ROI may be masked.
-        mask = stable_text_mask(grays, self.font_size_px)
-        keep = np.zeros_like(mask)
-        ox, oy = cue.roi[0] - region[0], cue.roi[1] - region[1]
-        # The ROI width is only an estimate, so text may run a little past its sides.
-        side = self.font_size_px * 2
-        keep[oy : oy + cue.roi[3], max(0, ox - side) : ox + cue.roi[2] + side] = 255
-        mask = cv2.bitwise_and(mask, keep)
-        coverage = cv2.countNonZero(mask) / float(cue.roi[2] * cue.roi[3])
-        return None if coverage == 0.0 or coverage > MAX_MASK_COVERAGE else mask
-
     def _build_model(self, cue: Cue, frame_shape: Tuple[int, ...]) -> Optional[StripModel]:
         x, y, w, h = region = strip_region(cue.roi, frame_shape, self.font_size_px)
-        span = cue.end_f - cue.start_f
-        trim = span // 10
-        sampled = {int(f) for f in np.linspace(cue.start_f + trim, cue.end_f - 1 - trim, num=min(MASK_SAMPLES, span))}
+        sampled = set(cue_mask_samples(cue.start_f, cue.end_f))
 
         indices: List[int] = []
         strips: List[np.ndarray] = []
-        grays: List[np.ndarray] = []
+        text_masks: List[np.ndarray] = []
         for f_idx, frame in iter_frames_range(self.video_path, cue.start_f, cue.end_f, correct_sar=False):
-            crop = frame[y : y + h, x : x + w]
             indices.append(f_idx)
-            strips.append(cv2.resize(crop, (MODEL_WIDTH, MODEL_HEIGHT), interpolation=cv2.INTER_AREA))
+            strips.append(cv2.resize(frame[y : y + h, x : x + w], (MODEL_WIDTH, MODEL_HEIGHT), interpolation=cv2.INTER_AREA))
             if f_idx in sampled:
-                grays.append(cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY))
-        if not grays:
+                text_masks.append(generate_text_mask(frame, cue.roi, self.font_size_px))
+        if not strips:
             return None
 
-        mask = self._cue_mask(grays, cue, region)
-        if mask is None:
+        # Same mask and band as hybrid, so this mode only changes what fills them.
+        work_roi, work_mask = cue_text_mask(text_masks, cue.roi, max(2, int(self.font_size_px * 0.2)))
+        blend = hybrid_blend_alpha(frame_shape, work_roi, self.font_size_px, work_mask)
+        if blend is None:
             return None
+        blend_region, alpha = _clip_to_strip(blend[0], blend[1], region)
 
-        model = StripModel(region=region, mask=mask)
+        model = StripModel(region=region, blend_region=blend_region, alpha=alpha)
         for start in range(0, len(strips), MAX_FRAMES_PER_PASS):
             part = slice(start, start + MAX_FRAMES_PER_PASS)
             # The model is trained on real subtitles, so it gets the frames as they are:
@@ -290,9 +251,12 @@ class STTNEffect:
                 continue
             nearest = min(model.fills, key=lambda f: abs(f - frame_index))
             x, y, w, h = model.region
-            fill = cv2.resize(model.fills[nearest], (w, h), interpolation=cv2.INTER_CUBIC).astype(np.float32)
-            alpha = soft_alpha(model.mask, self.font_size_px)
-            frame[y : y + h, x : x + w] = (fill * alpha + frame[y : y + h, x : x + w] * (1.0 - alpha)).astype(np.uint8)
+            bx, by, bw, bh = model.blend_region
+            fill = cv2.resize(model.fills[nearest], (w, h), interpolation=cv2.INTER_CUBIC)
+            fill = fill[by - y : by - y + bh, bx - x : bx - x + bw].astype(np.float32)
+            alpha = model.alpha[..., None]
+            target = frame[by : by + bh, bx : bx + bw]
+            frame[by : by + bh, bx : bx + bw] = (fill * alpha + target * (1.0 - alpha)).astype(np.uint8)
         return frame
 
     def get_debug_info(self) -> Dict[str, Any]:

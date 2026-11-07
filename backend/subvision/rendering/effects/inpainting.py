@@ -233,31 +233,26 @@ def _gaussian_blur_blend(
     return np.clip(out, 0, 255).astype(np.uint8)
 
 
-def _apply_hybrid_inpaint(
-    frame: np.ndarray,
+def _hybrid_work_area(
+    frame_shape: Tuple[int, ...],
     roi: Tuple[int, int, int, int],
     font_size_px: int,
-    mask: Optional[np.ndarray] = None,
-    *,
-    apply_residual_blur: bool = True,
-    blur_settings: Optional[Dict[str, Any]] = None,
-) -> np.ndarray:
-    """Inpaint glyphs then always apply soft band blur with expanded feather margin."""
+    mask: np.ndarray,
+) -> Optional[Tuple[Tuple[int, int, int, int], np.ndarray, int, int]]:
+    """Expanded region hybrid works on, the text mask placed in it, and its paddings."""
     bx, by, bw, bh = roi
     if bw <= 0 or bh <= 0:
-        return frame
+        return None
 
-    fh, fw = frame.shape[:2]
+    fh, fw = frame_shape[:2]
     # Expand so blur samples hair/bg above & below the green UI box; seam dissolves outside it.
     pad_y = max(20, int(font_size_px * 1.4))
     pad_x = max(12, int(font_size_px * 0.5))
     work_roi, (ox, oy) = _expand_roi_clamped(roi, pad_x, pad_y, fw, fh)
     wx, wy, ww, wh = work_roi
     if ww <= 0 or wh <= 0:
-        return frame
+        return None
 
-    if mask is None:
-        mask = generate_text_mask(frame, roi, font_size_px)
     if mask.size == 0:
         mask = np.zeros((bh, bw), dtype=np.uint8)
     elif mask.shape[:2] != (bh, bw):
@@ -268,13 +263,77 @@ def _apply_hybrid_inpaint(
     x1 = min(ww, ox + bw)
     if y1 > oy and x1 > ox:
         work_mask[oy:y1, ox:x1] = mask[: y1 - oy, : x1 - ox]
+    return work_roi, work_mask, pad_x, pad_y
 
-    original_work = frame[wy : wy + wh, wx : wx + ww].copy()
-    crop = original_work.copy()
-    coverage = _mask_coverage(work_mask)
+
+def _hybrid_glyph_alpha(work_mask: np.ndarray, font_size_px: int, pad_x: int, pad_y: int) -> np.ndarray:
+    """Weight of the glyph fill (TELEA in hybrid)."""
+    wh, ww = work_mask.shape[:2]
+    blend_k = _odd_kernel_size(max(7, int(font_size_px * 0.35)), min(ww, wh))
+    soft = cv2.GaussianBlur(work_mask, (blend_k, blend_k), 0, borderType=cv2.BORDER_CONSTANT).astype(np.float32) / 255.0
+    soft = np.clip(soft * 1.2, 0.0, 1.0)
+    # Keep inpaint away from expanded borders so we don't invent a plate edge.
+    return soft * _soft_roi_window(wh, ww, feather_y=max(8, pad_y // 2), feather_x=max(6, pad_x // 2))
+
+
+def _hybrid_band_alpha(work_mask: np.ndarray, font_size_px: int, pad_x: int, pad_y: int) -> np.ndarray:
+    """Weight of the soft band over the whole text line (blur in hybrid)."""
+    wh, ww = work_mask.shape[:2]
+    has_mask = _mask_coverage(work_mask) > 0
+    band_alpha = _band_blur_alpha(wh, ww, font_size_px, work_mask if has_mask else None, pad_y=pad_y)
+    if has_mask:
+        glyph = work_mask.astype(np.float32) / 255.0
+        gk = _odd_kernel_size(max(9, int(font_size_px * 0.55)), min(ww, wh))
+        glyph = cv2.GaussianBlur(glyph, (gk, gk), 0, borderType=cv2.BORDER_CONSTANT) * 0.85
+        band_alpha = np.clip(np.maximum(band_alpha, glyph), 0.0, 1.0)
+        band_alpha *= _soft_roi_window(wh, ww, feather_y=pad_y, feather_x=max(pad_x, 10))
+    return band_alpha
+
+
+def hybrid_blend_alpha(
+    frame_shape: Tuple[int, ...],
+    roi: Tuple[int, int, int, int],
+    font_size_px: int,
+    mask: np.ndarray,
+) -> Optional[Tuple[Tuple[int, int, int, int], np.ndarray]]:
+    """The region hybrid changes and how strongly it changes each pixel there, 0 to 1.
+
+    Other removal modes use this to replace exactly what hybrid replaces.
+    """
+    area = _hybrid_work_area(frame_shape, roi, font_size_px, mask)
+    if area is None:
+        return None
+    work_roi, work_mask, pad_x, pad_y = area
+    alpha = np.zeros(work_mask.shape, dtype=np.float32)
+    if _mask_coverage(work_mask) > 0.0:
+        alpha = _hybrid_glyph_alpha(work_mask, font_size_px, pad_x, pad_y)
+    band = _hybrid_band_alpha(work_mask, font_size_px, pad_x, pad_y)
+    if float(band.max()) > 0.02:
+        alpha = 1.0 - (1.0 - alpha) * (1.0 - band)
+    return work_roi, alpha
+
+
+def _apply_hybrid_inpaint(
+    frame: np.ndarray,
+    roi: Tuple[int, int, int, int],
+    font_size_px: int,
+    mask: Optional[np.ndarray] = None,
+    *,
+    apply_residual_blur: bool = True,
+    blur_settings: Optional[Dict[str, Any]] = None,
+) -> np.ndarray:
+    """Inpaint glyphs then always apply soft band blur with expanded feather margin."""
+    if mask is None:
+        mask = generate_text_mask(frame, roi, font_size_px)
+    area = _hybrid_work_area(frame.shape, roi, font_size_px, mask)
+    if area is None:
+        return frame
+    (wx, wy, ww, wh), work_mask, pad_x, pad_y = area
+
+    crop = frame[wy : wy + wh, wx : wx + ww].copy()
 
     # Layer A: TELEA when we have any usable stroke mask.
-    if coverage > 0.0:
+    if _mask_coverage(work_mask) > 0.0:
         pre_dilate_k = _odd_kernel_size(max(3, int(font_size_px * 0.2)), min(ww, wh))
         dilate_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (pre_dilate_k, pre_dilate_k))
         dilated_bg = cv2.dilate(crop, dilate_kernel, borderType=cv2.BORDER_REPLICATE)
@@ -295,15 +354,7 @@ def _apply_hybrid_inpaint(
             small_inpainted = cv2.inpaint(small_roi, small_mask, small_r, cv2.INPAINT_TELEA)
             inpainted = cv2.resize(small_inpainted, (ww, wh), interpolation=cv2.INTER_LINEAR)
 
-        blend_k = _odd_kernel_size(max(7, int(font_size_px * 0.35)), min(ww, wh))
-        soft = (
-            cv2.GaussianBlur(work_mask, (blend_k, blend_k), 0, borderType=cv2.BORDER_CONSTANT).astype(np.float32)
-            / 255.0
-        )
-        soft = np.clip(soft * 1.2, 0.0, 1.0)
-        # Keep inpaint away from expanded borders so we don't invent a plate edge.
-        soft *= _soft_roi_window(wh, ww, feather_y=max(8, pad_y // 2), feather_x=max(6, pad_x // 2))
-        soft_3 = soft[..., None]
+        soft_3 = _hybrid_glyph_alpha(work_mask, font_size_px, pad_x, pad_y)[..., None]
         crop = np.clip(
             inpainted.astype(np.float32) * soft_3 + crop.astype(np.float32) * (1.0 - soft_3),
             0,
@@ -314,16 +365,7 @@ def _apply_hybrid_inpaint(
     # Layer B: soft band / glyph residual blur — Gaussian on expanded crop (reflect borders).
     if apply_residual_blur:
         settings = blur_settings or {}
-        band_alpha = _band_blur_alpha(
-            wh, ww, font_size_px, work_mask if coverage > 0 else None, pad_y=pad_y
-        )
-        if coverage > 0:
-            glyph = work_mask.astype(np.float32) / 255.0
-            gk = _odd_kernel_size(max(9, int(font_size_px * 0.55)), min(ww, wh))
-            glyph = cv2.GaussianBlur(glyph, (gk, gk), 0, borderType=cv2.BORDER_CONSTANT) * 0.85
-            band_alpha = np.clip(np.maximum(band_alpha, glyph), 0.0, 1.0)
-            band_alpha *= _soft_roi_window(wh, ww, feather_y=pad_y, feather_x=max(pad_x, 10))
-
+        band_alpha = _hybrid_band_alpha(work_mask, font_size_px, pad_x, pad_y)
         if float(band_alpha.max()) > 0.02:
             sigma = max(10, int(settings.get("sigma", 5)), int(font_size_px * 0.55))
             # Write blur from current frame crop (includes inpaint).
@@ -331,6 +373,32 @@ def _apply_hybrid_inpaint(
             frame[wy : wy + wh, wx : wx + ww] = _gaussian_blur_blend(crop, band_alpha, sigma)
 
     return frame
+
+
+def cue_mask_samples(start_f: int, end_f: int) -> List[int]:
+    """Frames hybrid builds a cue's text mask from: up to five, spread over the cue."""
+    span = end_f - start_f
+    if span <= 1:
+        return [start_f]
+    n_samples = min(5, span)
+    return sorted({start_f + int(round(i * (span - 1) / max(n_samples - 1, 1))) for i in range(n_samples)})
+
+
+def cue_text_mask(
+    sample_masks: List[np.ndarray],
+    roi: Tuple[int, int, int, int],
+    pad: int,
+) -> Tuple[Tuple[int, int, int, int], np.ndarray]:
+    """Stabilised text mask of a cue and the ROI tightened to it.
+
+    An empty mask keeps the geometric ROI, so the cue still gets the band.
+    """
+    stable = median_masks(sample_masks)
+    if stable is not None and _mask_coverage(stable) > 0.0:
+        work_roi, work_mask = tight_box_from_mask(stable, roi, pad, keep_height=True)
+        if work_roi[2] > 0 and work_roi[3] > 0:
+            return work_roi, work_mask
+    return roi, np.zeros((roi[3], roi[2]), dtype=np.uint8)
 
 
 class InpaintEffect:
@@ -371,17 +439,7 @@ class InpaintEffect:
             if end_f <= start_f:
                 continue
 
-            span = end_f - start_f
-            if span <= 1:
-                sample_idxs = [start_f]
-            else:
-                n_samples = min(5, span)
-                sample_idxs = sorted(
-                    {
-                        start_f + int(round(i * (span - 1) / max(n_samples - 1, 1)))
-                        for i in range(n_samples)
-                    }
-                )
+            sample_idxs = cue_mask_samples(start_f, end_f)
 
             dar = get_video_dar(video_path)
             sample_masks: List[np.ndarray] = []
@@ -393,16 +451,7 @@ class InpaintEffect:
                 # than every frame between the cue's first and last sample.
                 sample_masks.append(generate_text_mask(extracted[0], roi, self.font_size_px))
 
-            stable = median_masks(sample_masks)
-            if stable is None or _mask_coverage(stable) <= 0.0:
-                # Never drop the cue — geometric ROI + empty mask → band-blur only.
-                work_roi = roi
-                work_mask = np.zeros((roi[3], roi[2]), dtype=np.uint8)
-            else:
-                work_roi, work_mask = tight_box_from_mask(stable, roi, pad, keep_height=True)
-                if work_roi[2] <= 0 or work_roi[3] <= 0:
-                    work_roi = roi
-                    work_mask = np.zeros((roi[3], roi[2]), dtype=np.uint8)
+            work_roi, work_mask = cue_text_mask(sample_masks, roi, pad)
 
             for f_idx in range(start_f, end_f):
                 if f_idx not in self.frame_inpaint_map:
