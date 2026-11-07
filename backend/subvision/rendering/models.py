@@ -21,6 +21,10 @@ class RenderTaskConfig(BaseModel):
         from subvision.rendering.effects.inpainting import InpaintEffect
 
         blur_dict = self.blur_settings.model_dump()
+        if self.blur_settings.mode == "sttn":
+            from subvision.rendering.effects.sttn import STTNEffect
+
+            return [STTNEffect(blur_dict)]
         if self.blur_settings.mode == "hybrid":
             # InpaintEffect already applies residual ring-blur; full-ROI BlurEffect
             # would soap the reconstructed background.

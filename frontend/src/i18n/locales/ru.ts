@@ -123,6 +123,7 @@ export const ru: TranslationDict = {
     algorithm: 'Алгоритм',
     modeBlur: 'Box blur',
     modeHybrid: 'Hybrid',
+    modeSttn: 'STTN (тест)',
     targetArea: 'Область',
     verticalPosition: 'Вертикальная позиция (Y)',
     textHeight: 'Базовая высота текста',

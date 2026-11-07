@@ -121,6 +121,7 @@ export const en = {
     algorithm: 'Algorithm',
     modeBlur: 'Box blur',
     modeHybrid: 'Hybrid',
+    modeSttn: 'STTN (test)',
     targetArea: 'Target area',
     verticalPosition: 'Vertical position (Y)',
     textHeight: 'Text height base',

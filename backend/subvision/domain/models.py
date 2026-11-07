@@ -6,7 +6,7 @@ from pydantic import BaseModel
 class BlurSettings(BaseModel):
     """Configuration for the blur rendering process."""
 
-    mode: Literal["blur", "hybrid"] = "hybrid"
+    mode: Literal["blur", "hybrid", "sttn"] = "hybrid"
     y: int = 912
     font_size: int = 30
     sigma: int = 5

@@ -110,10 +110,11 @@ export const BlurControlPanel = () => {
           <div className="flex items-center gap-2 text-xs font-bold text-txt-main tracking-wide mb-3">
             <Wand2 size={16} className="text-brand-500" /> {t('blur.algorithm')}
           </div>
-          <div className="grid grid-cols-2 gap-1.5 bg-bg-input p-1 rounded-lg border border-border-strong">
+          <div className="grid grid-cols-3 gap-1.5 bg-bg-input p-1 rounded-lg border border-border-strong">
             {([
               { mode: 'blur' as const, label: t('blur.modeBlur') },
               { mode: 'hybrid' as const, label: t('blur.modeHybrid') },
+              { mode: 'sttn' as const, label: t('blur.modeSttn') },
             ]).map(({ mode, label }) => (
               <button
                 key={mode}

@@ -52,7 +52,7 @@ export interface ProcessConfig {
 export type OcrSettings = Omit<ProcessConfig, 'filename' | 'client_id' | 'roi'>;
 
 export interface BlurSettings {
-  mode: 'blur' | 'hybrid';
+  mode: 'blur' | 'hybrid' | 'sttn';
   y: number;
   font_size: number;
   sigma: number;
