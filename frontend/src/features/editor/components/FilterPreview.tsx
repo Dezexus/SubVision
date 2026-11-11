@@ -82,7 +82,7 @@ export const FilterPreview = () => {
               <Cpu size={16} />
               <span className="text-xs font-bold uppercase tracking-wider">{t('preview.algoInput')}</span>
             </div>
-            <div className="flex justify-between text-[10px] text-txt-subtle uppercase">
+            <div className="flex justify-between text-[11px] text-txt-subtle uppercase">
               <span>{t('preview.roi')}</span>
               <span className="text-txt-main font-mono">{roi?.[2]}x{roi?.[3]}</span>
             </div>
@@ -99,7 +99,7 @@ export const FilterPreview = () => {
             ) : (
               <div className="flex flex-col items-center gap-1 text-txt-subtle">
                 <ScanLine size={16} />
-                <span className="text-[9px]">{t('preview.noSignal')}</span>
+                <span className="text-[10px]">{t('preview.noSignal')}</span>
               </div>
             )}
           </div>

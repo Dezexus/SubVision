@@ -110,6 +110,14 @@ export const TrackSwitcher = () => {
                   type="button"
                   onClick={() => setActiveTrack(track)}
                   onDoubleClick={() => startRename(track)}
+                  onKeyDown={(e) => {
+                    // Keyboard rename: F2, as in file managers.
+                    if (e.key === 'F2') {
+                      e.preventDefault();
+                      startRename(track);
+                    }
+                  }}
+                  aria-pressed={isCurrent}
                   title={`${t('tracks.renameHint')}${isUnset(track) ? ` · ${t('tracks.unset')}` : ''}`}
                   className={cn(
                     'flex items-center gap-1.5 pl-2.5 py-1 text-xs font-semibold transition-colors',
@@ -120,7 +128,7 @@ export const TrackSwitcher = () => {
                   <span className={cn('w-2 h-2 rounded-full shrink-0', color.bg, isUnset(track) && 'opacity-40')} />
                   <span className="max-w-[140px] truncate">{label(track)}</span>
                   {cueCount(track) > 0 && (
-                    <span className="text-[10px] font-mono text-txt-dim">{cueCount(track)}</span>
+                    <span className="text-[11px] font-mono text-txt-dim">{cueCount(track)}</span>
                   )}
                 </button>
               )}
@@ -130,6 +138,7 @@ export const TrackSwitcher = () => {
                   disabled={isProcessing}
                   onClick={() => handleRemove(track)}
                   title={confirming ? t('tracks.removeConfirm', { count: cueCount(track) }) : t('tracks.remove')}
+                  aria-label={`${t('tracks.remove')}: ${label(track)}`}
                   className={cn(
                     'mr-1 p-0.5 rounded transition-all disabled:hidden',
                     confirming

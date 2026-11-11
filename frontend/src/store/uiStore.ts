@@ -15,7 +15,11 @@ export const useUIStore = create<UIState & UIActions>((set) => ({
 
   addToast: (message, type = 'info') => {
     const id = crypto.randomUUID();
-    set((state) => ({ toasts: [...state.toasts, { id, type, message }] }));
+    set((state) => {
+      // Skip a repeat of a toast already on screen; keep at most three.
+      if (state.toasts.some((t) => t.message === message && t.type === type)) return {};
+      return { toasts: [...state.toasts, { id, type, message }].slice(-3) };
+    });
   },
 
   removeToast: (id) => {

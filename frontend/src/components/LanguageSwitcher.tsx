@@ -31,7 +31,7 @@ export const LanguageSwitcher: React.FC<Props> = ({ className }) => {
     <div className={cn('flex items-center gap-1.5', className)}>
       <Languages size={14} className="text-txt-muted" />
       {btn('ru')}
-      <span className="text-txt-subtle text-[10px]">/</span>
+      <span className="text-txt-subtle text-[11px]">/</span>
       {btn('en')}
     </div>
   );

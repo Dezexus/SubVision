@@ -48,7 +48,7 @@ export const SessionRecoveryModal: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm transition-opacity">
-      <div className="relative w-full max-w-lg mx-4 overflow-hidden rounded-xl bg-bg-panel shadow-panel border border-border-main sm:mx-auto animate-in fade-in zoom-in-95 duration-200">
+      <div role="dialog" aria-modal="true" aria-labelledby="session-recovery-title" className="relative w-full max-w-lg mx-4 overflow-hidden rounded-xl bg-bg-panel shadow-panel border border-border-main sm:mx-auto animate-in fade-in zoom-in-95 duration-200">
         <div className="absolute inset-x-0 top-0 h-1 bg-brand-500" />
         <div className="p-6 sm:p-8">
           <div className="mb-6 flex items-start gap-4">
@@ -59,8 +59,8 @@ export const SessionRecoveryModal: React.FC = () => {
               </svg>
             </div>
             <div className="pt-1">
-              <h2 className="text-xl font-bold tracking-tight text-txt-main">{t('session.title')}</h2>
-              <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-brand-400">{t('session.badge')}</p>
+              <h2 id="session-recovery-title" className="text-xl font-bold tracking-tight text-txt-main">{t('session.title')}</h2>
+              <p className="mt-1 text-[11px] font-bold uppercase tracking-wider text-brand-400">{t('session.badge')}</p>
             </div>
           </div>
           <div className="mb-8">

@@ -67,7 +67,6 @@ export function useUploadVideo() {
     onSuccess: (metadata, file) => {
       setMetadata(metadata);
       setFile(file);
-      addToast(translate('toasts.uploadSuccess'), 'success');
     },
     onError: (err: unknown) => {
       if (err instanceof UploadCancelledError) return;

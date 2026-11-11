@@ -6,3 +6,5 @@ export * from './GlassPanel';
 export * from './Slider';
 export * from './Switch';
 export * from './ToastContainer';
+export * from './ConfirmDialog';
+export * from './ResizeHandle';

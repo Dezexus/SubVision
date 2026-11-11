@@ -3,6 +3,7 @@ import { CheckCircle, AlertCircle, Info, X } from 'lucide-react';
 import { useUIStore } from '../../store/uiStore';
 import { cn } from '../lib';
 import type { ToastMessage } from '../../types';
+import { translate } from '../../i18n';
 
 /**
  * Individual toast notification component.
@@ -11,9 +12,10 @@ const Toast = ({ toast }: { toast: ToastMessage }) => {
   const removeToast = useUIStore((state) => state.removeToast);
 
   useEffect(() => {
-    const timer = setTimeout(() => removeToast(toast.id), 3000);
+    // Errors stay long enough to read; info and success are brief.
+    const timer = setTimeout(() => removeToast(toast.id), toast.type === 'error' ? 7000 : 3000);
     return () => clearTimeout(timer);
-  }, [toast.id, removeToast]);
+  }, [toast.id, toast.type, removeToast]);
 
   const icons = {
     success: <CheckCircle className="text-green-400" size={18} />,
@@ -22,7 +24,9 @@ const Toast = ({ toast }: { toast: ToastMessage }) => {
   };
 
   return (
-    <div className={cn(
+    <div
+      role={toast.type === 'error' ? 'alert' : 'status'}
+      className={cn(
       "flex items-start gap-3 p-4 rounded-lg border shadow-lg bg-bg-panel min-w-[300px] max-w-md animate-in slide-in-from-top-full fade-in duration-300",
       toast.type === 'error' ? 'border-red-500/30' :
       toast.type === 'success' ? 'border-green-500/30' : 'border-brand-500/30'
@@ -36,6 +40,7 @@ const Toast = ({ toast }: { toast: ToastMessage }) => {
       <button
         onClick={() => removeToast(toast.id)}
         className="flex-shrink-0 text-txt-muted hover:text-white transition-colors"
+        aria-label={translate('common.close')}
       >
         <X size={16} />
       </button>
@@ -50,7 +55,7 @@ export const ToastContainer = () => {
   const toasts = useUIStore((state) => state.toasts);
 
   return (
-    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none">
+    <div aria-live="polite" className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none">
       {toasts.map((toast) => (
         <div key={toast.id} className="pointer-events-auto">
           <Toast toast={toast} />

@@ -174,7 +174,7 @@ export const SubtitleList = () => {
       {!autoScroll && !isProcessing && (
         <button
           onClick={() => setAutoScroll(true)}
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-bg-panel/80 backdrop-blur-md border border-border-strong text-txt-muted hover:text-txt-main hover:border-brand-500/50 px-4 py-2 rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.5)] flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider transition-all z-10 animate-in fade-in slide-in-from-bottom-2"
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-bg-panel/80 backdrop-blur-md border border-border-strong text-txt-muted hover:text-txt-main hover:border-brand-500/50 px-4 py-2 rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.5)] flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider transition-all z-10 animate-in fade-in slide-in-from-bottom-2"
           title={t('subtitles.followVideoTitle')}
         >
           <Unlock size={14} className="text-brand-500" />

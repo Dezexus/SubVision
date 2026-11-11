@@ -113,7 +113,7 @@ export const BlurControlPanel = () => {
         <div className="w-full bg-bg-panel p-2 rounded-xl border border-border-main shadow-sm flex items-center relative overflow-hidden">
           <div className="flex-1 flex items-center">
             {isPreviewUpdating ? (
-              <span className="inline-flex items-center gap-1.5 text-[10px] text-brand-500 font-mono bg-brand-500/10 px-2.5 py-1 rounded shadow-inner">
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-brand-500 font-mono bg-brand-500/10 px-2.5 py-1 rounded shadow-inner">
                 <Loader2 size={12} className="animate-spin" />
                 {t('blur.updating')}
               </span>
@@ -124,7 +124,7 @@ export const BlurControlPanel = () => {
           <div className="flex-none">
               <button
                 onClick={handleReset}
-                className="inline-flex items-center gap-1.5 text-[10px] font-bold text-txt-subtle hover:text-txt-main transition-colors bg-bg-surface hover:bg-bg-hover px-3.5 py-1.5 rounded-md border border-border-strong shadow-md active:scale-95"
+                className="inline-flex items-center gap-1.5 text-[11px] font-bold text-txt-subtle hover:text-txt-main transition-colors bg-bg-surface hover:bg-bg-hover px-3.5 py-1.5 rounded-md border border-border-strong shadow-md active:scale-95"
                 title={t('blur.resetAllTitle')}
               >
                 <RotateCcw size={12} />
@@ -147,7 +147,7 @@ export const BlurControlPanel = () => {
                 key={mode}
                 onClick={() => setBlurSettings({ mode })}
                 className={cn(
-                  "text-[10px] py-2 font-bold rounded-md transition-all duration-200",
+                  "text-[11px] py-2 font-bold rounded-md transition-all duration-200",
                   blurSettings.mode === mode
                     ? "bg-brand-500 text-white shadow-sm"
                     : "text-txt-subtle hover:text-txt-muted hover:bg-bg-hover"

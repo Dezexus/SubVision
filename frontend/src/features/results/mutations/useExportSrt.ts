@@ -38,15 +38,10 @@ export function useExportSrt() {
       return;
     }
     const stem = exportStem(metadata.original_filename, metadata.filename);
+    // The browser shows the downloads; no toast needed.
     for (const { suffix, srt } of files) {
       downloadText(srt, exportWithSuffix(stem, suffix));
     }
-    addToast(
-      files.length > 1
-        ? translate('toasts.srtExportedTracks', { count: files.length })
-        : translate('toasts.srtExported'),
-      'success',
-    );
   }, [subtitles, metadata, trackNames, addToast]);
 
   return { execute };

@@ -209,14 +209,14 @@ export const VideoCanvas = () => {
                     style={toCss({ x: roi[0], y: roi[1], w: roi[2], h: roi[3] }, metadata)}
                     title={label(track)}
                   >
-                    <span className={cn('absolute -top-px -left-px px-1.5 text-[10px] font-bold text-black', trackColor(track).bg)}>
+                    <span className={cn('absolute -top-px -left-px px-1.5 text-[11px] font-bold text-black', trackColor(track).bg)}>
                       {track + 1}
                     </span>
                   </button>
                 ))}
                 {metadata && showRegionLabels && crop && (
                   <span
-                    className={cn('absolute z-10 px-1.5 text-[10px] font-bold text-black pointer-events-none', trackColor(activeTrack).bg)}
+                    className={cn('absolute z-10 px-1.5 text-[11px] font-bold text-black pointer-events-none', trackColor(activeTrack).bg)}
                     style={{ left: `${crop.x}%`, top: `${crop.y}%` }}
                   >
                     {activeTrack + 1}
@@ -244,7 +244,7 @@ export const VideoCanvas = () => {
                     title={t('editor.dragY')}
                   >
                     {trackCount > 1 && (
-                      <span className={cn('absolute -top-px -left-px px-1 text-[9px] font-bold text-black', trackColor(track).bg)}>
+                      <span className={cn('absolute -top-px -left-px px-1 text-[10px] font-bold text-black', trackColor(track).bg)}>
                         {track + 1}
                       </span>
                     )}

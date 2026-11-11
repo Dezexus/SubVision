@@ -52,6 +52,19 @@
     background: #4f4f4f;
   }
 
+  /* Keyboard focus is always visible; mouse clicks do not leave rings. */
+  :where(button, [role="button"], [role="separator"], a, input, textarea, select):focus-visible {
+    outline: 2px solid var(--color-brand-400);
+    outline-offset: 1px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }

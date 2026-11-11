@@ -45,7 +45,7 @@ export const ActiveSubtitleEditor = ({ cues, showTrack, onChange, onFocus, onBlu
             )}
           >
             {showTrack && (
-              <span className={cn('absolute left-3 top-1 text-[9px] font-bold uppercase tracking-wide', color.text)}>
+              <span className={cn('absolute left-3 top-1 text-[10px] font-bold uppercase tracking-wide', color.text)}>
                 {label(trackOf(cue))}
               </span>
             )}

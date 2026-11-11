@@ -6,6 +6,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'success';
   isLoading?: boolean;
   icon?: React.ReactNode;
+  ref?: React.Ref<HTMLButtonElement>;
 }
 
 /**
@@ -33,7 +34,7 @@ export const Button = ({
     <button
       disabled={disabled || isLoading}
       className={cn(
-        "flex items-center justify-center gap-2 px-4 py-2.5 rounded-sm text-sm font-medium transition-colors focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-offset-bg-main focus:ring-brand-500",
+        "flex items-center justify-center gap-2 px-4 py-2.5 rounded-sm text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-bg-main focus-visible:ring-brand-400",
         variants[variant],
         (disabled || isLoading) && "opacity-50 cursor-not-allowed contrast-50",
         className
