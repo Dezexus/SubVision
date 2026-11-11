@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-SubVision detects, extracts, and removes hardcoded subtitles from video: PaddleOCR for extraction and OpenCV (plus an optional STTN video transformer) for blur/inpaint rendering.
+SubVision detects, extracts, and removes hardcoded subtitles from video: PaddleOCR for extraction and OpenCV for blur/inpaint rendering.
 
 ## Commands
 
@@ -34,7 +34,7 @@ docker compose up --build
 - Typecheck with `npx tsc -b`, not `tsc --noEmit`. The root `tsconfig.json` only holds project references, so `--noEmit` checks zero files, including in the pre-commit hook.
 - Settings read `.env` from the working directory, so the repo-root `.env` is not loaded when running from `backend/`. Outside Docker, set `REDIS_URL=redis://localhost:6379/0`; the default host `redis` only resolves inside Compose.
 - The first worker image build compiles OpenCV with CUDA (45–90 min). Avoid rebuilding it casually. Compose mounts `./backend` into both `api` and `worker`, so Python changes only need a container restart.
-- The worker image targets CUDA 12.9 and `CUDA_ARCH_BIN=12.0` (RTX 50xx, `sm_120`). torch, Paddle, and the `nvidia-*-cu12` wheels must stay on CUDA 12.8 or newer, or kernels fail with `no kernel image is available`; the build asserts this. Paddle's errors do not raise, so a mismatch shows up as slow or wrong OCR, not a crash.
+- The worker image targets CUDA 12.9 and `CUDA_ARCH_BIN=12.0` (RTX 50xx, `sm_120`). Paddle and any `nvidia-*-cu12` wheels must stay on CUDA 12.8 or newer, or kernels fail with `no kernel image is available`; the build asserts this. Paddle's errors do not raise, so a mismatch shows up as slow or wrong OCR, not a crash.
 - In the worker, the pip OpenCV wheel from `requirements.txt` would shadow the CUDA build, so the Dockerfile overwrites `cv2/` with it but keeps the `opencv-contrib-python` metadata, which PaddleX checks through `importlib.metadata`.
 - Pinned deps: edit `requirements*.in` or `pyproject.toml`, and keep `requirements*.txt` in sync.
 
@@ -45,7 +45,7 @@ nginx:7860 → api (FastAPI) → Valkey/Redis ← worker (ARQ, GPU)
                     └── uploads/ shared volume ──┘
 ```
 
-**Two runtimes, one package.** `subvision.main` (API) and `subvision.worker` (ARQ) share `backend/subvision/`, but the `api` image has no CUDA, Paddle, or torch. Anything the API imports must work on CPU, including `rendering/blur_preview.py`, which runs in the API process. Keep GPU-only imports in worker-side paths or inside functions. `core/gpu_utils.py` falls back to CPU when CUDA is unavailable.
+**Two runtimes, one package.** `subvision.main` (API) and `subvision.worker` (ARQ) share `backend/subvision/`, but the `api` image has no CUDA or Paddle. Anything the API imports must work on CPU, including `rendering/blur_preview.py`, which runs in the API process. Keep GPU-only imports in worker-side paths or inside functions. `core/gpu_utils.py` falls back to CPU when CUDA is unavailable.
 
 **Packages.** `api/` holds routers and schemas, `core/` holds shared infrastructure, `domain/` holds pydantic models, `processing/` holds OCR, and `rendering/` holds blur/inpaint output. Pipelines depend only on the `Protocol`s in `processing/interfaces.py` and `rendering/interfaces.py`. The concrete `RedisEventBus`, `TaskReporter`, and `RedisCancellationToken` live in `worker.py`.
 
@@ -69,7 +69,7 @@ To add a job kind, update `WorkerSettings.functions`, `job_kind`, and `bindActiv
 
 - **OCR** (`processing/pipeline.py`): sample every `step` frames → crop ROI → skip unchanged frames by motion → denoise → Paddle → `SubtitleAggregator` → `edge_refine` re-OCRs around each boundary for frame-accurate timing. Every OCR call runs detection plus recognition: recognition alone on the full ROI misreads text at confidence above the threshold. Presets in `processing/presets.py` are keyed by emoji strings such as `"⚖️ Balance"`, which the frontend also uses as IDs.
 - **Tracks**: `ProcessConfig.rois` holds up to 3 ROIs; each is a subtitle track with its own `ImagePipeline` and `SubtitleAggregator`, and items carry `track` (missing means 0). An empty ROI means the whole frame only for track 0; empty extra regions are skipped. Edge refine runs all tracks in one video pass and snaps abutting cues only within a track. Rendering builds one effect per track from `track_blur_settings` (falling back to `blur_settings`), and SRT export writes one file per track.
-- **Render** (`rendering/pipeline.py`): `RenderTaskConfig.build_effects()` picks `BlurEffect`, or `InpaintEffect` alone for `hybrid` mode. Do not stack them: `InpaintEffect` applies its own ring blur, and a full-ROI blur would smear the reconstructed background. The test mode `sttn` (`rendering/effects/sttn.py`) repaints a strip around the text with a video transformer once per cue; it needs torch, so it runs only in the worker and previews with hybrid, and its weights download on first use into `uploads/models/sttn`. Frames go through `AsyncVideoWriter`: NVENC through PyAV if its wheel has it, otherwise piped to the system ffmpeg's `h264_nvenc`, with libx264 as the last fallback. Then `FFmpegTranscoder` muxes audio and restores aspect ratio. Paddle GPU memory is released before rendering.
+- **Render** (`rendering/pipeline.py`): `RenderTaskConfig.build_effects()` picks `BlurEffect`, or `InpaintEffect` alone for `hybrid` mode. Do not stack them: `InpaintEffect` applies its own ring blur, and a full-ROI blur would smear the reconstructed background. Frames go through `AsyncVideoWriter`: NVENC through PyAV if its wheel has it, otherwise piped to the system ffmpeg's `h264_nvenc`, with libx264 as the last fallback. Then `FFmpegTranscoder` muxes audio and restores aspect ratio. Paddle GPU memory is released before rendering.
 
 ### Frontend
 

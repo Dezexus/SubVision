@@ -108,30 +108,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends software-proper
 
 WORKDIR /app
 
-# Paddle and torch are separate layers ahead of the requirements COPY: they are
-# the largest downloads, and the Paddle index is flaky, so a failure in one step
-# keeps the others cached and a requirements edit does not refetch them.
+# Paddle is a separate layer ahead of the requirements COPY: it is the largest
+# download and its index is flaky, so a requirements edit does not refetch it.
 # Paddle comes straight from its wheel storage: the paddlepaddle.org.cn index
 # in front of it goes down (502) while the files stay reachable.
 ENV PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=10
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --upgrade pip \
  && python -m pip install "paddlepaddle-gpu @ https://paddle-whl.bj.bcebos.com/stable/cu129/paddlepaddle-gpu/paddlepaddle_gpu-3.3.0-cp312-cp312-linux_x86_64.whl"
-RUN --mount=type=cache,target=/root/.cache/pip \
-    python -m pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu129
-
 COPY backend/requirements.txt .
 COPY backend/requirements-worker.txt .
 
-# Fail the build if a dependency drags torch or the nvidia-*-cu12 libs back to
-# an older CUDA without Blackwell (sm_120) kernels.
+# Fail the build if a dependency drags the nvidia-*-cu12 libs back to an older
+# CUDA without Blackwell (sm_120) kernels. Without torch these libs may be
+# absent, which is fine.
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install -r requirements.txt \
  && python -m pip install -r requirements-worker.txt \
- && python -c "from importlib.metadata import version as v; import torch; \
-assert torch.__version__.startswith('2.8.0'), torch.__version__; \
-assert v('nvidia-cublas-cu12').startswith('12.9'), 'CUDA libs downgraded: cublas ' + v('nvidia-cublas-cu12'); \
-print('torch', torch.__version__, 'cublas', v('nvidia-cublas-cu12'), 'cudnn', v('nvidia-cudnn-cu12'))"
+ && python -c "import importlib.metadata as m; \
+names = {d.metadata['Name'] for d in m.distributions()}; \
+cublas = m.version('nvidia-cublas-cu12') if 'nvidia-cublas-cu12' in names else None; \
+assert cublas is None or cublas.startswith('12.9'), 'CUDA libs downgraded: cublas ' + str(cublas); \
+print('cublas', cublas)"
 
 # The pip OpenCV wheels (CPU-only, needed by the api image) overwrite cv2/ and
 # shadow the CUDA build. Replace their files with the bindings built above, but
@@ -139,7 +137,7 @@ print('torch', torch.__version__, 'cublas', v('nvidia-cublas-cu12'), 'cudnn', v(
 # via importlib.metadata and disables OCR result handling without it.
 # The CUDA build links GStreamer (its dev packages are in the builder), so the
 # runtime libs are installed here.
-# OpenCV is copied this late so that rebuilding it keeps the Paddle, torch and
+# OpenCV is copied this late so that rebuilding it keeps the Paddle and
 # requirements layers above cached.
 COPY --from=opencv-cuda-builder /opt/opencv-libs /usr/local/lib
 COPY --from=opencv-cuda-builder /opt/opencv-python /opt/opencv-python

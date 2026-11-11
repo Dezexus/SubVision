@@ -57,8 +57,7 @@ def _apply_cue(frame: np.ndarray, cue_text: str, settings: Dict[str, Any], width
     if text_roi[2] <= 0 or text_roi[3] <= 0:
         return frame
 
-    # The API image has no torch, so STTN previews with hybrid.
-    if mode in ("hybrid", "sttn"):
+    if mode == "hybrid":
         mask = generate_text_mask(frame, text_roi, font_size_px)
         if _mask_coverage(mask) > 0.0:
             work_roi, work_mask = tight_box_from_mask(mask, text_roi, pad, keep_height=True)

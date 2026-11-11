@@ -40,14 +40,6 @@ def release_paddle_gpu_memory() -> None:
         gc.collect()
     except Exception:
         pass
-    try:
-        import torch
-
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.ipc_collect()
-    except Exception:
-        pass
 
 
 def ensure_gpu(frame):
