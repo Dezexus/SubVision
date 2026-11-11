@@ -4,7 +4,7 @@ ConfigType = dict[str, int | float | bool]
 
 DEFAULT_CONFIG: ConfigType = {
     "step": 3,
-    "min_conf": 82,
+    "min_conf": 85,
     "denoise_strength": 2,
     "smart_skip": True,
     "motion_mse_thresh": 22.0,
@@ -32,7 +32,7 @@ PRESETS_DELTAS: dict[str, dict[str, Any]] = {
     "⚖️ Balance": {
         "config": {
             "step": 3,
-            "min_conf": 82,
+            "min_conf": 85,
             "denoise_strength": 2,
             "smart_skip": True,
             "motion_mse_thresh": 22.0,

@@ -37,9 +37,6 @@ export const AdvancedSettings = ({ config, setConfig, defaultConfig }: Props) =>
             )}
           </select>
         </div>
-        <p className="text-[11px] leading-snug text-txt-muted select-none">
-          {t('settings.ocrEngineNote')}
-        </p>
       </div>
 
       <Slider

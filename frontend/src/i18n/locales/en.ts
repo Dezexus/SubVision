@@ -41,7 +41,6 @@ export const en = {
     presetQuality: 'Quality',
     presetBalance: 'Balance',
     ocrLanguage: 'OCR Language',
-    ocrEngineNote: 'PaddleOCR 3.7 · PP-OCRv6. Russian and Korean use dedicated PP-OCRv5 models.',
     langEn: 'English',
     minConfidence: 'Min Confidence',
     scanStep: 'Scan Step (Frames)',

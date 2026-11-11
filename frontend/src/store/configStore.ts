@@ -11,7 +11,7 @@ export const defaultConfig: OcrSettings = {
   preset: '⚖️ Balance',
   languages: 'en',
   step: 3,
-  conf_threshold: 82,
+  conf_threshold: 85,
   denoise_strength: 2,
   smart_skip: true,
   motion_mse_thresh: 22,

@@ -43,7 +43,6 @@ export const ru: TranslationDict = {
     presetQuality: 'Качество',
     presetBalance: 'Баланс',
     ocrLanguage: 'Язык OCR',
-    ocrEngineNote: 'PaddleOCR 3.7 · PP-OCRv6. Для русского и корейского — отдельные модели PP-OCRv5.',
     langEn: 'Английский',
     minConfidence: 'Мин. уверенность',
     scanStep: 'Шаг сканирования (кадры)',
