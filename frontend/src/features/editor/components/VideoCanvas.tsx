@@ -1,39 +1,76 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop';
+import { useShallow } from 'zustand/react/shallow';
 import 'react-image-crop/dist/ReactCrop.css';
 import { useVideoStore } from '../../../store/videoStore';
-import { useBlurStore } from '../../../store/blurStore';
+import { settingsForTrack, useBlurStore } from '../../../store/blurStore';
 import { useProcessingStore } from '../../../store/processingStore';
 import { Loader2, ImageOff, Eye, EyeOff, MoveVertical, AlertTriangle } from 'lucide-react';
 import { useVideoFrame } from '../hooks/useVideoFrame';
 import { calculateTextRect } from '../../../shared/lib/textGeometry';
+import { cn, countTracks, subtitleAt, trackColor, trackOf } from '../../../shared/lib';
 import { useTranslation } from '../../../i18n';
+import { useTrackLabel } from '../../../hooks/useTrackLabel';
+import type { Roi, VideoMetadata } from '../../../types';
+
+type Rect = { x: number; y: number; w: number; h: number };
+
+const PLACEHOLDER_TEXT = 'Preview Text Size';
+
+function toCss(rect: Rect, metadata: VideoMetadata): React.CSSProperties {
+  return {
+    left: `${(rect.x / metadata.width) * 100}%`,
+    top: `${(rect.y / metadata.height) * 100}%`,
+    width: `${(rect.w / metadata.width) * 100}%`,
+    height: `${(rect.h / metadata.height) * 100}%`,
+  };
+}
+
+/** Stored ROI (video pixels) → ReactCrop selection in percent. */
+function roiToCrop(roi: Roi | undefined, metadata: VideoMetadata | null): Crop | undefined {
+  if (!roi || !metadata || roi[2] <= 0 || roi[3] <= 0) return undefined;
+  const [x, y, w, h] = roi;
+  return {
+    unit: '%',
+    x: (x / metadata.width) * 100,
+    y: (y / metadata.height) * 100,
+    width: (w / metadata.width) * 100,
+    height: (h / metadata.height) * 100,
+  };
+}
 
 export const VideoCanvas = () => {
   const { t } = useTranslation();
+  const label = useTrackLabel();
   const file = useVideoStore((s) => s.file);
   const metadata = useVideoStore((s) => s.metadata);
   const currentFrameIndex = useVideoStore((s) => s.currentFrameIndex);
+  const rois = useVideoStore((s) => s.rois);
+  const activeTrack = useVideoStore((s) => s.activeTrack);
   const setRoi = useVideoStore((s) => s.setRoi);
+  const setActiveTrack = useVideoStore((s) => s.setActiveTrack);
   const isBlurMode = useBlurStore((s) => s.isBlurMode);
-  const blurSettings = useBlurStore((s) => s.blurSettings);
-  const setBlurSettings = useBlurStore((s) => s.setBlurSettings);
+  const blurState = useBlurStore(
+    useShallow((s) => ({ trackSettings: s.trackSettings, defaultBlurSettings: s.defaultBlurSettings })),
+  );
+  const setTrackSettings = useBlurStore((s) => s.setTrackSettings);
   const subtitles = useProcessingStore((s) => s.subtitles);
   const blurPreviewUrl = useBlurStore((s) => s.blurPreviewUrl);
 
-  const [crop, setCrop] = useState<Crop>();
+  const [crop, setCrop] = useState<Crop | undefined>(() => roiToCrop(rois[activeTrack], metadata));
   const [showGuides, setShowGuides] = useState(true);
-  const [isDragging, setIsDragging] = useState(false);
+  const [dragTrack, setDragTrack] = useState<number | null>(null);
   const dragStartY = useRef(0);
   const dragStartYSetting = useRef(0);
 
   const imgRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const [prevFile, setPrevFile] = useState(file);
-  if (file !== prevFile) {
-    setPrevFile(file);
-    setCrop(undefined);
+  // Show the stored box of the active region whenever the region or file changes.
+  const [cropSource, setCropSource] = useState({ file, activeTrack });
+  if (cropSource.file !== file || cropSource.activeTrack !== activeTrack) {
+    setCropSource({ file, activeTrack });
+    setCrop(file !== cropSource.file ? undefined : roiToCrop(rois[activeTrack], metadata));
   }
 
   const aspectRatio = useMemo(() => {
@@ -43,77 +80,64 @@ export const VideoCanvas = () => {
 
   const { imgSrc, isLoading, error } = useVideoFrame(metadata, currentFrameIndex);
 
-  const onCropComplete = (crop: PixelCrop) => {
+  const onCropComplete = (pixelCrop: PixelCrop) => {
     if (!imgRef.current || !metadata) return;
     const image = imgRef.current;
     const scaleX = image.naturalWidth / image.width;
     const scaleY = image.naturalHeight / image.height;
-    const realX = Math.round(crop.x * scaleX);
-    const realY = Math.round(crop.y * scaleY);
-    const realW = Math.round(crop.width * scaleX);
-    const realH = Math.round(crop.height * scaleY);
-    setRoi([realX, realY, realW, realH]);
+    setRoi([
+      Math.round(pixelCrop.x * scaleX),
+      Math.round(pixelCrop.y * scaleY),
+      Math.round(pixelCrop.width * scaleX),
+      Math.round(pixelCrop.height * scaleY),
+    ]);
   };
 
-  const activeSubtitle = useMemo(() => {
-    if (!isBlurMode || !metadata) return null;
-    const currentTime = currentFrameIndex / metadata.fps;
-    return subtitles.find((sub) => currentTime >= sub.start && currentTime <= sub.end);
-  }, [isBlurMode, currentFrameIndex, subtitles, metadata]);
+  const trackCount = countTracks(rois.length, subtitles);
 
-  const geometry = useMemo(() => {
-    if (!metadata) return null;
-    const textToMeasure = activeSubtitle ? activeSubtitle.text : "Preview Text Size";
-    const green = calculateTextRect(
-      textToMeasure,
-      metadata.width,
-      metadata.height,
-      blurSettings
-    );
-    return { green: { x: green.x, y: green.y, w: green.w, h: green.h } };
-  }, [blurSettings, metadata, activeSubtitle]);
+  // One green guide per track: its active cue, or a placeholder for the track being edited.
+  const guides = useMemo(() => {
+    if (!isBlurMode || !metadata) return [];
+    const time = currentFrameIndex / metadata.fps;
+    const result: { track: number; rect: Rect; y: number }[] = [];
+    for (let track = 0; track < trackCount; track++) {
+      const cue = subtitleAt(subtitles.filter((s) => trackOf(s) === track), time);
+      if (!cue && track !== activeTrack) continue;
+      const settings = settingsForTrack(blurState, track);
+      const rect = calculateTextRect(cue?.text ?? PLACEHOLDER_TEXT, metadata.width, metadata.height, settings);
+      result.push({ track, rect, y: settings.y });
+    }
+    return result;
+  }, [isBlurMode, metadata, currentFrameIndex, trackCount, subtitles, activeTrack, blurState]);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+  const handleGuideMouseDown = useCallback((e: React.MouseEvent, track: number, y: number) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDragging(true);
+    setActiveTrack(track);
+    setDragTrack(track);
     dragStartY.current = e.clientY;
-    dragStartYSetting.current = blurSettings.y;
-  }, [blurSettings.y]);
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDragging || !metadata || !containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const scaleY = metadata.height / rect.height;
-    const deltaY = (e.clientY - dragStartY.current) * scaleY;
-    const newY = Math.round(dragStartYSetting.current + deltaY);
-    setBlurSettings({ y: Math.max(0, Math.min(metadata.height, newY)) });
-  }, [isDragging, metadata, setBlurSettings]);
-
-  const handleMouseUp = useCallback(() => setIsDragging(false), []);
+    dragStartYSetting.current = y;
+  }, [setActiveTrack]);
 
   useEffect(() => {
-    if (isDragging) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-      document.addEventListener('mouseleave', handleMouseUp);
-    }
+    if (dragTrack === null || !metadata) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const deltaY = (e.clientY - dragStartY.current) * (metadata.height / rect.height);
+      const newY = Math.round(dragStartYSetting.current + deltaY);
+      setTrackSettings(dragTrack, { y: Math.max(0, Math.min(metadata.height, newY)) });
+    };
+    const handleMouseUp = () => setDragTrack(null);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('mouseleave', handleMouseUp);
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('mouseleave', handleMouseUp);
     };
-  }, [isDragging, handleMouseMove, handleMouseUp]);
-
-  const toCss = (rect: { x: number; y: number; w: number; h: number }) => {
-    if (!metadata) return {};
-    return {
-      left: `${(rect.x / metadata.width) * 100}%`,
-      top: `${(rect.y / metadata.height) * 100}%`,
-      width: `${(rect.w / metadata.width) * 100}%`,
-      height: `${(rect.h / metadata.height) * 100}%`,
-    };
-  };
+  }, [dragTrack, metadata, setTrackSettings]);
 
   if (!file && !metadata) {
     return (
@@ -123,6 +147,13 @@ export const VideoCanvas = () => {
       </div>
     );
   }
+
+  const otherRegions = metadata
+    ? rois
+        .map((roi, track) => ({ roi, track }))
+        .filter(({ roi, track }) => track !== activeTrack && roi[2] > 0 && roi[3] > 0)
+    : [];
+  const showRegionLabels = rois.length > 1;
 
   return (
     <div className="w-full h-full flex items-center justify-center p-4">
@@ -154,22 +185,46 @@ export const VideoCanvas = () => {
               </button>
             )}
             {!isBlurMode && (
-              <ReactCrop
-                crop={crop}
-                onChange={(c) => setCrop(c)}
-                onComplete={onCropComplete}
-                className="w-full h-full block"
-              >
-                <img
-                  ref={imgRef}
-                  src={imgSrc}
-                  alt={t('editor.frameAlt')}
-                  className="w-full h-full object-contain select-none block"
-                  onDragStart={(e) => e.preventDefault()}
-                />
-              </ReactCrop>
+              <>
+                <ReactCrop
+                  crop={crop}
+                  onChange={(_pixel, percent) => setCrop(percent)}
+                  onComplete={onCropComplete}
+                  className="w-full h-full block"
+                >
+                  <img
+                    ref={imgRef}
+                    src={imgSrc}
+                    alt={t('editor.frameAlt')}
+                    className="w-full h-full object-contain select-none block"
+                    onDragStart={(e) => e.preventDefault()}
+                  />
+                </ReactCrop>
+                {metadata && otherRegions.map(({ roi, track }) => (
+                  <button
+                    key={track}
+                    type="button"
+                    onClick={() => setActiveTrack(track)}
+                    className={cn('absolute z-10 border-2 border-dashed opacity-70 hover:opacity-100 transition-opacity', trackColor(track).border, trackColor(track).soft)}
+                    style={toCss({ x: roi[0], y: roi[1], w: roi[2], h: roi[3] }, metadata)}
+                    title={label(track)}
+                  >
+                    <span className={cn('absolute -top-px -left-px px-1.5 text-[10px] font-bold text-black', trackColor(track).bg)}>
+                      {track + 1}
+                    </span>
+                  </button>
+                ))}
+                {metadata && showRegionLabels && crop && (
+                  <span
+                    className={cn('absolute z-10 px-1.5 text-[10px] font-bold text-black pointer-events-none', trackColor(activeTrack).bg)}
+                    style={{ left: `${crop.x}%`, top: `${crop.y}%` }}
+                  >
+                    {activeTrack + 1}
+                  </span>
+                )}
+              </>
             )}
-            {isBlurMode && (
+            {isBlurMode && metadata && (
               <div className="relative w-full h-full">
                 <img
                   src={blurPreviewUrl || imgSrc}
@@ -177,24 +232,31 @@ export const VideoCanvas = () => {
                   className="w-full h-full object-contain select-none block"
                   onDragStart={(e) => e.preventDefault()}
                 />
-                {showGuides && geometry && (
-                  <>
-                    <div
-                      className="absolute bg-green-500/10 border border-green-500/90 z-40 cursor-grab active:cursor-grabbing group/green"
-                      style={toCss(geometry.green)}
-                      onMouseDown={handleMouseDown}
-                      title={t('editor.dragY')}
-                    >
-                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/green:opacity-100 transition-opacity">
-                        <MoveVertical size={16} className="text-green-400 drop-shadow-md" />
-                      </div>
-                    </div>
-                    {isDragging && (
-                      <div className="absolute top-4 left-4 bg-black/80 text-white text-xs px-2 py-1 rounded border border-white/20 z-50 font-mono">
-                        Y: {blurSettings.y}
-                      </div>
+                {showGuides && guides.map(({ track, rect, y }) => (
+                  <div
+                    key={track}
+                    className={cn(
+                      'absolute z-40 border cursor-grab active:cursor-grabbing group/green',
+                      track === activeTrack ? 'bg-green-500/10 border-green-500/90' : 'bg-white/5 border-white/40 border-dashed',
                     )}
-                  </>
+                    style={toCss(rect, metadata)}
+                    onMouseDown={(e) => handleGuideMouseDown(e, track, y)}
+                    title={t('editor.dragY')}
+                  >
+                    {trackCount > 1 && (
+                      <span className={cn('absolute -top-px -left-px px-1 text-[9px] font-bold text-black', trackColor(track).bg)}>
+                        {track + 1}
+                      </span>
+                    )}
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/green:opacity-100 transition-opacity">
+                      <MoveVertical size={16} className="text-green-400 drop-shadow-md" />
+                    </div>
+                  </div>
+                ))}
+                {dragTrack !== null && (
+                  <div className="absolute top-4 left-4 bg-black/80 text-white text-xs px-2 py-1 rounded border border-white/20 z-50 font-mono">
+                    Y: {settingsForTrack(blurState, dragTrack).y}
+                  </div>
                 )}
               </div>
             )}

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { SubtitleItem } from '../types';
+import { trackOf } from '../shared/lib/tracks';
 
 const HISTORY_LIMIT = 50;
 const STORAGE_KEY = 'subvision_subtitles';
@@ -48,13 +49,16 @@ interface ProcessingState {
 
   /** Server result: replaces the list and starts a fresh undo history. */
   setSubtitles: (subs: SubtitleItem[]) => void;
-  /** User action (e.g. SRT import): replaces the list as one undoable step. */
-  importSubtitles: (subs: SubtitleItem[]) => void;
+  /** User action (SRT import): replaces one track's cues as one undoable step. */
+  importSubtitles: (subs: SubtitleItem[], track?: number) => void;
   addSubtitle: (sub: SubtitleItem) => void;
   /** User edit: patches the current item by id and marks it edited. */
   updateSubtitle: (id: number, patch: SubtitlePatch) => void;
   deleteSubtitle: (id: number) => void;
-  mergeSubtitles: (index: number) => void;
+  /** Drop a track's cues and shift later tracks down (one undoable step). */
+  removeTrack: (track: number) => void;
+  /** Merge a cue with the next cue of the same track. */
+  mergeSubtitles: (id: number) => void;
 
   setProcessing: (processing: boolean) => void;
   setActiveOcrJobId: (id: string | null) => void;
@@ -107,10 +111,15 @@ export const useProcessingStore = create<ProcessingState>()((set, get) => ({
     persistSubtitles(subs);
   },
 
-  importSubtitles: (subs) => {
+  importSubtitles: (subs, track = 0) => {
     get().saveHistory();
-    set({ subtitles: subs });
-    persistSubtitles(subs);
+    const kept = get().subtitles.filter((s) => trackOf(s) !== track);
+    // Imported IDs restart at 1 and would collide with the other tracks.
+    let nextId = kept.reduce((max, s) => Math.max(max, s.id), 0) + 1;
+    const imported = subs.map((s) => ({ ...s, id: nextId++, track }));
+    const merged = [...kept, ...imported].sort((a, b) => a.start - b.start);
+    set({ subtitles: merged });
+    persistSubtitles(merged);
   },
 
   addSubtitle: (sub) => {
@@ -135,13 +144,27 @@ export const useProcessingStore = create<ProcessingState>()((set, get) => ({
     persistSubtitles(newSubs);
   },
 
-  mergeSubtitles: (index) => {
+  removeTrack: (track) => {
     const subs = get().subtitles;
-    if (index < 0 || index >= subs.length - 1) return;
+    if (!subs.some((s) => trackOf(s) >= track)) return;
+    if (subs.some((s) => trackOf(s) === track)) get().saveHistory();
+    const newSubs = subs
+      .filter((s) => trackOf(s) !== track)
+      .map((s) => (trackOf(s) > track ? { ...s, track: trackOf(s) - 1 } : s));
+    set({ subtitles: newSubs });
+    persistSubtitles(newSubs);
+  },
+
+  mergeSubtitles: (id) => {
+    const subs = get().subtitles;
+    const index = subs.findIndex((s) => s.id === id);
+    if (index < 0) return;
+    const curr = subs[index];
+    const nextIndex = subs.findIndex((s, i) => i > index && trackOf(s) === trackOf(curr));
+    if (nextIndex < 0) return;
 
     get().saveHistory();
-    const curr = subs[index];
-    const next = subs[index + 1];
+    const next = subs[nextIndex];
 
     const merged = {
       ...curr,
@@ -150,7 +173,9 @@ export const useProcessingStore = create<ProcessingState>()((set, get) => ({
       isEdited: true,
     };
 
-    const newSubs = [...subs.slice(0, index), merged, ...subs.slice(index + 2)];
+    const newSubs = subs
+      .map((s, i) => (i === index ? merged : s))
+      .filter((_, i) => i !== nextIndex);
 
     set({ subtitles: newSubs });
     persistSubtitles(newSubs);

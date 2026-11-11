@@ -2,16 +2,23 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import axios from 'axios';
 import { api } from '../../../shared/api';
 import { calculateTextRect } from '../../../shared/lib/textGeometry';
+import { trackOf } from '../../../shared/lib';
+import { settingsForTrack, type TrackSettingsSource } from '../../../store/blurStore';
 import type { VideoMetadata, BlurSettings, SubtitleItem } from '../../../types';
 
 const MAX_BLUR_CACHE = 30;
 const blurCache = new Map<string, string>();
 
+interface PreviewCue {
+  text: string;
+  settings: BlurSettings;
+}
+
+/** Box blur is cheap enough to preview in the browser. */
 const generateLocalPreview = async (
   filename: string,
   frameIndex: number,
-  settings: BlurSettings,
-  text: string,
+  cues: PreviewCue[],
   signal: AbortSignal
 ): Promise<string> => {
   const frameUrl = await api.getFrameBlob(filename, frameIndex, signal);
@@ -27,7 +34,8 @@ const generateLocalPreview = async (
 
       ctx.drawImage(img, 0, 0);
 
-      if (text && settings.sigma > 0) {
+      for (const { text, settings } of cues) {
+        if (!text || settings.sigma <= 0) continue;
         const rect = calculateTextRect(text, img.width, img.height, settings);
         if (rect.w > 0 && rect.h > 0) {
           ctx.save();
@@ -54,7 +62,9 @@ const generateLocalPreview = async (
 
 export const useBlurPreview = (
   metadata: VideoMetadata | null,
-  blurSettings: BlurSettings,
+  trackState: TrackSettingsSource,
+  /** Settings of the selected track, used when no cue is on screen. */
+  fallbackSettings: BlurSettings,
   subtitles: SubtitleItem[],
   currentFrameIndex: number,
   setBlurPreviewUrl: (url: string | null) => void
@@ -63,17 +73,18 @@ export const useBlurPreview = (
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Depend on the active texts only (as a string key), so editing an unrelated
-  // subtitle does not restart the preview request.
+  // Active cues with their track settings, as a string key: editing an unrelated
+  // subtitle or another track's settings does not restart the preview request.
   const time = metadata ? currentFrameIndex / metadata.fps : 0;
-  const textsKey = useMemo(
+  const cuesKey = useMemo(
     () => JSON.stringify(
       subtitles
         .filter((s) => time >= s.start && time <= s.end && s.text?.trim())
-        .map((s) => s.text.trim()),
+        .map((s): PreviewCue => ({ text: s.text.trim(), settings: settingsForTrack(trackState, trackOf(s)) })),
     ),
-    [subtitles, time],
+    [subtitles, time, trackState],
   );
+  const fallbackKey = JSON.stringify(fallbackSettings);
 
   useEffect(() => {
     blurCache.forEach(url => URL.revokeObjectURL(url));
@@ -92,11 +103,9 @@ export const useBlurPreview = (
       abortControllerRef.current.abort();
     }
 
-    const texts: string[] = JSON.parse(textsKey);
-    const text = texts[0] ?? "";
-
-    const settingsKey = JSON.stringify(blurSettings);
-    const cacheKey = `${metadata.filename}_${currentFrameIndex}_${texts.join("|")}_${settingsKey}`;
+    const cues: PreviewCue[] = JSON.parse(cuesKey);
+    const fallback: BlurSettings = JSON.parse(fallbackKey);
+    const cacheKey = `${metadata.filename}_${currentFrameIndex}_${cuesKey}_${cues.length ? '' : fallbackKey}`;
 
     if (blurCache.has(cacheKey)) {
       const url = blurCache.get(cacheKey)!;
@@ -114,16 +123,19 @@ export const useBlurPreview = (
       abortControllerRef.current = abortController;
 
       try {
+        const allLocal = cues.length > 0
+          ? cues.every((c) => c.settings.mode === 'blur')
+          : fallback.mode === 'blur';
         let url: string;
-        if (blurSettings.mode === 'blur') {
-          url = await generateLocalPreview(metadata.filename, currentFrameIndex, blurSettings, text, abortController.signal);
+        if (allLocal) {
+          url = await generateLocalPreview(metadata.filename, currentFrameIndex, cues, abortController.signal);
         } else {
           url = await api.getBlurPreview({
             filename: metadata.filename,
             frame_index: currentFrameIndex,
-            blur_settings: blurSettings,
-            subtitle_text: text,
-            subtitle_texts: texts,
+            blur_settings: fallback,
+            subtitle_texts: cues.map((c) => c.text),
+            cues: cues.map((c) => ({ text: c.text, blur_settings: c.settings })),
           }, abortController.signal);
         }
 
@@ -162,7 +174,7 @@ export const useBlurPreview = (
         abortControllerRef.current.abort();
       }
     };
-  }, [blurSettings, currentFrameIndex, metadata, textsKey, setBlurPreviewUrl]);
+  }, [currentFrameIndex, metadata, cuesKey, fallbackKey, setBlurPreviewUrl]);
 
   return { isPreviewUpdating };
 };

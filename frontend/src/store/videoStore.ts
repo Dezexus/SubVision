@@ -1,13 +1,22 @@
 import { create } from 'zustand';
-import { getClientId } from '../shared/lib';
+import { getClientId, MAX_TRACKS } from '../shared/lib';
 import { api } from '../shared/api';
 import { useProcessingStore } from './processingStore';
 import { useBlurStore } from './blurStore';
-import type { VideoMetadata } from '../types';
+import type { Roi, VideoMetadata } from '../types';
+
+const EMPTY_ROI: Roi = [0, 0, 0, 0];
 
 const STORAGE_KEY = 'subvision_video_state';
 
-function storeVideoState(value: { filename: string; metadata: VideoMetadata } | null): void {
+interface PersistedVideoState {
+  filename: string;
+  metadata: VideoMetadata;
+  rois?: Roi[];
+  trackNames?: string[];
+}
+
+function storeVideoState(value: PersistedVideoState | null): void {
   try {
     if (value) localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
     else localStorage.removeItem(STORAGE_KEY);
@@ -15,6 +24,9 @@ function storeVideoState(value: { filename: string; metadata: VideoMetadata } | 
     console.warn('Failed to persist video state', e);
   }
 }
+
+const isRoi = (r: unknown): r is Roi =>
+  Array.isArray(r) && r.length === 4 && r.every((v) => typeof v === 'number');
 
 interface VideoState {
   file: File | null;
@@ -25,7 +37,15 @@ interface VideoState {
   isPreviewMode: boolean;
   previewVolume: number;
   currentFrameIndex: number;
-  roi: [number, number, number, number];
+  /** One ROI per subtitle track; index = track. */
+  rois: Roi[];
+  /** User names per track; empty means "Track N". */
+  trackNames: string[];
+  /**
+   * The one current track of the app: its ROI is drawn on the frame, and blur
+   * settings, SRT import, the list filter and timing hotkeys all apply to it.
+   */
+  activeTrack: number;
 
   initializeClientId: () => string;
   restoreVideoState: () => void;
@@ -36,7 +56,19 @@ interface VideoState {
   setPreviewMode: (mode: boolean) => void;
   setPreviewVolume: (vol: number) => void;
   setCurrentFrame: (frame: number | ((prev: number) => number)) => void;
-  setRoi: (roi: [number, number, number, number]) => void;
+  /** Set the ROI of the active track. */
+  setRoi: (roi: Roi) => void;
+  setActiveTrack: (track: number) => void;
+  /** Add a region and make it current. */
+  addTrack: () => void;
+  renameTrack: (track: number, name: string) => void;
+  /**
+   * Remove a track with its region, cues and blur settings; later tracks shift
+   * down by one. Dropping the cues is one undoable step.
+   */
+  removeTrack: (track: number) => void;
+  /** Forget regions and names (a new video). */
+  resetTracks: () => void;
 
   reset: () => void;
   resetProject: () => Promise<void>;
@@ -54,7 +86,9 @@ export const useVideoStore = create<VideoState>()((set, get) => ({
   isPreviewMode: false,
   previewVolume: 0.5,
   currentFrameIndex: 0,
-  roi: [0, 0, 0, 0],
+  rois: [EMPTY_ROI],
+  trackNames: [],
+  activeTrack: 0,
 
   initializeClientId: () => {
     const existingId = get().clientId;
@@ -68,12 +102,19 @@ export const useVideoStore = create<VideoState>()((set, get) => ({
   restoreVideoState: () => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.filename && parsed.metadata) {
-          set({ filename: parsed.filename, metadata: parsed.metadata });
-        }
-      }
+      if (!saved) return;
+      const parsed = JSON.parse(saved) as Partial<PersistedVideoState>;
+      if (!parsed.filename || !parsed.metadata) return;
+      const rois = Array.isArray(parsed.rois) ? parsed.rois.filter(isRoi).slice(0, MAX_TRACKS) : [];
+      const trackNames = Array.isArray(parsed.trackNames)
+        ? parsed.trackNames.map((n) => (typeof n === 'string' ? n : '')).slice(0, MAX_TRACKS)
+        : [];
+      set({
+        filename: parsed.filename,
+        metadata: parsed.metadata,
+        rois: rois.length > 0 ? rois : [EMPTY_ROI],
+        trackNames,
+      });
     } catch (e) {
       console.error('Failed to restore video state', e);
     }
@@ -82,8 +123,7 @@ export const useVideoStore = create<VideoState>()((set, get) => ({
   setFile: (file) => set({ file }),
 
   setMetadata: (metadata) => {
-    set({ metadata });
-    if (metadata) storeVideoState({ filename: metadata.filename, metadata });
+    set({ metadata, ...(metadata ? { filename: metadata.filename } : {}) });
   },
 
   setPreviewMode: (isPreviewMode) => set({ isPreviewMode }),
@@ -93,7 +133,40 @@ export const useVideoStore = create<VideoState>()((set, get) => ({
     currentFrameIndex: typeof frame === 'function' ? frame(state.currentFrameIndex) : frame,
   })),
 
-  setRoi: (roi) => set({ roi }),
+  setRoi: (roi) => set((state) => {
+    const rois = [...state.rois];
+    while (rois.length <= state.activeTrack) rois.push(EMPTY_ROI);
+    rois[state.activeTrack] = roi;
+    return { rois };
+  }),
+
+  setActiveTrack: (track) => set({ activeTrack: Math.max(0, Math.min(track, MAX_TRACKS - 1)) }),
+
+  addTrack: () => set((state) => {
+    if (state.rois.length >= MAX_TRACKS) return {};
+    return { rois: [...state.rois, EMPTY_ROI], activeTrack: state.rois.length };
+  }),
+
+  renameTrack: (track, name) => set((state) => {
+    const trackNames = [...state.trackNames];
+    while (trackNames.length <= track) trackNames.push('');
+    trackNames[track] = name.trim().slice(0, 40);
+    return { trackNames };
+  }),
+
+  removeTrack: (track) => {
+    const state = get();
+    const rois = state.rois.filter((_, i) => i !== track);
+    set({
+      rois: rois.length > 0 ? rois : [EMPTY_ROI],
+      trackNames: state.trackNames.filter((_, i) => i !== track),
+      activeTrack: state.activeTrack > track ? state.activeTrack - 1 : Math.min(state.activeTrack, Math.max(0, rois.length - 1)),
+    });
+    useProcessingStore.getState().removeTrack(track);
+    useBlurStore.getState().removeTrack(track);
+  },
+
+  resetTracks: () => set({ rois: [EMPTY_ROI], trackNames: [], activeTrack: 0 }),
 
   reset: () => {
     set({
@@ -102,7 +175,9 @@ export const useVideoStore = create<VideoState>()((set, get) => ({
       metadata: null,
       isPreviewMode: false,
       currentFrameIndex: 0,
-      roi: [0, 0, 0, 0],
+      rois: [EMPTY_ROI],
+      trackNames: [],
+      activeTrack: 0,
     });
     storeVideoState(null);
   },
@@ -121,3 +196,15 @@ export const useVideoStore = create<VideoState>()((set, get) => ({
     get().reset();
   },
 }));
+
+// Keep the project (video, regions, names) across reloads.
+useVideoStore.subscribe((state, prev) => {
+  if (state.metadata === prev.metadata && state.rois === prev.rois && state.trackNames === prev.trackNames) return;
+  if (!state.metadata) return;
+  storeVideoState({
+    filename: state.metadata.filename,
+    metadata: state.metadata,
+    rois: state.rois,
+    trackNames: state.trackNames,
+  });
+});

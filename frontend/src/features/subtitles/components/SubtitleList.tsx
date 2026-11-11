@@ -1,18 +1,37 @@
 /**
  * Renders a virtualized list of subtitle cards that auto-scrolls with the active video frame.
  */
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState, useCallback, useMemo, type ReactNode } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Unlock, FileText } from 'lucide-react';
 import { useProcessingStore } from '../../../store/processingStore';
 import { useVideoStore } from '../../../store/videoStore';
-import { useGlobalKeydown } from '../../../shared/lib';
+import { cn, countTracks, trackColor, trackOf, useGlobalKeydown } from '../../../shared/lib';
+import { useTrackLabel } from '../../../hooks/useTrackLabel';
 import { useTranslation } from '../../../i18n';
 import { SubtitleCard } from './SubtitleCard';
 
 export const SubtitleList = () => {
   const { t } = useTranslation();
-  const subtitles = useProcessingStore((s) => s.subtitles);
+  const allSubtitles = useProcessingStore((s) => s.subtitles);
+  const regionCount = useVideoStore((s) => s.rois.length);
+  const activeTrack = useVideoStore((s) => s.activeTrack);
+  const label = useTrackLabel();
+  // By default the list follows the current track; "All" shows every track.
+  const [showAll, setShowAll] = useState(false);
+
+  const trackCount = countTracks(regionCount, allSubtitles);
+  const filterTrack = trackCount > 1 && !showAll ? Math.min(activeTrack, trackCount - 1) : null;
+  const subtitles = useMemo(
+    () => (filterTrack === null ? allSubtitles : allSubtitles.filter((s) => trackOf(s) === filterTrack)),
+    [allSubtitles, filterTrack],
+  );
+  // Last cue of each track: it has nothing to merge with.
+  const lastIdByTrack = useMemo(() => {
+    const last = new Map<number, number>();
+    for (const s of allSubtitles) last.set(trackOf(s), s.id);
+    return last;
+  }, [allSubtitles]);
   const isProcessing = useProcessingStore((s) => s.isProcessing);
   const currentFrameIndex = useVideoStore((s) => s.currentFrameIndex);
   const metadata = useVideoStore((s) => s.metadata);
@@ -71,7 +90,35 @@ export const SubtitleList = () => {
     useProcessingStore.getState().deleteSubtitle(id);
   });
 
-  if (subtitles.length === 0) {
+  const current = Math.min(activeTrack, trackCount - 1);
+  const segment = (active: boolean, onClick: () => void, children: ReactNode) => (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors min-w-0',
+        active ? 'bg-bg-surface text-txt-main shadow-sm' : 'text-txt-subtle hover:text-txt-main',
+      )}
+    >
+      {children}
+    </button>
+  );
+  const tabs = trackCount > 1 && (
+    <div className="px-2 pb-2">
+      <div className="flex items-center gap-1 bg-bg-input border border-border-main rounded-lg p-0.5">
+        {segment(!showAll, () => setShowAll(false), (
+          <>
+            <span className={cn('w-2 h-2 rounded-full shrink-0', trackColor(current).bg)} />
+            <span className="text-txt-dim">{t('tracks.current')}:</span>
+            <span className="truncate">{label(current)}</span>
+          </>
+        ))}
+        {segment(showAll, () => setShowAll(true), t('tracks.all'))}
+      </div>
+    </div>
+  );
+
+  if (allSubtitles.length === 0) {
     return (
       <div className="h-full flex flex-col items-center justify-center p-6 text-center animate-in fade-in zoom-in-95 duration-300">
         <div className="w-16 h-16 rounded-2xl bg-bg-surface border border-border-strong flex items-center justify-center mb-4 shadow-sm">
@@ -86,10 +133,11 @@ export const SubtitleList = () => {
   }
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full flex flex-col">
+      {tabs}
       <div
         ref={parentRef}
-        className="h-full w-full overflow-y-auto scrollbar-hide pb-16"
+        className="flex-1 min-h-0 w-full overflow-y-auto scrollbar-hide pb-16"
         onWheel={handleUserScroll}
         onTouchMove={handleUserScroll}
       >
@@ -113,7 +161,8 @@ export const SubtitleList = () => {
                   item={sub}
                   index={virtualRow.index}
                   isActive={time >= sub.start && time <= sub.end}
-                  hasNext={virtualRow.index < subtitles.length - 1}
+                  hasNext={lastIdByTrack.get(trackOf(sub)) !== sub.id}
+                  showTrack={trackCount > 1 && showAll}
                   onHoverChange={handleHoverChange}
                 />
               </div>

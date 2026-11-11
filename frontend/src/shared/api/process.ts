@@ -29,6 +29,8 @@ export const processApi = {
     blur_settings: BlurSettings;
     subtitle_text?: string;
     subtitle_texts?: string[];
+    /** Active cues, each with its own track settings. */
+    cues?: { text: string; blur_settings: BlurSettings }[];
   }, signal?: AbortSignal) => {
     const response = await axios.post(`${API_URL}/process/preview_blur`, config, {
       responseType: 'blob',

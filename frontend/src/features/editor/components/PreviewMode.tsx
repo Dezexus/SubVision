@@ -1,14 +1,14 @@
 /**
  * Renders the preview mode interface, integrating the video player, active subtitle editor, and timeline.
  */
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { Play, Pause } from 'lucide-react';
 import { useVideoStore } from '../../../store/videoStore';
 import { useProcessingStore } from '../../../store/processingStore';
 import { Timeline } from '../../timeline';
 import { ActiveSubtitleEditor } from '../../subtitles';
 import { API_BASE } from '../../../shared/api';
-import { useGlobalKeydown } from '../../../shared/lib';
+import { countTracks, subtitleAt, trackOf, useGlobalKeydown } from '../../../shared/lib';
 import { useTranslation } from '../../../i18n';
 import type { SubtitleItem } from '../../../types';
 
@@ -21,6 +21,8 @@ export const PreviewMode = () => {
   const setCurrentFrame = useVideoStore((s) => s.setCurrentFrame);
   const previewVolume = useVideoStore((s) => s.previewVolume);
   const setPreviewVolume = useVideoStore((s) => s.setPreviewVolume);
+  const setActiveTrack = useVideoStore((s) => s.setActiveTrack);
+  const regionCount = useVideoStore((s) => s.rois.length);
 
   const subtitles = useProcessingStore((s) => s.subtitles);
   const updateSubtitle = useProcessingStore((s) => s.updateSubtitle);
@@ -38,11 +40,9 @@ export const PreviewMode = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [activeSub, setActiveSub] = useState<SubtitleItem | null | undefined>(null);
-  const [localText, setLocalText] = useState('');
-  const [isFocused, setIsFocused] = useState(false);
+  const [focusedId, setFocusedId] = useState<number | null>(null);
   const [isAutoPauseEnabled, setIsAutoPauseEnabled] = useState(true);
 
-  const prevActiveSubIdRef = useRef<number | null>(null);
   const activeSubRef = useRef<SubtitleItem | null | undefined>(null);
   const autoPauseRef = useRef<boolean>(isAutoPauseEnabled);
 
@@ -54,18 +54,20 @@ export const PreviewMode = () => {
     autoPauseRef.current = isAutoPauseEnabled;
   }, [isAutoPauseEnabled]);
 
+  // Auto-pause follows the cue of the current track.
   const updateActiveSubtitle = useCallback(
     (time: number) => {
-      const next = subtitles.find((sub) => time >= sub.start && time <= sub.end) ?? null;
-      if (next && next.id !== prevActiveSubIdRef.current) {
-        setLocalText(next.text);
-        prevActiveSubIdRef.current = next.id;
-      } else if (!next) {
-        prevActiveSubIdRef.current = null;
-      }
-      setActiveSub(next);
+      setActiveSub(subtitleAt(subtitles, time, useVideoStore.getState().activeTrack) ?? null);
     },
     [subtitles]
+  );
+
+  // Every cue on screen gets its own editor, in track order.
+  const visibleCues = useMemo(
+    () => subtitles
+      .filter((s) => currentTime >= s.start && currentTime <= s.end)
+      .sort((a, b) => trackOf(a) - trackOf(b)),
+    [subtitles, currentTime],
   );
 
   const syncCurrentFrame = useCallback(
@@ -184,16 +186,6 @@ export const PreviewMode = () => {
     setDuration(dur);
   }, []);
 
-  const handleTextChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      const newText = e.target.value;
-      setLocalText(newText);
-      // Patch by id: activeSub is a snapshot and may hold stale timings.
-      if (activeSub) updateSubtitle(activeSub.id, { text: newText });
-    },
-    [activeSub, updateSubtitle]
-  );
-
   if (!metadata) return null;
 
   return (
@@ -225,20 +217,19 @@ export const PreviewMode = () => {
         </button>
       </div>
       <ActiveSubtitleEditor
-        activeSub={activeSub}
-        text={localText}
-        onChange={handleTextChange}
-        onFocus={() => {
+        cues={visibleCues}
+        showTrack={countTracks(regionCount, subtitles) > 1}
+        onChange={(id, text) => updateSubtitle(id, { text })}
+        onFocus={(cue) => {
           beginEdit();
-          setIsFocused(true);
+          setFocusedId(cue.id);
+          setActiveTrack(trackOf(cue));
         }}
         onBlur={() => {
           endEdit();
-          setIsFocused(false);
+          setFocusedId(null);
         }}
-        onDelete={() => {
-          if (activeSub) deleteSubtitle(activeSub.id);
-        }}
+        onDelete={deleteSubtitle}
       />
       <div className="shrink-0">
         <Timeline
@@ -250,7 +241,7 @@ export const PreviewMode = () => {
           onVolumeChange={setPreviewVolume}
           currentTimeOverride={currentTime}
           durationOverride={duration}
-          activeEditId={isFocused && activeSub ? activeSub.id : null}
+          activeEditId={focusedId}
         />
       </div>
     </div>

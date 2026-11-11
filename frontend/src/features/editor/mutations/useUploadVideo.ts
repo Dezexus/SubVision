@@ -45,6 +45,8 @@ export function useUploadVideo() {
 
       resetProcessing();
       resetBlur();
+      // Regions and track names belong to the previous video.
+      useVideoStore.getState().resetTracks();
       clearFrameCache();
       setUploadProgress(0);
 

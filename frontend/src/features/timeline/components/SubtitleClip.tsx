@@ -1,5 +1,5 @@
 import React from 'react';
-import { cn } from '../../../shared/lib';
+import { cn, trackColor, trackOf } from '../../../shared/lib';
 import type { ProcessedSubtitle } from '../utils/timelineUtils';
 
 interface Props {
@@ -9,6 +9,8 @@ interface Props {
   zoomLevel: number;
   draggedEdge: { id: number; edge: 'start' | 'end' } | null;
   exactDuration: number;
+  /** Mark the subtitle track with a colored edge when there are several. */
+  showTrack: boolean;
   onMouseDownEdge: (e: React.MouseEvent, sub: ProcessedSubtitle, edge: 'start' | 'end') => void;
   onMouseEnter: () => void;
 }
@@ -23,6 +25,7 @@ export const SubtitleClip = ({
   zoomLevel,
   draggedEdge,
   exactDuration,
+  showTrack,
   onMouseDownEdge,
   onMouseEnter,
 }: Props) => {
@@ -47,13 +50,14 @@ export const SubtitleClip = ({
       style={{
         left: `${startPercent}%`,
         width: `${Math.max(durationPercent, 0.1)}%`,
-        top: `${sub.track * 28}px`,
+        top: `${sub.lane * 28}px`,
       }}
       onMouseEnter={onMouseEnter}
     >
       <div className={cn(
         "w-full h-full rounded-sm border transition-all duration-150 backdrop-blur-sm truncate px-1 text-[9px] font-mono leading-6 opacity-80 hover:opacity-100 relative",
-        colorClass
+        colorClass,
+        showTrack && cn('border-l-[3px]', trackColor(trackOf(sub)).border)
       )}>
         {zoomLevel > 3 && sub.text}
 

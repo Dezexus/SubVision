@@ -134,6 +134,7 @@ async def preview_blur_frame(config: BlurPreviewConfig):
             settings=config.blur_settings.model_dump(),
             text=config.subtitle_text,
             subtitle_texts=config.subtitle_texts or None,
+            cues=[(cue.text, (cue.blur_settings or config.blur_settings).model_dump()) for cue in config.cues] or None,
         )
         if preview_image is None:
             raise HTTPException(status_code=500, detail="Failed to generate preview")

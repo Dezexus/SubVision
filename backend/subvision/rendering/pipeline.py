@@ -114,10 +114,12 @@ async def render_blur_pipeline(
         fps = meta["fps"]
         total_frames = meta["total_frames"]
 
-        effects: List[Effect] = task_config.build_effects()
-        for effect in effects:
+        # One effect per track: each region has its own position, size and mode.
+        track_effects = task_config.build_track_effects()
+        effects: List[Effect] = [effect for effect, _ in track_effects]
+        for effect, track_subtitles in track_effects:
             await effect.prepare(
-                subtitles=task_config.subtitles,
+                subtitles=track_subtitles,
                 width=width,
                 height=height,
                 fps=fps,

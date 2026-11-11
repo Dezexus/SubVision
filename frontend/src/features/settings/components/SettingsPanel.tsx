@@ -21,7 +21,7 @@ export const SettingsPanel = () => {
   const { t } = useTranslation();
   const metadata = useVideoStore((s) => s.metadata);
   const clientId = useVideoStore((s) => s.clientId);
-  const roi = useVideoStore((s) => s.roi);
+  const rois = useVideoStore((s) => s.rois);
   const isProcessing = useProcessingStore((s) => s.isProcessing);
   const activeOcrJobId = useProcessingStore((s) => s.activeOcrJobId);
   const activeBlurJobId = useProcessingStore((s) => s.activeBlurJobId);
@@ -60,7 +60,8 @@ export const SettingsPanel = () => {
     const processConfig: ProcessConfig = {
       filename: metadata.filename,
       client_id: clientId,
-      roi,
+      roi: rois[0],
+      rois,
       preset: config.preset || '⚖️ Balance',
       languages: config.languages || 'en',
       step: config.step,

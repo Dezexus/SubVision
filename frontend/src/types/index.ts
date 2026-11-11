@@ -33,10 +33,15 @@ export interface Language {
   name: string;
 }
 
+/** [x, y, width, height] in source-video pixels. */
+export type Roi = [number, number, number, number];
+
 export interface ProcessConfig {
   filename: string;
   client_id: string;
-  roi: [number, number, number, number];
+  roi: Roi;
+  /** One ROI per subtitle track; overrides `roi` on the backend. */
+  rois?: Roi[];
   preset: string;
   languages: string;
   step?: number;
@@ -49,7 +54,7 @@ export interface ProcessConfig {
 }
 
 /** OCR settings in configStore (without session/video fields). */
-export type OcrSettings = Omit<ProcessConfig, 'filename' | 'client_id' | 'roi'>;
+export type OcrSettings = Omit<ProcessConfig, 'filename' | 'client_id' | 'roi' | 'rois'>;
 
 export interface BlurSettings {
   mode: 'blur' | 'hybrid' | 'sttn';
@@ -67,6 +72,8 @@ export interface RenderConfig {
   client_id: string;
   subtitles: SubtitleItem[];
   blur_settings: BlurSettings;
+  /** Settings per subtitle track, indexed by `SubtitleItem.track`. */
+  track_blur_settings?: BlurSettings[];
   original_filename?: string;
 }
 
@@ -76,6 +83,8 @@ export interface SubtitleItem {
   end: number;
   text: string;
   conf: number;
+  /** Subtitle region this cue came from; missing means 0. */
+  track?: number;
   isEdited?: boolean;
 }
 

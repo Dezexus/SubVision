@@ -1,38 +1,49 @@
 import type { SubtitleItem } from '../../../types';
+import { trackOf } from '../../../shared/lib/tracks';
 
 export interface ProcessedSubtitle extends SubtitleItem {
-  track: number;
+  /** Visual row on the timeline (not the subtitle track). */
+  lane: number;
+  /** Overlaps another cue of the same subtitle track. */
   hasOverlap?: boolean;
 }
 
 /**
- * Calculates tracks for subtitles to prevent visual overlapping and detects timing collisions.
- * Optimizes layout for OCR cleanup workflow.
+ * Lays subtitles out in rows: each subtitle track gets its own block of rows,
+ * and overlapping cues within a track stack into extra rows.
  */
 export const calculateTracks = (subtitles: SubtitleItem[]): ProcessedSubtitle[] => {
-  const sorted = [...subtitles].sort((a, b) => a.start - b.start);
-  const tracks: number[] = [];
+  const byTrack = new Map<number, SubtitleItem[]>();
+  for (const sub of subtitles) {
+    const track = trackOf(sub);
+    byTrack.set(track, [...(byTrack.get(track) ?? []), sub]);
+  }
+
   const processed: ProcessedSubtitle[] = [];
+  let laneOffset = 0;
 
-  sorted.forEach((sub) => {
-    let track = 0;
-    while (tracks[track] > sub.start) {
-      track++;
+  for (const track of [...byTrack.keys()].sort((a, b) => a - b)) {
+    const sorted = [...byTrack.get(track)!].sort((a, b) => a.start - b.start);
+    const laneEnds: number[] = [];
+    const group: ProcessedSubtitle[] = [];
+
+    for (const sub of sorted) {
+      let lane = 0;
+      while (laneEnds[lane] > sub.start) lane++;
+      laneEnds[lane] = sub.end;
+      group.push({ ...sub, lane: laneOffset + lane });
     }
-    tracks[track] = sub.end;
-    processed.push({ ...sub, track });
-  });
 
-  for (let i = 0; i < processed.length; i++) {
-    const current = processed[i];
-    for (let j = i + 1; j < processed.length; j++) {
-      const next = processed[j];
-      if (next.start > current.end) break;
-      if (next.track === current.track && next.start < current.end) {
-        current.hasOverlap = true;
-        next.hasOverlap = true;
+    for (let i = 0; i < group.length; i++) {
+      for (let j = i + 1; j < group.length; j++) {
+        if (group[j].start >= group[i].end) break;
+        group[i].hasOverlap = true;
+        group[j].hasOverlap = true;
       }
     }
+
+    processed.push(...group);
+    laneOffset += Math.max(1, laneEnds.length);
   }
 
   return processed;

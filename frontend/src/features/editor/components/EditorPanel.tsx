@@ -1,14 +1,15 @@
 /**
- * Main editor panel managing the video canvas, filter preview, and timeline components.
+ * Main editor panel managing the track switcher, video canvas, filter preview, and timeline.
  */
-import { useEffect } from 'react';
 import { VideoCanvas } from './VideoCanvas';
 import { FilterPreview } from './FilterPreview';
 import { WelcomeScreen } from './WelcomeScreen';
 import { Timeline } from '../../timeline';
 import { PreviewMode } from './PreviewMode';
 import { GlobalProgress } from '../../../components/GlobalProgress';
+import { TrackSwitcher } from '../../../components/TrackSwitcher';
 import { useVideoStore } from '../../../store/videoStore';
+import { useGlobalKeydown } from '../../../shared/lib';
 
 export const EditorPanel = () => {
   const file = useVideoStore((s) => s.file);
@@ -16,23 +17,15 @@ export const EditorPanel = () => {
   const isPreviewMode = useVideoStore((s) => s.isPreviewMode);
   const setCurrentFrame = useVideoStore((s) => s.setCurrentFrame);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLElement) {
-        const tag = e.target.tagName.toLowerCase();
-        if (tag === 'input' || tag === 'textarea') return;
-      }
-      if (e.code === 'ArrowLeft') {
-        e.preventDefault();
-        setCurrentFrame((f) => Math.max(0, f - 1));
-      } else if (e.code === 'ArrowRight' && metadata) {
-        e.preventDefault();
-        setCurrentFrame((f) => Math.min(metadata.total_frames - 1, f + 1));
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [metadata, setCurrentFrame]);
+  useGlobalKeydown((e) => {
+    if (e.code === 'ArrowLeft') {
+      e.preventDefault();
+      setCurrentFrame((f) => Math.max(0, f - 1));
+    } else if (e.code === 'ArrowRight' && metadata) {
+      e.preventDefault();
+      setCurrentFrame((f) => Math.min(metadata.total_frames - 1, f + 1));
+    }
+  });
 
   if (!file && !metadata) {
     return (
@@ -45,7 +38,10 @@ export const EditorPanel = () => {
   return (
     <div className="w-full h-full min-h-0 relative overflow-hidden flex flex-col gap-4">
       <GlobalProgress />
-      
+      <div className="shrink-0">
+        <TrackSwitcher />
+      </div>
+
       {isPreviewMode ? (
         <div className="flex-1 relative overflow-hidden">
           <PreviewMode />

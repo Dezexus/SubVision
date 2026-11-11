@@ -107,10 +107,24 @@ def snap_abutting(items: list[SubtitleItem], abut_gap_max: float = 0.08) -> None
             curr["end"] = float(curr["start"]) + 1.0 / 30.0
 
 
+def snap_abutting_by_track(items: list[SubtitleItem], abut_gap_max: float = 0.08) -> None:
+    """snap_abutting within each track; cues of different tracks may overlap freely."""
+    by_track: dict[int, list[SubtitleItem]] = {}
+    for item in items:
+        by_track.setdefault(int(item.get("track", 0)), []).append(item)
+    for group in by_track.values():
+        group.sort(key=lambda it: float(it["start"]))
+        snap_abutting(group, abut_gap_max=abut_gap_max)
+
+
+def _track_of(item: SubtitleItem) -> int:
+    return int(item.get("track", 0))
+
+
 def refine_subtitle_boundaries(
     items: list[SubtitleItem],
     video_path: str,
-    image_pipeline: Any,
+    image_pipeline: Any | list[Any],
     ocr_engine: Any,
     min_conf: float,
     fps: float,
@@ -123,7 +137,11 @@ def refine_subtitle_boundaries(
     """
     Re-OCR every frame in a ±window around each coarse start/end and snap
     boundaries to the first/last frame where the cue text is present.
+
+    ``image_pipeline`` is one pipeline, or a list indexed by each item's
+    ``track``; all tracks are refined in a single pass over the video.
     """
+    pipelines = image_pipeline if isinstance(image_pipeline, list) else [image_pipeline]
     if not items or fps <= 0:
         return items
 
@@ -160,15 +178,22 @@ def refine_subtitle_boundaries(
             if frame_idx not in needed:
                 continue
 
-            text = ""
-            roi = image_pipeline.crop_roi(frame)
-            if roi is not None:
-                final_img = image_pipeline.apply_filters_to_roi(roi)
-                if final_img is not None:
-                    raw = ocr_engine.predict_batch([final_img])
-                    text, _conf = PaddleWrapper.parse_results(raw[0], min_conf)
+            cue_ids = cues_by_frame.get(frame_idx, [])
+            # OCR only the tracks that have an edge near this frame.
+            texts: dict[int, str] = {}
+            for track in sorted({_track_of(items[i]) for i in cue_ids}):
+                text = ""
+                pipeline = pipelines[track] if track < len(pipelines) else pipelines[0]
+                roi = pipeline.crop_roi(frame)
+                if roi is not None:
+                    final_img = pipeline.apply_filters_to_roi(roi)
+                    if final_img is not None:
+                        raw = ocr_engine.predict_batch([final_img])
+                        text, _conf = PaddleWrapper.parse_results(raw[0], min_conf)
+                texts[track] = text
 
-            for i in cues_by_frame.get(frame_idx, []):
+            for i in cue_ids:
+                text = texts[_track_of(items[i])]
                 presence_by_cue[i][frame_idx] = text_matches_cue(text, str(items[i].get("text", "")))
 
             scanned += 1
@@ -188,6 +213,6 @@ def refine_subtitle_boundaries(
         # Inclusive last frame → end just after that frame
         item["end"] = _frame_to_time(e1 + 1, fps)
 
-    snap_abutting(items, abut_gap_max=abut_gap_max)
+    snap_abutting_by_track(items, abut_gap_max=abut_gap_max)
     logger.info("Edge refine done: scanned %d frames for %d cues.", scanned, len(items))
     return items

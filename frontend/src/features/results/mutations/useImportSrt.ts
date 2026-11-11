@@ -3,6 +3,7 @@ import { api } from '../../../shared/api';
 import { getApiErrorMessage } from '../../../shared/lib/errors';
 import { useProcessingStore } from '../../../store/processingStore';
 import { useUIStore } from '../../../store/uiStore';
+import { useVideoStore } from '../../../store/videoStore';
 import { translate } from '../../../i18n';
 
 /**
@@ -15,7 +16,8 @@ export function useImportSrt() {
   const mutation = useMutation({
     mutationFn: (file: File) => api.importSrt(file),
     onSuccess: (subs) => {
-      importSubtitles(subs);
+      // Import into the selected track, replacing only that track's cues.
+      importSubtitles(subs, useVideoStore.getState().activeTrack);
       addToast(translate('toasts.importSuccess', { count: subs.length }), 'success');
     },
     onError: (err: unknown) => {

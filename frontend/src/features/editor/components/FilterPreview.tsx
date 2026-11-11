@@ -9,7 +9,7 @@ export const FilterPreview = () => {
   const { t } = useTranslation();
   const metadata = useVideoStore((s) => s.metadata);
   const clientId = useVideoStore((s) => s.clientId);
-  const roi = useVideoStore((s) => s.roi);
+  const roi = useVideoStore((s) => s.rois[s.activeTrack]);
   const currentFrameIndex = useVideoStore((s) => s.currentFrameIndex);
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);

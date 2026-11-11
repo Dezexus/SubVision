@@ -1,10 +1,12 @@
 import React, { useEffect, useRef } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { Video, RotateCcw, Wand2, ScanLine, Droplet, Loader2, Square } from 'lucide-react';
 import { useVideoStore } from '../../../store/videoStore';
 import { useProcessingStore } from '../../../store/processingStore';
-import { useBlurStore } from '../../../store/blurStore';
+import { allTrackSettings, settingsForTrack, useBlurStore } from '../../../store/blurStore';
+import { useTrackLabel } from '../../../hooks/useTrackLabel';
 import { Slider, Button } from '../../../shared/ui';
-import { cn } from '../../../shared/lib';
+import { cn, countTracks, trackColor } from '../../../shared/lib';
 import { useBlurPreview } from '../hooks/useBlurPreview';
 import { useStartBlurRender } from '../mutations/useStartBlurRender';
 import { useStopBlurRender } from '../mutations/useStopBlurRender';
@@ -19,7 +21,9 @@ export const BlurControlPanel = () => {
   const metadata = useVideoStore((s) => s.metadata);
   const clientId = useVideoStore((s) => s.clientId);
   const currentFrameIndex = useVideoStore((s) => s.currentFrameIndex);
-  const roi = useVideoStore((s) => s.roi);
+  const rois = useVideoStore((s) => s.rois);
+  const activeTrack = useVideoStore((s) => s.activeTrack);
+  const label = useTrackLabel();
 
   const isProcessing = useProcessingStore((s) => s.isProcessing);
   const activeBlurJobId = useProcessingStore((s) => s.activeBlurJobId);
@@ -27,33 +31,46 @@ export const BlurControlPanel = () => {
   const updateProgress = useProcessingStore((s) => s.updateProgress);
   const subtitles = useProcessingStore((s) => s.subtitles);
 
-  const blurSettings = useBlurStore((s) => s.blurSettings);
-  const setBlurSettings = useBlurStore((s) => s.setBlurSettings);
+  const trackState = useBlurStore(
+    useShallow((s) => ({ trackSettings: s.trackSettings, defaultBlurSettings: s.defaultBlurSettings })),
+  );
+  const storeDefaults = useBlurStore((s) => s.defaultBlurSettings);
+  const setTrackSettings = useBlurStore((s) => s.setTrackSettings);
+  const setDefaultBlurSettings = useBlurStore((s) => s.setDefaultBlurSettings);
+  const resetTrack = useBlurStore((s) => s.resetTrack);
   const setBlurPreviewUrl = useBlurStore((s) => s.setBlurPreviewUrl);
 
-  const userAdjustedY = useRef(false);
-  const initialized = useRef(false);
+  const trackCount = countTracks(rois.length, subtitles);
+  const track = Math.min(activeTrack, trackCount - 1);
+  const blurSettings = settingsForTrack(trackState, track);
+  const setBlurSettings = (updates: Parameters<typeof setTrackSettings>[1]) => setTrackSettings(track, updates);
+
+  // Tracks whose Y the user moved; the others follow the bottom of their ROI.
+  const userAdjustedY = useRef(new Set<number>());
 
   const { data: defaultBlurSettings } = useDefaultBlurSettingsQuery();
-  const { isPreviewUpdating } = useBlurPreview(metadata, blurSettings, subtitles, currentFrameIndex, setBlurPreviewUrl);
+  const { isPreviewUpdating } = useBlurPreview(metadata, trackState, blurSettings, subtitles, currentFrameIndex, setBlurPreviewUrl);
   const { execute: startBlurRender } = useStartBlurRender();
   const { execute: stopBlurRender } = useStopBlurRender();
 
   const videoHeight = metadata?.height || 1080;
 
+  // (Re)apply server defaults once they load or after a project reset cleared them.
   useEffect(() => {
-    if (defaultBlurSettings && !initialized.current) {
-      setBlurSettings(defaultBlurSettings);
-      initialized.current = true;
+    if (defaultBlurSettings && !storeDefaults) {
+      setDefaultBlurSettings(defaultBlurSettings);
+      userAdjustedY.current.clear();
     }
-  }, [defaultBlurSettings, setBlurSettings]);
+  }, [defaultBlurSettings, storeDefaults, setDefaultBlurSettings]);
 
   useEffect(() => {
-    if (metadata && !userAdjustedY.current && roi[1] > 0) {
-      const newY = roi[1] + roi[3];
-      setBlurSettings({ y: Math.max(0, Math.min(videoHeight, newY)) });
-    }
-  }, [roi, metadata, videoHeight, setBlurSettings]);
+    if (!metadata || !storeDefaults) return;
+    rois.forEach((roi, i) => {
+      if (userAdjustedY.current.has(i) || roi[1] <= 0) return;
+      const y = Math.max(0, Math.min(videoHeight, roi[1] + roi[3]));
+      if (settingsForTrack(useBlurStore.getState(), i).y !== y) setTrackSettings(i, { y });
+    });
+  }, [rois, metadata, videoHeight, storeDefaults, setTrackSettings]);
 
   const handleRender = () => {
     if (!metadata || !clientId) return;
@@ -63,19 +80,22 @@ export const BlurControlPanel = () => {
       original_filename: metadata.original_filename || metadata.filename,
       client_id: clientId,
       subtitles: subtitles,
-      blur_settings: blurSettings,
+      blur_settings: settingsForTrack(trackState, 0),
+      track_blur_settings: allTrackSettings(trackState, trackCount),
     });
   };
 
   const handleReset = () => {
-    if (defaultBlurSettings) {
-      setBlurSettings(defaultBlurSettings);
-      userAdjustedY.current = false;
+    resetTrack(track);
+    userAdjustedY.current.delete(track);
+    const roi = rois[track];
+    if (roi && roi[1] > 0) {
+      setTrackSettings(track, { y: Math.max(0, Math.min(videoHeight, roi[1] + roi[3])) });
     }
   };
 
   const handleYChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    userAdjustedY.current = true;
+    userAdjustedY.current.add(track);
     const newY = videoHeight - Number(e.target.value);
     setBlurSettings({ y: Math.max(0, Math.min(videoHeight, newY)) });
   };
@@ -83,6 +103,13 @@ export const BlurControlPanel = () => {
   return (
     <div className="flex flex-col h-full bg-bg-main relative">
       <div className="flex-1 overflow-y-auto p-4 space-y-5 scrollbar-hide">
+        {trackCount > 1 && (
+          <div className={cn('flex items-center gap-2 px-3 py-2 rounded-lg border text-xs', trackColor(track).border, trackColor(track).soft)}>
+            <span className={cn('w-2 h-2 rounded-full shrink-0', trackColor(track).bg)} />
+            <span className="text-txt-subtle">{t('tracks.settingsFor')}</span>
+            <span className="font-semibold text-txt-main truncate">{label(track)}</span>
+          </div>
+        )}
         <div className="w-full bg-bg-panel p-2 rounded-xl border border-border-main shadow-sm flex items-center relative overflow-hidden">
           <div className="flex-1 flex items-center">
             {isPreviewUpdating ? (

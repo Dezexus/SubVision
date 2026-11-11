@@ -68,11 +68,30 @@ describe('processingStore history', () => {
   });
 
   it('undo and redo round-trip', () => {
-    store().mergeSubtitles(0);
+    store().mergeSubtitles(1);
     expect(store().subtitles).toHaveLength(1);
     store().undo();
     expect(store().subtitles).toHaveLength(2);
     store().redo();
     expect(store().subtitles[0].text).toBe('line 1 line 2');
+  });
+
+  it('merges with the next cue of the same track only', () => {
+    store().setSubtitles([
+      { ...sub(1, 'a'), track: 0 },
+      { ...sub(2, 'top'), track: 1 },
+      { ...sub(3, 'b'), track: 0 },
+    ]);
+    store().mergeSubtitles(1);
+    expect(store().subtitles.map((s) => s.text)).toEqual(['a b', 'top']);
+  });
+
+  it('imports SRT into one track with fresh ids', () => {
+    store().setSubtitles([{ ...sub(1), track: 0 }, { ...sub(2), track: 1 }]);
+    store().importSubtitles([sub(1, 'x'), sub(2, 'y')], 1);
+    const subs = store().subtitles;
+    expect(subs.filter((s) => s.track === 0).map((s) => s.id)).toEqual([1]);
+    expect(subs.filter((s) => s.track === 1).map((s) => s.text)).toEqual(['x', 'y']);
+    expect(new Set(subs.map((s) => s.id)).size).toBe(subs.length);
   });
 });

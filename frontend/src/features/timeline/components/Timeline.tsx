@@ -6,7 +6,8 @@ import { useTimelineZoom } from '../hooks/useTimelineZoom';
 import { useSubtitleDrag } from '../hooks/useSubtitleDrag';
 import { TimelineHeader } from './TimelineHeader';
 import { SubtitleClip } from './SubtitleClip';
-import { cn, formatTimeDisplay, useGlobalKeydown } from '../../../shared/lib';
+import { cn, countTracks, formatTimeDisplay, subtitleAt, trackColor, trackOf, useGlobalKeydown } from '../../../shared/lib';
+import { useTrackLabel } from '../../../hooks/useTrackLabel';
 
 interface TimelineProps {
   isPlaying?: boolean;
@@ -38,6 +39,9 @@ export const Timeline: React.FC<TimelineProps> = ({
   const currentFrameIndex = useVideoStore((s) => s.currentFrameIndex);
   const setCurrentFrame = useVideoStore((s) => s.setCurrentFrame);
   const subtitles = useProcessingStore((s) => s.subtitles);
+  const regionCount = useVideoStore((s) => s.rois.length);
+  const showTrack = countTracks(regionCount, subtitles) > 1;
+  const label = useTrackLabel();
   
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -58,12 +62,25 @@ export const Timeline: React.FC<TimelineProps> = ({
   useEffect(() => { currentTimeRef.current = currentTime; }, [currentTime]);
 
   const processedSubtitles = useMemo(() => calculateTracks(subtitles), [subtitles]);
+  const laneCount = processedSubtitles.reduce((max, s) => Math.max(max, s.lane + 1), 1);
+  // Ruler (24px) + 28px per lane + padding; never shorter than the original 112px.
+  const trackAreaHeight = Math.max(112, 24 + laneCount * 28 + 8);
+  // First row of each subtitle track, for its label.
+  const trackRows = useMemo(() => {
+    const first = new Map<number, number>();
+    for (const s of processedSubtitles) {
+      const track = trackOf(s);
+      first.set(track, Math.min(first.get(track) ?? Infinity, s.lane));
+    }
+    return [...first.entries()].sort((a, b) => a[1] - b[1]);
+  }, [processedSubtitles]);
 
   useGlobalKeydown((e) => {
     const store = useProcessingStore.getState();
     const currentFps = useVideoStore.getState().metadata?.fps || 25;
     const frameDur = 1 / currentFps;
-    const activeSub = store.subtitles.find(s => currentTimeRef.current >= s.start && currentTimeRef.current <= s.end);
+    // Several tracks can be on screen: hotkeys edit the selected one.
+    const activeSub = subtitleAt(store.subtitles, currentTimeRef.current, useVideoStore.getState().activeTrack);
 
     if (e.key.toLowerCase() === 's' && !e.ctrlKey) {
       e.preventDefault();
@@ -133,7 +150,8 @@ export const Timeline: React.FC<TimelineProps> = ({
         ref={containerRef}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setHoveredSub(null)}
-        className="relative h-28 bg-bg-track w-full group overflow-hidden"
+        className="relative bg-bg-track w-full group overflow-hidden"
+        style={{ height: trackAreaHeight }}
       >
         <div
           ref={scrollContainerRef}
@@ -157,6 +175,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                   zoomLevel={zoomLevel}
                   draggedEdge={draggedEdge}
                   exactDuration={exactDuration}
+                  showTrack={showTrack}
                   onMouseDownEdge={handleEdgeMouseDown}
                   onMouseEnter={() => setHoveredSub(sub)}
                 />
@@ -169,6 +188,17 @@ export const Timeline: React.FC<TimelineProps> = ({
             </div>
           </div>
         </div>
+
+        {showTrack && trackRows.map(([track, lane]) => (
+          <div
+            key={track}
+            className="absolute left-1 z-20 pointer-events-none flex items-center gap-1 px-1.5 py-0.5 rounded bg-bg-main/85 border border-border-main text-[9px] font-semibold text-txt-muted max-w-[120px]"
+            style={{ top: 24 + lane * 28 + 4 }}
+          >
+            <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', trackColor(track).bg)} />
+            <span className="truncate">{label(track)}</span>
+          </div>
+        ))}
 
         {hoveredSub && (
           <div className="absolute z-50 bottom-2 pointer-events-none" style={{ left: hoverPos }}>

@@ -4,14 +4,17 @@ import type { SubtitleItem } from '../../../types';
 import { useProcessingStore } from '../../../store/processingStore';
 import { useVideoStore } from '../../../store/videoStore';
 import { useUIStore } from '../../../store/uiStore';
-import { cn, formatTimeDisplay } from '../../../shared/lib';
+import { cn, formatTimeDisplay, trackColor, trackOf } from '../../../shared/lib';
 import { useTranslation } from '../../../i18n';
+import { useTrackLabel } from '../../../hooks/useTrackLabel';
 
 interface Props {
   item: SubtitleItem;
   index: number;
   isActive: boolean;
+  /** Another cue follows in the same track, so Merge is possible. */
   hasNext: boolean;
+  showTrack: boolean;
   onHoverChange: (id: number | null) => void;
 }
 
@@ -19,14 +22,16 @@ interface Props {
  * Displays an individual subtitle item with editing, merging, and deletion capabilities.
  * Memoized: re-renders only when its own item or active state changes.
  */
-export const SubtitleCard = memo(({ item, index, isActive, hasNext, onHoverChange }: Props) => {
+export const SubtitleCard = memo(({ item, index, isActive, hasNext, showTrack, onHoverChange }: Props) => {
   const { t } = useTranslation();
+  const label = useTrackLabel();
   const updateSubtitle = useProcessingStore((s) => s.updateSubtitle);
   const deleteSubtitle = useProcessingStore((s) => s.deleteSubtitle);
   const mergeSubtitles = useProcessingStore((s) => s.mergeSubtitles);
   const beginEdit = useProcessingStore((s) => s.beginEdit);
   const endEdit = useProcessingStore((s) => s.endEdit);
   const setCurrentFrame = useVideoStore((s) => s.setCurrentFrame);
+  const setActiveTrack = useVideoStore((s) => s.setActiveTrack);
   const addToast = useUIStore((s) => s.addToast);
 
   const isHighConf = item.conf > 0.85;
@@ -55,7 +60,10 @@ export const SubtitleCard = memo(({ item, index, isActive, hasNext, onHoverChang
     >
       <textarea
         value={item.text}
-        onFocus={beginEdit}
+        onFocus={() => {
+          beginEdit();
+          setActiveTrack(trackOf(item));
+        }}
         onBlur={endEdit}
         onChange={(e) => updateSubtitle(item.id, { text: e.target.value })}
         className="w-full bg-transparent text-[14px] text-txt-main resize-none focus:outline-none focus:ring-1 focus:ring-brand-500/50 rounded-md px-1 py-0.5 transition-colors leading-relaxed min-h-[48px] scrollbar-hide border border-transparent focus:border-brand-500/30"
@@ -67,6 +75,14 @@ export const SubtitleCard = memo(({ item, index, isActive, hasNext, onHoverChang
           <span className="font-mono text-[10px] font-bold text-txt-dim bg-bg-surface px-1.5 py-0.5 rounded-sm">
             #{index + 1}
           </span>
+          {showTrack && (
+            <span
+              className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded max-w-[90px] truncate', trackColor(trackOf(item)).soft, trackColor(trackOf(item)).text)}
+              title={label(trackOf(item))}
+            >
+              {label(trackOf(item))}
+            </span>
+          )}
           <button
             onClick={handleJump}
             className="font-mono text-[11px] text-txt-subtle hover:text-brand-500 transition-colors"
@@ -85,7 +101,7 @@ export const SubtitleCard = memo(({ item, index, isActive, hasNext, onHoverChang
         <div className="flex items-center gap-2">
           {hasNext && (
             <button
-              onClick={() => mergeSubtitles(index)}
+              onClick={() => mergeSubtitles(item.id)}
               className="flex items-center gap-1.5 px-2 py-1 rounded bg-bg-surface hover:bg-brand-500 text-txt-muted hover:text-white transition-all text-[10px] font-bold uppercase tracking-wider shadow-sm opacity-50 group-hover:opacity-100"
               title={t('subtitles.mergeTitle')}
             >
