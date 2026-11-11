@@ -35,7 +35,7 @@ export function calculateTextRect(
   text: string,
   frameWidth: number,
   frameHeight: number,
-  settings: Pick<BlurSettings, 'y' | 'font_size' | 'width_multiplier' | 'height_multiplier'>
+  settings: Pick<BlurSettings, 'y' | 'font_size' | 'width_multiplier' | 'height_multiplier'> & { x_offset?: number }
 ): TextRect {
   if (!text) {
     return { x: 0, y: 0, w: 0, h: 0 };
@@ -63,7 +63,11 @@ export function calculateTextRect(
   const textH = Math.floor((fontSizePx + 4) * numLines * heightMultiplier);
   const textW = maxLineWidth;
 
-  const x = Math.floor((frameWidth - textW) / 2);
+  // Keep a shifted zone inside the frame (a centered one is unaffected).
+  const x = Math.min(
+    Math.floor((frameWidth - textW) / 2) + (settings.x_offset ?? 0),
+    Math.max(0, frameWidth - textW),
+  );
   const y = yPos - textH;
 
   const finalX = Math.max(0, x);

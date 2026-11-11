@@ -12,8 +12,18 @@ interface SwitchProps {
 export const Switch = ({ checked, onChange, label }: SwitchProps) => {
   return (
     <div
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      tabIndex={0}
       className="flex items-center justify-between py-2.5 cursor-pointer group select-none hover:bg-bg-hover -mx-2 px-2 rounded-sm transition-colors"
       onClick={() => onChange(!checked)}
+      onKeyDown={(e) => {
+        if (e.key === ' ' || e.key === 'Enter') {
+          e.preventDefault();
+          onChange(!checked);
+        }
+      }}
     >
       <span className={cn(
         "text-sm font-medium transition-colors",

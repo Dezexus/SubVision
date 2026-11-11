@@ -3,7 +3,7 @@ import { allTrackSettings, settingsForTrack, useBlurStore } from './blurStore';
 import type { BlurSettings } from '../types';
 
 const defaults: BlurSettings = {
-  mode: 'hybrid', y: 900, font_size: 30, sigma: 5, feather: 40,
+  mode: 'hybrid', y: 900, x_offset: 0, font_size: 30, sigma: 5, feather: 40,
   width_multiplier: 1, height_multiplier: 1.5, encoder: 'auto',
 };
 

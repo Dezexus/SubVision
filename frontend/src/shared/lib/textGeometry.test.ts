@@ -45,6 +45,17 @@ describe('calculateTextRect', () => {
     expect(centerX).toBeCloseTo(960, -1);
   });
 
+  it('shifts horizontally by x_offset and stays inside the frame', () => {
+    const centered = calculateTextRect('Hi there', 1920, 1080, settings);
+    const shifted = calculateTextRect('Hi there', 1920, 1080, { ...settings, x_offset: -300 });
+    expect(shifted.x).toBe(centered.x - 300);
+    expect(shifted.w).toBe(centered.w);
+
+    const pushed = calculateTextRect('Hi there', 1920, 1080, { ...settings, x_offset: 5000 });
+    expect(pushed.x + pushed.w).toBe(1920);
+    expect(pushed.w).toBe(centered.w);
+  });
+
   it('handles multiline text height', () => {
     const single = calculateTextRect('Line', 1920, 1080, settings);
     const multi = calculateTextRect('Line\nLine', 1920, 1080, settings);

@@ -8,6 +8,8 @@ class BlurSettings(BaseModel):
 
     mode: Literal["blur", "hybrid"] = "hybrid"
     y: int = 912
+    # Horizontal shift of the zone from the frame center, in px.
+    x_offset: int = 0
     font_size: int = 30
     sigma: int = 5
     feather: int = 40

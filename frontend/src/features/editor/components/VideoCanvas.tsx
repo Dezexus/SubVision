@@ -5,7 +5,7 @@ import 'react-image-crop/dist/ReactCrop.css';
 import { useVideoStore } from '../../../store/videoStore';
 import { settingsForTrack, useBlurStore } from '../../../store/blurStore';
 import { useProcessingStore } from '../../../store/processingStore';
-import { Loader2, ImageOff, Eye, EyeOff, MoveVertical, AlertTriangle } from 'lucide-react';
+import { Loader2, ImageOff, Eye, EyeOff, Move, AlertTriangle } from 'lucide-react';
 import { useVideoFrame } from '../hooks/useVideoFrame';
 import { calculateTextRect } from '../../../shared/lib/textGeometry';
 import { cn, countTracks, subtitleAt, trackColor, trackOf } from '../../../shared/lib';
@@ -60,8 +60,8 @@ export const VideoCanvas = () => {
   const [crop, setCrop] = useState<Crop | undefined>(() => roiToCrop(rois[activeTrack], metadata));
   const [showGuides, setShowGuides] = useState(true);
   const [dragTrack, setDragTrack] = useState<number | null>(null);
-  const dragStartY = useRef(0);
-  const dragStartYSetting = useRef(0);
+  // Pointer position and the zone's settings when the drag started.
+  const dragStart = useRef({ clientX: 0, clientY: 0, y: 0, xOffset: 0 });
 
   const imgRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -95,28 +95,27 @@ export const VideoCanvas = () => {
 
   const trackCount = countTracks(rois.length, subtitles);
 
-  // One green guide per track: its active cue, or a placeholder for the track being edited.
+  // Every track's zone is always shown, since the render removes all of
+  // them: the cue on screen, or a placeholder of typical size.
   const guides = useMemo(() => {
     if (!isBlurMode || !metadata) return [];
     const time = currentFrameIndex / metadata.fps;
-    const result: { track: number; rect: Rect; y: number }[] = [];
+    const result: { track: number; rect: Rect; y: number; xOffset: number; idle: boolean }[] = [];
     for (let track = 0; track < trackCount; track++) {
       const cue = subtitleAt(subtitles.filter((s) => trackOf(s) === track), time);
-      if (!cue && track !== activeTrack) continue;
       const settings = settingsForTrack(blurState, track);
       const rect = calculateTextRect(cue?.text ?? PLACEHOLDER_TEXT, metadata.width, metadata.height, settings);
-      result.push({ track, rect, y: settings.y });
+      result.push({ track, rect, y: settings.y, xOffset: settings.x_offset ?? 0, idle: !cue });
     }
     return result;
-  }, [isBlurMode, metadata, currentFrameIndex, trackCount, subtitles, activeTrack, blurState]);
+  }, [isBlurMode, metadata, currentFrameIndex, trackCount, subtitles, blurState]);
 
-  const handleGuideMouseDown = useCallback((e: React.MouseEvent, track: number, y: number) => {
+  const handleGuideMouseDown = useCallback((e: React.MouseEvent, track: number, y: number, xOffset: number) => {
     e.preventDefault();
     e.stopPropagation();
     setActiveTrack(track);
     setDragTrack(track);
-    dragStartY.current = e.clientY;
-    dragStartYSetting.current = y;
+    dragStart.current = { clientX: e.clientX, clientY: e.clientY, y, xOffset };
   }, [setActiveTrack]);
 
   useEffect(() => {
@@ -124,9 +123,19 @@ export const VideoCanvas = () => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-      const deltaY = (e.clientY - dragStartY.current) * (metadata.height / rect.height);
-      const newY = Math.round(dragStartYSetting.current + deltaY);
-      setTrackSettings(dragTrack, { y: Math.max(0, Math.min(metadata.height, newY)) });
+      const start = dragStart.current;
+      let dx = (e.clientX - start.clientX) * (metadata.width / rect.width);
+      let dy = (e.clientY - start.clientY) * (metadata.height / rect.height);
+      // Shift keeps the move on the dominant axis.
+      if (e.shiftKey) {
+        if (Math.abs(dx) > Math.abs(dy)) dy = 0;
+        else dx = 0;
+      }
+      const half = Math.round(metadata.width / 2);
+      setTrackSettings(dragTrack, {
+        y: Math.max(0, Math.min(metadata.height, Math.round(start.y + dy))),
+        x_offset: Math.max(-half, Math.min(half, Math.round(start.xOffset + dx))),
+      });
     };
     const handleMouseUp = () => setDragTrack(null);
     window.addEventListener('mousemove', handleMouseMove);
@@ -232,15 +241,17 @@ export const VideoCanvas = () => {
                   className="w-full h-full object-contain select-none block"
                   onDragStart={(e) => e.preventDefault()}
                 />
-                {showGuides && guides.map(({ track, rect, y }) => (
+                {showGuides && guides.map(({ track, rect, y, xOffset, idle }) => (
                   <div
                     key={track}
                     className={cn(
                       'absolute z-40 border cursor-grab active:cursor-grabbing group/green',
-                      track === activeTrack ? 'bg-green-500/10 border-green-500/90' : 'bg-white/5 border-white/40 border-dashed',
+                      // Current track: green. Other tracks: their color. No cue on screen: dashed.
+                      track === activeTrack ? 'bg-green-500/10 border-green-500/90' : cn('bg-white/5', trackColor(track).border),
+                      idle && 'border-dashed opacity-70',
                     )}
                     style={toCss(rect, metadata)}
-                    onMouseDown={(e) => handleGuideMouseDown(e, track, y)}
+                    onMouseDown={(e) => handleGuideMouseDown(e, track, y, xOffset)}
                     title={t('editor.dragY')}
                   >
                     {trackCount > 1 && (
@@ -249,13 +260,13 @@ export const VideoCanvas = () => {
                       </span>
                     )}
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/green:opacity-100 transition-opacity">
-                      <MoveVertical size={16} className="text-green-400 drop-shadow-md" />
+                      <Move size={16} className="text-green-400 drop-shadow-md" />
                     </div>
                   </div>
                 ))}
                 {dragTrack !== null && (
                   <div className="absolute top-4 left-4 bg-black/80 text-white text-xs px-2 py-1 rounded border border-white/20 z-50 font-mono">
-                    Y: {settingsForTrack(blurState, dragTrack).y}
+                    X: {settingsForTrack(blurState, dragTrack).x_offset ?? 0} · Y: {settingsForTrack(blurState, dragTrack).y}
                   </div>
                 )}
               </div>

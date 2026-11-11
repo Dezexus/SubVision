@@ -3,15 +3,18 @@ import { useShallow } from 'zustand/react/shallow';
 import { Video, RotateCcw, Wand2, ScanLine, Droplet, Loader2, Square } from 'lucide-react';
 import { useVideoStore } from '../../../store/videoStore';
 import { useProcessingStore } from '../../../store/processingStore';
-import { allTrackSettings, settingsForTrack, useBlurStore } from '../../../store/blurStore';
+import { allTrackSettings, LINKED_KEYS, settingsForTrack, useBlurStore } from '../../../store/blurStore';
 import { useTrackLabel } from '../../../hooks/useTrackLabel';
-import { Slider, Button } from '../../../shared/ui';
+import { Slider, Button, Switch } from '../../../shared/ui';
 import { cn, countTracks, trackColor } from '../../../shared/lib';
 import { useBlurPreview } from '../hooks/useBlurPreview';
 import { useStartBlurRender } from '../mutations/useStartBlurRender';
 import { useStopBlurRender } from '../mutations/useStopBlurRender';
 import { useDefaultBlurSettingsQuery } from '../queries/useDefaultBlurSettingsQuery';
 import { useTranslation } from '../../../i18n';
+import type { BlurSettings } from '../../../types';
+
+const isLinked = (key: string): boolean => (LINKED_KEYS as readonly string[]).includes(key);
 
 /**
  * Control panel for configuring and starting the smart blur rendering process.
@@ -39,14 +42,41 @@ export const BlurControlPanel = () => {
   const setDefaultBlurSettings = useBlurStore((s) => s.setDefaultBlurSettings);
   const resetTrack = useBlurStore((s) => s.resetTrack);
   const setBlurPreviewUrl = useBlurStore((s) => s.setBlurPreviewUrl);
+  const linkAppearance = useBlurStore((s) => s.linkAppearance);
+  const setLinkAppearance = useBlurStore((s) => s.setLinkAppearance);
 
   const trackCount = countTracks(rois.length, subtitles);
   const track = Math.min(activeTrack, trackCount - 1);
   const blurSettings = settingsForTrack(trackState, track);
-  const setBlurSettings = (updates: Parameters<typeof setTrackSettings>[1]) => setTrackSettings(track, updates);
+  const linked = linkAppearance && trackCount > 1;
 
-  // Tracks whose Y the user moved; the others follow the bottom of their ROI.
-  const userAdjustedY = useRef(new Set<number>());
+  /** Apply a change: linked keys go to every track, the rest to the current one. */
+  const setBlurSettings = (updates: Partial<BlurSettings>) => {
+    const own: Partial<BlurSettings> = {};
+    const shared: Partial<BlurSettings> = {};
+    for (const [key, value] of Object.entries(updates)) {
+      Object.assign(linked && isLinked(key) ? shared : own, { [key]: value });
+    }
+    if (Object.keys(own).length) setTrackSettings(track, own);
+    if (Object.keys(shared).length) {
+      for (let i = 0; i < trackCount; i++) setTrackSettings(i, shared);
+    }
+  };
+
+  const pickLinked = (settings: BlurSettings): Partial<BlurSettings> =>
+    Object.fromEntries(LINKED_KEYS.map((key) => [key, settings[key]]));
+
+  const handleLinkChange = (value: boolean) => {
+    setLinkAppearance(value);
+    // Turning it on makes every track look like the current one.
+    if (value) {
+      const shared = pickLinked(settingsForTrack(useBlurStore.getState(), track));
+      for (let i = 0; i < trackCount; i++) if (i !== track) setTrackSettings(i, shared);
+    }
+  };
+
+  // Tracks the user positioned; the others follow their ROI (bottom edge, center).
+  const userPositioned = useRef(new Set<number>());
 
   const { data: defaultBlurSettings } = useDefaultBlurSettingsQuery();
   const { isPreviewUpdating } = useBlurPreview(metadata, trackState, blurSettings, subtitles, currentFrameIndex, setBlurPreviewUrl);
@@ -54,23 +84,38 @@ export const BlurControlPanel = () => {
   const { execute: stopBlurRender } = useStopBlurRender();
 
   const videoHeight = metadata?.height || 1080;
+  const videoWidth = metadata?.width || 1920;
+  const halfWidth = Math.round(videoWidth / 2);
+
+  /** Zone position that matches a region: baseline at its bottom, centered on it. */
+  const positionFromRoi = (i: number): Partial<BlurSettings> | null => {
+    const roi = rois[i];
+    if (!roi || roi[2] <= 0 || roi[3] <= 0) return null;
+    return {
+      y: Math.max(0, Math.min(videoHeight, roi[1] + roi[3])),
+      x_offset: Math.max(-halfWidth, Math.min(halfWidth, Math.round(roi[0] + roi[2] / 2 - videoWidth / 2))),
+    };
+  };
 
   // (Re)apply server defaults once they load or after a project reset cleared them.
   useEffect(() => {
     if (defaultBlurSettings && !storeDefaults) {
       setDefaultBlurSettings(defaultBlurSettings);
-      userAdjustedY.current.clear();
+      userPositioned.current.clear();
     }
   }, [defaultBlurSettings, storeDefaults, setDefaultBlurSettings]);
 
   useEffect(() => {
     if (!metadata || !storeDefaults) return;
-    rois.forEach((roi, i) => {
-      if (userAdjustedY.current.has(i) || roi[1] <= 0) return;
-      const y = Math.max(0, Math.min(videoHeight, roi[1] + roi[3]));
-      if (settingsForTrack(useBlurStore.getState(), i).y !== y) setTrackSettings(i, { y });
+    rois.forEach((_, i) => {
+      const position = positionFromRoi(i);
+      if (!position || userPositioned.current.has(i)) return;
+      const current = settingsForTrack(useBlurStore.getState(), i);
+      if (current.y !== position.y || (current.x_offset ?? 0) !== position.x_offset) setTrackSettings(i, position);
     });
-  }, [rois, metadata, videoHeight, storeDefaults, setTrackSettings]);
+    // positionFromRoi only reads rois and the video size listed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rois, metadata, videoHeight, videoWidth, storeDefaults, setTrackSettings]);
 
   const handleRender = () => {
     if (!metadata || !clientId) return;
@@ -87,17 +132,24 @@ export const BlurControlPanel = () => {
 
   const handleReset = () => {
     resetTrack(track);
-    userAdjustedY.current.delete(track);
-    const roi = rois[track];
-    if (roi && roi[1] > 0) {
-      setTrackSettings(track, { y: Math.max(0, Math.min(videoHeight, roi[1] + roi[3])) });
+    userPositioned.current.delete(track);
+    const position = positionFromRoi(track);
+    if (position) setTrackSettings(track, position);
+    if (linked) {
+      const shared = pickLinked(settingsForTrack(useBlurStore.getState(), track));
+      for (let i = 0; i < trackCount; i++) if (i !== track) setTrackSettings(i, shared);
     }
   };
 
   const handleYChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    userAdjustedY.current.add(track);
+    userPositioned.current.add(track);
     const newY = videoHeight - Number(e.target.value);
     setBlurSettings({ y: Math.max(0, Math.min(videoHeight, newY)) });
+  };
+
+  const handleXChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    userPositioned.current.add(track);
+    setBlurSettings({ x_offset: Math.max(-halfWidth, Math.min(halfWidth, Number(e.target.value))) });
   };
 
   return (
@@ -108,6 +160,12 @@ export const BlurControlPanel = () => {
             <span className={cn('w-2 h-2 rounded-full shrink-0', trackColor(track).bg)} />
             <span className="text-txt-subtle">{t('tracks.settingsFor')}</span>
             <span className="font-semibold text-txt-main truncate">{label(track)}</span>
+          </div>
+        )}
+        {trackCount > 1 && (
+          <div className="bg-bg-panel border border-border-main rounded-xl px-4 py-1.5 shadow-sm">
+            <Switch checked={linkAppearance} onChange={handleLinkChange} label={t('blur.linkTracks')} />
+            <p className="text-[11px] text-txt-subtle pb-1.5">{t('blur.linkTracksHint')}</p>
           </div>
         )}
         <div className="w-full bg-bg-panel p-2 rounded-xl border border-border-main shadow-sm flex items-center relative overflow-hidden">
@@ -168,6 +226,13 @@ export const BlurControlPanel = () => {
               max={videoHeight}
               value={videoHeight - blurSettings.y}
               onChange={handleYChange}
+            />
+            <Slider
+              label={t('blur.horizontalPosition')}
+              min={-halfWidth}
+              max={halfWidth}
+              value={blurSettings.x_offset ?? 0}
+              onChange={handleXChange}
             />
             <Slider
               label={t('blur.textHeight')}

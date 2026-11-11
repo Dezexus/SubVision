@@ -234,3 +234,15 @@ def test_hybrid_inpaint_does_not_modify_far_outside_expanded_roi():
     outside_mask = np.ones((height, width), dtype=bool)
     outside_mask[y0:y1, x0:x1] = False
     assert np.array_equal(result[outside_mask], original[outside_mask])
+
+
+def test_text_roi_shifts_horizontally_and_stays_in_frame():
+    width, height = 1920, 1080
+    centered = calculate_text_roi("Hello world", width, height, SETTINGS)
+    shifted = calculate_text_roi("Hello world", width, height, {**SETTINGS, "x_offset": 250})
+    assert shifted[0] == centered[0] + 250
+    assert shifted[2] == centered[2]
+
+    pushed = calculate_text_roi("Hello world", width, height, {**SETTINGS, "x_offset": -5000})
+    assert pushed[0] == 0
+    assert pushed[2] == centered[2]

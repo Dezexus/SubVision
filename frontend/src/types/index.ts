@@ -59,6 +59,8 @@ export type OcrSettings = Omit<ProcessConfig, 'filename' | 'client_id' | 'roi' |
 export interface BlurSettings {
   mode: 'blur' | 'hybrid';
   y: number;
+  /** Horizontal shift of the zone from the frame center, in px. */
+  x_offset: number;
   font_size: number;
   sigma: number;
   feather: number;

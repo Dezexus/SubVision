@@ -5,6 +5,7 @@ import type { BlurSettings } from '../types';
 const placeholderBlurSettings: BlurSettings = {
   mode: 'hybrid',
   y: 0,
+  x_offset: 0,
   font_size: 30,
   sigma: 5,
   feather: 40,
@@ -19,7 +20,12 @@ export interface BlurState {
   trackSettings: BlurSettings[];
   defaultBlurSettings: BlurSettings | null;
   blurPreviewUrl: string | null;
+  /** Algorithm, intensity and softness shared by every track; position and size stay per track. */
+  linkAppearance: boolean;
 }
+
+/** Settings that `linkAppearance` keeps equal across tracks. */
+export const LINKED_KEYS = ['mode', 'sigma', 'feather'] as const;
 
 export interface BlurActions {
   setBlurMode: (isActive: boolean) => void;
@@ -30,6 +36,7 @@ export interface BlurActions {
   /** Drop a track's settings; later tracks shift down. */
   removeTrack: (track: number) => void;
   setBlurPreviewUrl: (url: string | null) => void;
+  setLinkAppearance: (linked: boolean) => void;
   reset: () => void;
 }
 
@@ -53,6 +60,7 @@ export const useBlurStore = create<Store>((set) => ({
   trackSettings: [],
   defaultBlurSettings: null,
   blurPreviewUrl: null,
+  linkAppearance: true,
 
   setBlurMode: (isActive) => set({ isBlurMode: isActive, blurPreviewUrl: null }),
 
@@ -82,6 +90,8 @@ export const useBlurStore = create<Store>((set) => ({
     })),
 
   setBlurPreviewUrl: (url) => set({ blurPreviewUrl: url }),
+
+  setLinkAppearance: (linkAppearance) => set({ linkAppearance }),
 
   reset: () =>
     set({
