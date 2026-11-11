@@ -1,11 +1,18 @@
 import React from 'react';
 import { cn } from '../../../shared/lib';
-import type { ProcessedSubtitle } from '../utils/timelineUtils';
+import { formatDuration, type ProcessedSubtitle } from '../utils/timelineUtils';
+import { useTranslation } from '../../../i18n';
 
 /** Default row height; the timeline scales rows when the user resizes it. */
 export const ROW_HEIGHT = 56;
 /** Show the cue text once the clip is at least this wide. */
 const MIN_TEXT_WIDTH_PX = 40;
+/** Show the cue length inside the clip once it is this wide. */
+const MIN_DURATION_LABEL_PX = 96;
+/** Space left between neighbouring cues so each block reads at its own length. */
+const GAP_PX = 1;
+/** Very short cues stay visible (and grabbable) at this width. */
+const MIN_CLIP_PX = 3;
 
 interface Props {
   sub: ProcessedSubtitle;
@@ -49,10 +56,16 @@ export const SubtitleClip = ({
   onMouseEnter,
   onMouseLeave,
 }: Props) => {
-  const startPercent = (sub.start / exactDuration) * 100;
-  const durationPercent = ((sub.end - sub.start) / exactDuration) * 100;
-  const widthPx = (durationPercent / 100) * contentWidth;
+  const { t } = useTranslation();
+  const duration = Math.max(0, sub.end - sub.start);
+  // Whole pixels from the exact times: the left edge is where the cue starts,
+  // the width is its real length minus a 1px gap to the next cue.
+  const measured = contentWidth > 0;
+  const leftPx = Math.round((sub.start / exactDuration) * contentWidth);
+  const rightPx = Math.round((sub.end / exactDuration) * contentWidth);
+  const widthPx = Math.max(MIN_CLIP_PX, rightPx - leftPx - GAP_PX);
   const clipHeight = Math.round(rowHeight * 0.75);
+  const durationLabel = t('timeline.seconds', { v: formatDuration(duration) });
 
   const isDraggedStart = draggedEdge?.id === sub.id && draggedEdge.edge === 'start';
   const isDraggedEnd = draggedEdge?.id === sub.id && draggedEdge.edge === 'end';
@@ -61,8 +74,9 @@ export const SubtitleClip = ({
     <div
       className="absolute group/sub pointer-events-auto"
       style={{
-        left: `${startPercent}%`,
-        width: `${Math.max(durationPercent, 0.1)}%`,
+        ...(measured
+          ? { left: leftPx, width: widthPx }
+          : { left: `${(sub.start / exactDuration) * 100}%`, width: `${Math.max((duration / exactDuration) * 100, 0.1)}%` }),
         top: sub.lane * rowHeight + (rowHeight - clipHeight) / 2,
         height: clipHeight,
       }}
@@ -78,7 +92,10 @@ export const SubtitleClip = ({
         isBeingEdited && 'ring-2 ring-brand-500 animate-pulse z-20',
       )}>
         {widthPx >= MIN_TEXT_WIDTH_PX && (
-          <span className={cn('min-w-0 break-words', clipHeight >= 40 ? 'line-clamp-2' : 'line-clamp-1')}>{sub.text}</span>
+          <span className={cn('flex-1 min-w-0 break-words', clipHeight >= 40 ? 'line-clamp-2' : 'line-clamp-1')}>{sub.text}</span>
+        )}
+        {widthPx >= MIN_DURATION_LABEL_PX && (
+          <span className="shrink-0 self-end ml-2 text-[10px] font-mono opacity-60">{durationLabel}</span>
         )}
 
         <div

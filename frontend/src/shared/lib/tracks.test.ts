@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { countTracks, fileSlug, subtitleAt, trackLabel, trackOf } from './tracks';
-import { formatRulerTime, layoutTimeline, rulerStep } from '../../features/timeline/utils/timelineUtils';
+import { formatDuration, formatRulerTime, layoutTimeline, rulerStep } from '../../features/timeline/utils/timelineUtils';
 import type { SubtitleItem } from '../../types';
 
 const cue = (id: number, start: number, end: number, track?: number): SubtitleItem =>
@@ -75,8 +75,16 @@ describe('ruler', () => {
     expect(rulerStep(1).major).toBe(120);
   });
 
+  it('goes below a second at high zoom', () => {
+    expect(rulerStep(800)).toEqual({ major: 0.1, minor: 0.05 });
+    expect(rulerStep(200)).toEqual({ major: 0.5, minor: 0.1 });
+  });
+
   it('formats ruler labels', () => {
     expect(formatRulerTime(75)).toBe('1:15');
     expect(formatRulerTime(3725)).toBe('1:02:05');
+    expect(formatRulerTime(61.5)).toBe('1:01.5');
+    expect(formatDuration(2.44)).toBe('2.4');
+    expect(formatDuration(12.6)).toBe('13');
   });
 });

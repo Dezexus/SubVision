@@ -1,5 +1,15 @@
 import { useState, useRef, useLayoutEffect, useCallback, useEffect } from 'react';
 
+const MIN_ZOOM = 1;
+/** High enough to see sub-second cues of a long video. */
+const MAX_ZOOM = 60;
+const BUTTON_FACTOR = 1.5;
+const WHEEL_FACTOR = 1.15;
+
+/**
+ * Multiplicative zoom anchored at a point: each step scales by the same
+ * factor, so getting from 1× to 60× takes a few steps, not a hundred.
+ */
 export const useTimelineZoom = (scrollContainerRef: React.RefObject<HTMLDivElement | null>) => {
   const [zoomLevel, setZoomLevel] = useState(1);
   const zoomAnchorRef = useRef<{ newScrollLeft: number } | null>(null);
@@ -11,18 +21,16 @@ export const useTimelineZoom = (scrollContainerRef: React.RefObject<HTMLDivEleme
     }
   }, [zoomLevel, scrollContainerRef]);
 
-  const applyAnchorZoom = useCallback((delta: number, anchorX: number) => {
+  const applyAnchorZoom = useCallback((factor: number, anchorX: number) => {
     if (!scrollContainerRef.current) return;
     const scrollLeft = scrollContainerRef.current.scrollLeft;
 
     setZoomLevel(prev => {
-      const newZoom = Math.min(Math.max(1, prev + delta), 20);
+      const newZoom = Math.min(Math.max(MIN_ZOOM, prev * factor), MAX_ZOOM);
       if (newZoom !== prev) {
-        const zoomRatio = newZoom / prev;
         const absoluteAnchorX = scrollLeft + anchorX;
-        const newAbsoluteAnchorX = absoluteAnchorX * zoomRatio;
         zoomAnchorRef.current = {
-          newScrollLeft: newAbsoluteAnchorX - anchorX
+          newScrollLeft: absoluteAnchorX * (newZoom / prev) - anchorX,
         };
       }
       return newZoom;
@@ -37,9 +45,7 @@ export const useTimelineZoom = (scrollContainerRef: React.RefObject<HTMLDivEleme
       if (e.ctrlKey) {
         e.preventDefault();
         const rect = container.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const delta = e.deltaY > 0 ? -0.2 : 0.2;
-        applyAnchorZoom(delta, mouseX);
+        applyAnchorZoom(e.deltaY > 0 ? 1 / WHEEL_FACTOR : WHEEL_FACTOR, e.clientX - rect.left);
       } else if (e.shiftKey) {
         e.preventDefault();
         container.scrollLeft += e.deltaY;
@@ -50,10 +56,11 @@ export const useTimelineZoom = (scrollContainerRef: React.RefObject<HTMLDivEleme
     return () => container.removeEventListener('wheel', handleNativeWheel);
   }, [applyAnchorZoom, scrollContainerRef]);
 
-  const handleZoomButton = (delta: number) => {
+  /** `direction` > 0 zooms in, < 0 zooms out, around the view center. */
+  const handleZoomButton = (direction: number) => {
     if (!scrollContainerRef.current) return;
     const rect = scrollContainerRef.current.getBoundingClientRect();
-    applyAnchorZoom(delta, rect.width / 2);
+    applyAnchorZoom(direction > 0 ? BUTTON_FACTOR : 1 / BUTTON_FACTOR, rect.width / 2);
   };
 
   const resetZoom = () => setZoomLevel(1);

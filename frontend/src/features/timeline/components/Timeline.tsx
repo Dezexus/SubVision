@@ -1,7 +1,7 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
 import { useVideoStore } from '../../../store/videoStore';
 import { useProcessingStore } from '../../../store/processingStore';
-import { formatRulerTime, layoutTimeline, rulerStep, type ProcessedSubtitle } from '../utils/timelineUtils';
+import { formatDuration, formatRulerTime, layoutTimeline, rulerStep, type ProcessedSubtitle } from '../utils/timelineUtils';
 import { useTimelineZoom } from '../hooks/useTimelineZoom';
 import { useSubtitleDrag } from '../hooks/useSubtitleDrag';
 import { TimelineHeader } from './TimelineHeader';
@@ -30,6 +30,11 @@ interface TimelineProps {
   currentTimeOverride?: number;
   durationOverride?: number;
   activeEditId?: number | null;
+  /**
+   * Live playback position. While playing, the playhead follows it every
+   * animation frame instead of the throttled `currentTimeOverride`.
+   */
+  getPlaybackTime?: () => number;
 }
 
 /**
@@ -45,6 +50,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   currentTimeOverride,
   durationOverride,
   activeEditId,
+  getPlaybackTime,
 }) => {
   const metadata = useVideoStore((s) => s.metadata);
   const currentFrameIndex = useVideoStore((s) => s.currentFrameIndex);
@@ -79,6 +85,39 @@ export const Timeline: React.FC<TimelineProps> = ({
   const exactDuration = Math.max(durationOverride || (metadata ? metadata.total_frames / metadata.fps : 1), 0.001);
   const currentTime = currentTimeOverride ?? (metadata ? currentFrameIndex / metadata.fps : 0);
   const progressPercent = (currentTime / exactDuration) * 100;
+  const playheadRef = useRef<HTMLDivElement>(null);
+  const isLive = !!isPlayingProp && !!getPlaybackTime;
+
+  // At rest the playhead sits at the current time (set here, not via React
+  // style, so the live loop below can own it while playing).
+  useLayoutEffect(() => {
+    if (!isLive && playheadRef.current) playheadRef.current.style.left = `${progressPercent}%`;
+  }, [isLive, progressPercent]);
+
+  // While playing: move every frame from the video clock, and keep the
+  // playhead in view when zoomed in by paging the scroll forward.
+  useEffect(() => {
+    if (!isLive || !getPlaybackTime) return;
+    let frame = 0;
+    const tick = () => {
+      const el = playheadRef.current;
+      const scroller = scrollContainerRef.current;
+      if (el) {
+        const fraction = Math.min(1, Math.max(0, getPlaybackTime() / exactDuration));
+        el.style.left = `${fraction * 100}%`;
+        if (scroller && scroller.scrollWidth > scroller.clientWidth) {
+          const x = fraction * scroller.scrollWidth;
+          const view = scroller.clientWidth;
+          if (x < scroller.scrollLeft || x > scroller.scrollLeft + view * 0.9) {
+            scroller.scrollLeft = x - view * 0.1;
+          }
+        }
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [isLive, getPlaybackTime, exactDuration]);
 
   const currentTimeRef = useRef(currentTime);
   useEffect(() => { currentTimeRef.current = currentTime; }, [currentTime]);
@@ -310,7 +349,7 @@ export const Timeline: React.FC<TimelineProps> = ({
               </div>
 
               {/* Playhead */}
-              <div className="absolute top-0 bottom-0 z-10 w-px pointer-events-none" style={{ left: `${progressPercent}%` }}>
+              <div ref={playheadRef} className="absolute top-0 bottom-0 z-10 w-px pointer-events-none will-change-[left]">
                 <div className="absolute -top-1 -left-[5px] w-[11px] h-[11px] bg-red-500 rounded-full shadow-md border-[2px] border-bg-track" />
                 <div className="absolute top-1.5 h-full w-[1.5px] -left-[0.75px] bg-red-500/80 rounded-full" />
               </div>
@@ -327,6 +366,7 @@ export const Timeline: React.FC<TimelineProps> = ({
           <div className="bg-bg-main/95 backdrop-blur border border-border-strong p-2.5 rounded-lg shadow-2xl text-xs w-56">
             <div className="flex items-center gap-2 text-txt-subtle mb-1 font-mono text-[10px] uppercase">
               <span>{formatTimeDisplay(hoveredSub.start)} – {formatTimeDisplay(hoveredSub.end)}</span>
+              <span className="normal-case text-txt-muted">· {t('timeline.seconds', { v: formatDuration(hoveredSub.end - hoveredSub.start) })}</span>
               <span className={cn('ml-auto', hoveredSub.conf > 0.8 ? 'text-emerald-400' : 'text-amber-400')}>{Math.round(hoveredSub.conf * 100)}%</span>
             </div>
             {showTrack && (

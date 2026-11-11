@@ -81,6 +81,8 @@ export const PreviewMode = () => {
     [metadata, setCurrentFrame]
   );
 
+  const getPlaybackTime = useCallback(() => videoRef.current?.currentTime ?? 0, []);
+
   const handlePlayPause = useCallback(() => {
     const video = videoRef.current;
     if (video) {
@@ -243,6 +245,7 @@ export const PreviewMode = () => {
           currentTimeOverride={currentTime}
           durationOverride={duration}
           activeEditId={focusedId}
+          getPlaybackTime={getPlaybackTime}
         />
       </div>
     </div>

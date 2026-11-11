@@ -67,25 +67,34 @@ export const layoutTimeline = (subtitles: SubtitleItem[], trackCount = 1): Timel
   return { clips, rows, laneCount: laneOffset };
 };
 
-/** Ruler steps in seconds, from fine to coarse. */
-const RULER_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1200, 1800, 3600];
+/** Ruler steps in seconds (labelled tick, minor tick), from fine to coarse. */
+const RULER_STEPS: [number, number][] = [
+  [0.1, 0.05], [0.2, 0.1], [0.5, 0.1],
+  [1, 0.5], [2, 1], [5, 1], [10, 2], [15, 3], [30, 6],
+  [60, 12], [120, 24], [300, 60], [600, 120], [1200, 240], [1800, 360], [3600, 720],
+];
 
 /**
  * Labelled tick spacing so labels stay at least `minPx` apart, plus the minor
- * tick spacing between them.
+ * tick spacing between them. Sub-second steps appear at high zoom.
  */
 export function rulerStep(pxPerSecond: number, minPx = 72): { major: number; minor: number } {
-  const major = RULER_STEPS.find((s) => s * pxPerSecond >= minPx) ?? RULER_STEPS[RULER_STEPS.length - 1];
-  const minor = major % 5 === 0 ? major / 5 : major / 2;
+  const [major, minor] = RULER_STEPS.find(([s]) => s * pxPerSecond >= minPx) ?? RULER_STEPS[RULER_STEPS.length - 1];
   return { major, minor };
 }
 
-/** Short ruler label: `m:ss`, or `h:mm:ss` past an hour. */
+/** Short ruler label: `m:ss`, `h:mm:ss` past an hour, tenths when the step is fractional. */
 export function formatRulerTime(seconds: number): string {
-  const total = Math.round(seconds);
+  const tenths = Math.round(seconds * 10);
+  const total = Math.floor(tenths / 10);
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
-  const ss = s.toString().padStart(2, '0');
+  const ss = s.toString().padStart(2, '0') + (tenths % 10 ? `.${tenths % 10}` : '');
   return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+}
+
+/** Cue length for display: `0.8 s`, `2.4 s`, `12 s`. */
+export function formatDuration(seconds: number): string {
+  return seconds < 10 ? seconds.toFixed(1) : Math.round(seconds).toString();
 }

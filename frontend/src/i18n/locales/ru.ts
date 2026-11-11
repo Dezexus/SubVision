@@ -116,6 +116,8 @@ export const ru: TranslationDict = {
   },
   timeline: {
     frame: 'Кадр',
+    seconds: '{{v}} с',
+    duration: 'Длительность',
     snapping: 'Привязка (S)',
     stepBack: 'Предыдущий кадр',
     stepForward: 'Следующий кадр',

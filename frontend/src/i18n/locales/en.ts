@@ -114,6 +114,8 @@ export const en = {
   },
   timeline: {
     frame: 'Frame',
+    seconds: '{{v}} s',
+    duration: 'Duration',
     snapping: 'Toggle snapping (S)',
     stepBack: 'Previous frame',
     stepForward: 'Next frame',
