@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from typing import Iterator, Optional, Tuple, Dict, Any, NamedTuple
 
 from subvision.core.config import settings
-from subvision.core.gpu_utils import has_cuda
+from subvision.core.filters import denoise_frame
 
 logger = logging.getLogger(__name__)
 
@@ -230,13 +230,4 @@ def generate_video_preview(video_path: str, frame_index: int, roi_override: list
     if frame_roi.size == 0:
         return None
 
-    if has_cuda():
-        try:
-            denoised = cv2.cuda.fastNlMeansDenoisingColored(frame_roi, None, 3.0, 3.0, 7, 21)
-        except Exception:
-            denoised = cv2.fastNlMeansDenoisingColored(frame_roi, None, 3.0, 3.0, 7, 21)
-    else:
-        denoised = cv2.fastNlMeansDenoisingColored(frame_roi, None, 3.0, 3.0, 7, 21)
-
-    processed = denoised
-    return processed
+    return denoise_frame(frame_roi, strength=3.0)

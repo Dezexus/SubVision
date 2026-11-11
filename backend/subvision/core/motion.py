@@ -1,7 +1,7 @@
 from typing import Any
 import cv2
 import numpy as np
-from subvision.core.gpu_utils import ensure_gpu, ensure_cpu, has_cuda
+from subvision.core.gpu_utils import ensure_gpu, ensure_cpu, has_cuda, warn_cpu_fallback
 from subvision.core.constants import MOTION_BLUR_KSIZE, MOTION_MSE_THRESH
 
 
@@ -33,15 +33,16 @@ def detect_change_absolute(img1: Any, img2: Any, mse_thresh: float | None = None
             b2 = filter_gauss.apply(g2)
 
             diff = cv2.cuda.absdiff(b1, b2)
-            diff_f = cv2.cuda_GpuMat()
-            diff.convertTo(cv2.CV_32FC1, diff_f)
+            # Use the return value: a positional dst binds to the (rtype, stream) overload and stays empty.
+            diff_f = diff.convertTo(cv2.CV_32FC1)
             sq_diff = cv2.cuda.multiply(diff_f, diff_f)
-            sum_sq = cv2.cuda.calcSum(sq_diff)[0]
+            # cuda.sum returns a Scalar; calcSum returns a GpuMat.
+            sum_sq = cv2.cuda.sum(sq_diff)[0]
             pixels = size1[0] * size1[1]
             mse = sum_sq / pixels if pixels > 0 else 0
             return mse > threshold
         except cv2.error:
-            pass
+            warn_cpu_fallback("motion detection")
 
     c1 = ensure_cpu(img1)
     c2 = ensure_cpu(img2)

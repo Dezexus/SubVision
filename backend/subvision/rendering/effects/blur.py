@@ -3,7 +3,7 @@ from typing import Tuple, Dict, Any, Optional, List
 import functools
 import cv2
 import numpy as np
-from subvision.core.gpu_utils import has_cuda
+from subvision.core.gpu_utils import has_cuda, warn_cpu_fallback
 from subvision.rendering.geometry import calculate_text_roi, compute_feather_inner_roi
 
 logger = logging.getLogger(__name__)
@@ -88,35 +88,36 @@ def _apply_cuda_blur(
 
     if sigma > 0:
         k_size = sigma * 2 + 1
-        box_filter = cv2.cuda.createBoxFilter(gpu_roi.type(), -1, (k_size, k_size))
-        processed_roi = box_filter.apply(gpu_roi)
+        # The NPP box filter takes 8UC1/8UC4/32FC1 only, so filter in BGRA.
+        processed_roi = cv2.cuda.cvtColor(gpu_roi, cv2.COLOR_BGR2BGRA)
+        box_filter = cv2.cuda.createBoxFilter(cv2.CV_8UC4, -1, (k_size, k_size))
         processed_roi = box_filter.apply(processed_roi)
         processed_roi = box_filter.apply(processed_roi)
+        processed_roi = box_filter.apply(processed_roi)
+        processed_roi = cv2.cuda.cvtColor(processed_roi, cv2.COLOR_BGRA2BGR)
     else:
         processed_roi = gpu_roi.clone()
 
     mask = _resolve_blend_mask(bx, by, bw, bh, feather, alpha, inner_roi, region_mask)
     if mask is not None:
-        gpu_mask = cv2.cuda_GpuMat()
-        gpu_mask.upload(mask)
-
+        # The cv2.cuda bindings do not fill a dst passed in: use return values,
+        # and copyTo to write into the ROI view. cuda.merge without dst resolves
+        # to the CPU overload, so build the 3-channel mask on the host.
         gpu_mask_3ch = cv2.cuda_GpuMat()
-        cv2.cuda.merge([gpu_mask, gpu_mask, gpu_mask], gpu_mask_3ch)
+        gpu_mask_3ch.upload(cv2.merge([mask, mask, mask]))
 
         gpu_original_roi = cv2.cuda_GpuMat()
         gpu_original_roi.upload(original_roi)
 
-        gpu_original_float = cv2.cuda_GpuMat()
-        gpu_blur_float = cv2.cuda_GpuMat()
-        gpu_original_roi.convertTo(cv2.CV_32FC3, gpu_original_float)
-        processed_roi.convertTo(cv2.CV_32FC3, gpu_blur_float)
+        gpu_original_float = gpu_original_roi.convertTo(cv2.CV_32FC3)
+        gpu_blur_float = processed_roi.convertTo(cv2.CV_32FC3)
 
         blended = cv2.cuda.multiply(gpu_blur_float, gpu_mask_3ch)
         gpu_ones = cv2.cuda_GpuMat(gpu_mask_3ch.size(), gpu_mask_3ch.type(), (1.0, 1.0, 1.0, 0.0))
         inverse_mask = cv2.cuda.subtract(gpu_ones, gpu_mask_3ch)
         original_part = cv2.cuda.multiply(gpu_original_float, inverse_mask)
         final_float = cv2.cuda.add(blended, original_part)
-        final_float.convertTo(cv2.CV_8UC3, gpu_roi)
+        final_float.convertTo(cv2.CV_8UC3).copyTo(gpu_roi)
     else:
         processed_roi.copyTo(gpu_roi)
 
@@ -198,7 +199,7 @@ def apply_blur_to_frame(
                 frame, roi, original_roi, sigma, feather, alpha, inner_roi, region_mask
             )
         except cv2.error:
-            pass
+            warn_cpu_fallback("blur")
 
     return _apply_cpu_blur(frame, roi, original_roi, sigma, feather, alpha, inner_roi, region_mask)
 

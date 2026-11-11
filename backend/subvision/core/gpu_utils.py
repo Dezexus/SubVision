@@ -1,4 +1,9 @@
+import logging
+
 import cv2
+
+logger = logging.getLogger(__name__)
+_reported_fallbacks: set[str] = set()
 
 
 def has_cuda() -> bool:
@@ -6,6 +11,18 @@ def has_cuda() -> bool:
         return cv2.cuda.getCudaEnabledDeviceCount() > 0
     except AttributeError:
         return False
+
+
+def warn_cpu_fallback(operation: str) -> None:
+    """Log, once per operation, that a CUDA path failed and CPU is used instead.
+
+    Call from inside an ``except`` block. A broken CUDA path otherwise only
+    shows up as slow processing.
+    """
+    if operation in _reported_fallbacks:
+        return
+    _reported_fallbacks.add(operation)
+    logger.warning("CUDA %s failed, falling back to CPU", operation, exc_info=True)
 
 
 def release_paddle_gpu_memory() -> None:
