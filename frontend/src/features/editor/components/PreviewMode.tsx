@@ -41,7 +41,8 @@ export const PreviewMode = () => {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [activeSub, setActiveSub] = useState<SubtitleItem | null | undefined>(null);
   const [focusedId, setFocusedId] = useState<number | null>(null);
-  const [isAutoPauseEnabled, setIsAutoPauseEnabled] = useState(true);
+  // Off by default: playback runs on until the user pauses it.
+  const [isAutoPauseEnabled, setIsAutoPauseEnabled] = useState(false);
 
   const activeSubRef = useRef<SubtitleItem | null | undefined>(null);
   const autoPauseRef = useRef<boolean>(isAutoPauseEnabled);

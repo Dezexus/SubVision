@@ -5,7 +5,6 @@ import { ResultsPanel } from './features/results';
 import { ResizeHandle, ToastContainer } from './shared/ui';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SessionRecoveryModal } from './components/SessionRecoveryModal';
-import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { useVideoStore } from './store/videoStore';
 import { useProcessingStore } from './store/processingStore';
 import { PANEL_LIMITS, useLayoutStore, type Side } from './store/layoutStore';
@@ -79,11 +78,6 @@ function App() {
     <div className="w-full h-screen bg-bg-main flex flex-col text-txt-main overflow-hidden">
       {clientId && <SessionRecoveryModal />}
       <div className="h-1 w-full bg-brand-500 flex-shrink-0" />
-      {isProjectLoaded && (
-        <div className="flex justify-end px-4 pt-2 flex-shrink-0">
-          <LanguageSwitcher />
-        </div>
-      )}
       <div className="flex flex-1 min-h-0 p-4 overflow-hidden">
         {showLeft && (
           <>
