@@ -30,19 +30,13 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - USE_NVDEC=${USE_NVDEC:-true}
-      - ADMIN_API_KEY=${ADMIN_API_KEY:-}
-      - ADMIN_ENABLED=${ADMIN_ENABLED:-false}
-      - EMOTION_EXPORT_ENABLED=${EMOTION_EXPORT_ENABLED:-true}
-      - EMOTION_PRELOAD_MODEL=${EMOTION_PRELOAD_MODEL:-false}
-      - GIGAAM_MODEL_CACHE_DIR=${GIGAAM_MODEL_CACHE_DIR:-uploads/models/gigaam}
 
   worker:
     build:
       context: .
       target: worker
       args:
-        CUDA_ARCH_BIN: ${CUDA_ARCH_BIN:-7.5}
-        INSTALL_EMOTION_DEPS: ${INSTALL_EMOTION_DEPS:-0}
+        CUDA_ARCH_BIN: ${CUDA_ARCH_BIN:-12.0}
     init: true
     container_name: subvision_worker
     restart: unless-stopped
@@ -63,11 +57,6 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - USE_NVDEC=${USE_NVDEC:-true}
       - PADDLE_GPU_MEMORY_FRACTION=${PADDLE_GPU_MEMORY_FRACTION:-0.35}
-      - ADMIN_API_KEY=${ADMIN_API_KEY:-}
-      - ADMIN_ENABLED=${ADMIN_ENABLED:-false}
-      - EMOTION_EXPORT_ENABLED=${EMOTION_EXPORT_ENABLED:-true}
-      - EMOTION_PRELOAD_MODEL=${EMOTION_PRELOAD_MODEL:-false}
-      - GIGAAM_MODEL_CACHE_DIR=${GIGAAM_MODEL_CACHE_DIR:-uploads/models/gigaam}
     deploy:
       resources:
         reservations:

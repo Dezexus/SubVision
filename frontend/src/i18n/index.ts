@@ -40,16 +40,5 @@ export function useTranslation() {
     return key;
   };
 
-  const field = (sectionKey: string, fieldKey: string) => {
-    const composite = `${sectionKey}.${fieldKey}`;
-    const entry = (dict.emotion.field as Record<string, { label: string; help?: string }>)[composite];
-    return {
-      label: entry?.label ?? composite,
-      help: entry?.help ?? '',
-    };
-  };
-
-  const option = (value: string) => t(`emotion.option.${value}`);
-
-  return { t, field, option, locale, setLocale };
+  return { t, locale, setLocale };
 }

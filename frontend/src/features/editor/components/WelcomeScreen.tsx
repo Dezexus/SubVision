@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Upload, AlertCircle, Loader2, Video, FileText, Wand2, Shield, Sparkles } from 'lucide-react';
+import { Upload, AlertCircle, Loader2, Video, FileText, Wand2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '../../../shared/lib';
 import { useUploadVideo } from '../mutations/useUploadVideo';
@@ -72,13 +71,6 @@ export const WelcomeScreen = () => {
     >
       <div className="absolute top-4 right-4 z-20 flex items-center gap-3">
         <LanguageSwitcher />
-        <Link
-          to="/admin"
-          className="flex items-center gap-1.5 text-xs font-medium text-txt-muted hover:text-brand-400 bg-bg-panel border border-border-main px-3 py-1.5 rounded-md transition-colors"
-        >
-          <Shield size={14} />
-          {t('welcome.admin')}
-        </Link>
       </div>
 
       <motion.div
@@ -153,7 +145,6 @@ export const WelcomeScreen = () => {
             { icon: <FileText size={14} />, text: t('welcome.badgeOcr') },
             { icon: <Wand2 size={14} />, text: t('welcome.badgeBlur') },
             { icon: <Video size={14} />, text: t('welcome.badgeSrt') },
-            { icon: <Sparkles size={14} />, text: t('welcome.badgeEmotion') },
           ].map((badge, i) => (
             <div key={i} className="flex items-center gap-2 text-xs font-medium text-txt-muted bg-bg-panel border border-border-main px-3 py-1.5 rounded-md shadow-sm">
               <span className="text-brand-500">{badge.icon}</span>

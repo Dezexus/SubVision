@@ -19,12 +19,6 @@ class Settings(BaseSettings):
     paddle_gpu_memory_fraction: float = 0.35
     use_nvdec: bool = True
 
-    admin_api_key: str = ""
-    admin_enabled: bool = False
-    emotion_export_enabled: bool = True
-    emotion_preload_model: bool = False
-    gigaam_model_cache_dir: str = "uploads/models/gigaam"
-
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getClientId } from '../shared/lib';
 import { useProcessingStore } from '../store/processingStore';
 import { useVideoStore } from '../store/videoStore';
-import { useEmotionExportStore } from '../store/emotionExportStore';
 import { api } from '../shared/api';
 import { Button } from '../shared/ui';
 import { useTranslation } from '../i18n';
@@ -31,7 +30,6 @@ export const SessionRecoveryModal: React.FC = () => {
     onSuccess: () => {
       useProcessingStore.getState().reset();
       useVideoStore.getState().reset();
-      useEmotionExportStore.getState().setActiveEmotionJobId(null);
       queryClient.invalidateQueries({ queryKey: ['sessionStatus'] });
     },
   });
@@ -39,16 +37,12 @@ export const SessionRecoveryModal: React.FC = () => {
   const handleContinue = () => {
     if (activeJob) {
       const isOcr = activeJob.startsWith('ocr_');
-      const isEmotion = activeJob.startsWith('emotion_');
       useProcessingStore.setState({
         activeOcrJobId: isOcr ? activeJob : null,
-        activeBlurJobId: !isOcr && !isEmotion ? activeJob : null,
+        activeBlurJobId: !isOcr ? activeJob : null,
         isProcessing: true,
         stoppedJobId: null,
       });
-      if (isEmotion) {
-        useEmotionExportStore.getState().setActiveEmotionJobId(activeJob);
-      }
     }
     setIsHidden(true);
   };

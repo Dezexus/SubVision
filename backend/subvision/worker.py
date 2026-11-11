@@ -4,30 +4,26 @@ import json
 import time
 import os
 import tempfile
-import shutil
 from typing import Dict, Any
 import redis.asyncio as aioredis
 import redis
 from arq.connections import RedisSettings
 import numpy as np
 
-from subvision.core.ml_compat import apply_ml_compat
-
-apply_ml_compat()
-
-from subvision.core.config import settings  # noqa: E402
-from subvision.core.logging_config import setup_logging  # noqa: E402
-from subvision.core.storage import storage_manager  # noqa: E402
-from subvision.core.exceptions import TaskCancelledError  # noqa: E402
-from subvision.core.jobs import (  # noqa: E402
+from subvision.core.config import settings
+from subvision.core.logging_config import setup_logging
+from subvision.core.storage import storage_manager
+from subvision.core.exceptions import TaskCancelledError
+from subvision.core.jobs import (
     clear_active_job_if_match,
     parse_client_id_from_job_id,
     touch_active_job,
 )
-from subvision.processing.pipeline import run_ocr_pipeline  # noqa: E402
-from subvision.processing.ocr_engine import get_paddle_engine  # noqa: E402
-from subvision.rendering.pipeline import render_blur_pipeline  # noqa: E402
-from subvision.rendering.models import RenderTaskConfig  # noqa: E402
+from subvision.processing.pipeline import run_ocr_pipeline
+from subvision.processing.ocr_engine import get_paddle_engine
+from subvision.rendering.pipeline import render_blur_pipeline
+from subvision.rendering.models import RenderTaskConfig
+
 setup_logging(settings.log_level)
 
 _sync_redis_client = None
@@ -245,113 +241,6 @@ async def render_blur_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
         await redis_conn.srem(f"pending_jobs:{safe_filename}", job_id)
 
 
-async def emotion_export_task(ctx: Dict[str, Any], config: Dict[str, Any]) -> None:
-    from pathlib import Path
-
-    from subvision.core.admin_config import record_emotion_job
-    from subvision.core.export_names import export_stem, export_with_suffix
-    from subvision.processing.emotion_export import run_emotion_export
-
-    client_id = config["client_id"]
-    filename = config["filename"]
-    safe_filename = os.path.basename(filename)
-    job_id = ctx.get("job_id", "unknown")
-    redis_conn: aioredis.Redis = ctx["redis"]
-    loop = asyncio.get_running_loop()
-
-    bus = RedisEventBus(redis_conn, client_id, job_id, loop)
-    cancellation = RedisCancellationToken(job_id)
-    reporter = TaskReporter(bus, cancellation)
-
-    try:
-        from subvision.domain.emotion_models import EmotionAnalysisSettings
-
-        original = config.get("original_filename")
-        if not original:
-            raw = await redis_conn.get(f"original_name:{safe_filename}")
-            if raw:
-                original = raw.decode("utf-8") if isinstance(raw, bytes) else str(raw)
-
-        analysis = EmotionAnalysisSettings.model_validate(config.get("emotion_settings") or {})
-        suffix = analysis.json_format.filename_suffix or "_emotion.json"
-        if not suffix.endswith(".json"):
-            suffix = "_emotion.json"
-        stem = export_stem(original, safe_filename)
-        out_name = export_with_suffix(stem, suffix)
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            local_video_path = os.path.join(tmpdir, safe_filename)
-            reporter.log("Downloading video for emotion export...")
-            dl_ok = await storage_manager.copy_from(safe_filename, local_video_path)
-            if not dl_ok:
-                await bus.publish_async(
-                    {"type": "finish", "success": False, "error": "Video file not available."}
-                )
-                return
-
-            local_json = os.path.join(tmpdir, out_name)
-            subtitles = config.get("subtitles") or []
-            reporter.set_total(len(subtitles))
-            reporter.progress(0, max(len(subtitles), 1), "...")
-
-            def progress_cb(current: int, total: int, eta: str) -> None:
-                reporter.progress(current, total, eta)
-
-            def cancel_check() -> bool:
-                return cancellation.is_cancelled_sync()
-
-            sync_redis = get_sync_redis()
-
-            await asyncio.to_thread(
-                run_emotion_export,
-                local_video_path,
-                subtitles,
-                analysis,
-                Path(local_json),
-                filename=safe_filename,
-                original_filename=config.get("original_filename") or safe_filename,
-                progress_cb=progress_cb,
-                cancel_check=cancel_check,
-                redis_client=sync_redis,
-            )
-
-            if cancellation.is_cancelled_sync():
-                await bus.publish_async({"type": "finish", "success": False, "error": "Task Cancelled"})
-                return
-
-            uploads_path = os.path.join(settings.cache_dir, out_name)
-            os.makedirs(settings.cache_dir, exist_ok=True)
-            shutil.copy2(local_json, uploads_path)
-
-        download_url = f"/api/video/download/{out_name}"
-        await bus.publish_async(
-            {
-                "type": "finish",
-                "success": True,
-                "download_url": download_url,
-                "emotion_json": out_name,
-            }
-        )
-        await record_emotion_job(
-            redis_conn,
-            {
-                "job_id": job_id,
-                "client_id": client_id,
-                "filename": safe_filename,
-                "output": out_name,
-                "cues": len(subtitles),
-            },
-        )
-    except (asyncio.CancelledError, TaskCancelledError):
-        await bus.publish_async({"type": "finish", "success": False, "error": "Task Cancelled"})
-    except Exception as exc:
-        logging.error("Emotion export failed: %s", exc, exc_info=True)
-        await bus.publish_async({"type": "finish", "success": False, "error": str(exc)})
-        raise
-    finally:
-        await redis_conn.srem(f"pending_jobs:{safe_filename}", job_id)
-
-
 async def startup(ctx: Dict[str, Any]) -> None:
     logging.info("Worker starting up...")
     logging.info("Pre-warming OCR engine...")
@@ -363,23 +252,6 @@ async def startup(ctx: Dict[str, Any]) -> None:
     except Exception as e:
         logging.error(f"Failed to pre-warm OCR: {e}")
 
-    if settings.emotion_export_enabled:
-        try:
-            from subvision.core.admin_config import env_emotion_defaults
-            from subvision.processing.emotion_engine import warm_emotion_model
-
-            emo_cfg = env_emotion_defaults().export
-            if not emo_cfg.model_cache_dir:
-                emo_cfg.model_cache_dir = settings.gigaam_model_cache_dir
-            should_preload = emo_cfg.preload_model or settings.emotion_preload_model
-            if should_preload and emo_cfg.analyze_emotion:
-                ok, msg = await asyncio.to_thread(warm_emotion_model, emo_cfg)
-                if ok:
-                    logging.info("GigaAM emotion model pre-warmed: %s", msg)
-                else:
-                    logging.warning("GigaAM preload skipped: %s", msg)
-        except Exception as e:
-            logging.warning("Emotion model preload failed: %s", e)
 
 async def shutdown(ctx: Dict[str, Any]) -> None:
     logging.info("Worker shutting down...")
@@ -411,7 +283,7 @@ async def on_job_end_handler(ctx: Dict[str, Any], job_id: str, result: Any, exc:
 
 
 class WorkerSettings:
-    functions = [process_ocr_task, render_blur_task, emotion_export_task]
+    functions = [process_ocr_task, render_blur_task]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     on_startup = startup
     on_shutdown = shutdown

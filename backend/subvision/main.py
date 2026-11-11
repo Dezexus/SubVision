@@ -14,7 +14,7 @@ import redis.asyncio as aioredis
 from arq import create_pool
 from arq.connections import RedisSettings
 
-from subvision.api.routers import video, processing, session, admin
+from subvision.api.routers import video, processing, session
 from subvision.api.schemas import WebSocketMessage
 from subvision.core.config import settings
 from subvision.core.logging_config import setup_logging
@@ -78,7 +78,6 @@ app.add_middleware(
 app.include_router(video.router, prefix="/api/video", tags=["Video"])
 app.include_router(processing.router, prefix="/api/process", tags=["Processing"])
 app.include_router(session.router, prefix="/api/session", tags=["Session"])
-app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 

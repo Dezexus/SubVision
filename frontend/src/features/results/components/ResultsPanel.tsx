@@ -1,9 +1,7 @@
-import React, { useState } from 'react';
-import { ScanFace, ArrowLeft, Upload, FileVideo, Play, EyeOff, Undo, Redo, Scissors } from 'lucide-react';
+import React from 'react';
+import { ScanFace, ArrowLeft, Upload, FileVideo, Play, EyeOff, Undo, Redo, Scissors, Download } from 'lucide-react';
 import { GlassPanel, Button } from '../../../shared/ui';
 import { SubtitleList } from '../../subtitles';
-import { EmotionExportDialog } from '../../export/components/EmotionExportDialog';
-import { ExportMenu } from './ExportMenu';
 import { useVideoStore } from '../../../store/videoStore';
 import { useProcessingStore } from '../../../store/processingStore';
 import { useBlurStore } from '../../../store/blurStore';
@@ -34,7 +32,6 @@ export const ResultsPanel = () => {
   const { execute: importSrt } = useImportSrt();
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
-  const [emotionOpen, setEmotionOpen] = useState(false);
 
   const actionsDisabled = isProcessing || !metadata || subtitles.length === 0;
 
@@ -121,11 +118,15 @@ export const ResultsPanel = () => {
       <div className="p-3 border-t border-border-main bg-bg-panel shrink-0">
         {!isBlurMode ? (
           <div className="flex gap-2">
-            <ExportMenu
+            <Button
+              variant="primary"
+              className="flex-1 h-10 text-xs font-semibold"
               disabled={actionsDisabled}
-              onExportSrt={exportSrt}
-              onExportEmotion={() => setEmotionOpen(true)}
-            />
+              onClick={exportSrt}
+              icon={<Download size={14} />}
+            >
+              {t('results.exportSrt')}
+            </Button>
             <Button
               variant="secondary"
               className="flex-1 h-10 text-xs font-semibold bg-purple-600/10 hover:bg-purple-600/20 text-purple-300 border-purple-500/30"
@@ -158,7 +159,6 @@ export const ResultsPanel = () => {
             </Button>
           </div>
         )}
-        <EmotionExportDialog open={emotionOpen} onClose={() => setEmotionOpen(false)} />
       </div>
     </GlassPanel>
   );

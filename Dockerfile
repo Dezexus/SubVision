@@ -29,50 +29,70 @@ EXPOSE 8000
 WORKDIR /app/backend
 CMD ["uvicorn", "subvision.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
 
-FROM nvidia/cuda:12.6.2-cudnn-devel-ubuntu22.04 AS opencv-cuda-builder
-ARG CUDA_ARCH_BIN=7.5
+FROM nvidia/cuda:12.9.1-cudnn-devel-ubuntu22.04 AS opencv-cuda-builder
+ARG CUDA_ARCH_BIN=12.0
+# Parallel compile jobs. Each needs ~1-1.5 GB RAM; the single cv2 bindings file needs ~4 GB.
+ARG OPENCV_BUILD_JOBS=8
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends software-properties-common gpg-agent \
     && add-apt-repository ppa:deadsnakes/ppa \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
-    wget unzip cmake build-essential pkg-config \
+    wget unzip cmake build-essential pkg-config ccache \
     python3.12 python3.12-dev \
     libavcodec-dev libavformat-dev libswscale-dev \
     libgstreamer-plugins-base1.0-dev libgstreamer1.0-dev libpng-dev libjpeg-dev \
     && ln -sf /usr/bin/python3.12 /usr/bin/python3 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Without numpy, CMake silently skips the cv2 Python bindings.
+RUN wget -q https://bootstrap.pypa.io/get-pip.py && python3.12 get-pip.py && rm get-pip.py \
+    && python3.12 -m pip install --no-cache-dir numpy==2.2.1
+
 WORKDIR /opencv-src
-RUN wget -q -O opencv.zip https://github.com/opencv/opencv/archive/4.10.0.zip \
- && wget -q -O opencv_contrib.zip https://github.com/opencv/opencv_contrib/archive/4.10.0.zip \
+RUN wget -q -O opencv.zip https://github.com/opencv/opencv/archive/4.12.0.zip \
+ && wget -q -O opencv_contrib.zip https://github.com/opencv/opencv_contrib/archive/4.12.0.zip \
  && unzip -q opencv.zip && unzip -q opencv_contrib.zip
 
 WORKDIR /opencv-src/build
-RUN cmake -D CMAKE_BUILD_TYPE=RELEASE \
+# Build only the modules SubVision and PaddleX use (checked with grep over
+# subvision/ and site-packages). Everything else, DNN with CUDA above all, was
+# most of the compile time. Add a module here before calling a new cv2 API.
+# ccache keeps host-compiled objects across cmake changes (nvcc objects are not cached).
+RUN --mount=type=cache,target=/root/.ccache \
+    cmake -D CMAKE_BUILD_TYPE=RELEASE \
           -D CMAKE_INSTALL_PREFIX=/usr/local \
-          -D OPENCV_EXTRA_MODULES_PATH=/opencv-src/opencv_contrib-4.10.0/modules \
+          -D OPENCV_EXTRA_MODULES_PATH=/opencv-src/opencv_contrib-4.12.0/modules \
           -D WITH_CUDA=ON \
           -D CUDA_ARCH_BIN=${CUDA_ARCH_BIN} \
-          -D WITH_CUDNN=ON \
-          -D OPENCV_DNN_CUDA=ON \
+          -D CUDA_ARCH_PTX=${CUDA_ARCH_BIN} \
+          -D WITH_CUDNN=OFF \
+          -D OPENCV_DNN_CUDA=OFF \
+          -D BUILD_LIST=core,imgproc,imgcodecs,videoio,photo,cudev,cudaarithm,cudaimgproc,cudafilters,python3 \
+          -D ENABLE_CCACHE=ON \
           -D BUILD_opencv_python3=ON \
           -D PYTHON3_EXECUTABLE=/usr/bin/python3.12 \
-          /opencv-src/opencv-4.10.0 \
- && make -j2 \
+          -D PYTHON3_PACKAGES_PATH=/opt/opencv-python \
+          -D BUILD_TESTS=OFF \
+          -D BUILD_PERF_TESTS=OFF \
+          -D BUILD_EXAMPLES=OFF \
+          /opencv-src/opencv-4.12.0 \
+ && make -j${OPENCV_BUILD_JOBS} \
  && make install \
- && ldconfig
+ && ldconfig \
+ && test -d /opt/opencv-python/cv2
 
-FROM nvidia/cuda:12.6.2-cudnn-devel-ubuntu22.04 AS worker
-ARG CUDA_ARCH_BIN=7.5
-ARG INSTALL_EMOTION_DEPS=0
+# Only the OpenCV libs go to the worker: the builder's /usr/local also holds its
+# own pip and numpy, which would clobber the worker's packages.
+RUN mkdir -p /opt/opencv-libs && cp -a /usr/local/lib/libopencv_* /opt/opencv-libs/
+
+FROM nvidia/cuda:12.9.1-cudnn-devel-ubuntu22.04 AS worker
+ARG CUDA_ARCH_BIN=12.0
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/usr/local/bin:$PATH"
-
-COPY --from=opencv-cuda-builder /usr/local /usr/local
 
 RUN apt-get update && apt-get install -y --no-install-recommends software-properties-common gpg-agent \
     && add-apt-repository ppa:deadsnakes/ppa \
@@ -87,19 +107,50 @@ RUN apt-get update && apt-get install -y --no-install-recommends software-proper
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+# Paddle and torch are separate layers ahead of the requirements COPY: they are
+# the largest downloads, and the Paddle index is flaky, so a failure in one step
+# keeps the others cached and a requirements edit does not refetch them.
+# Paddle comes straight from its wheel storage: the paddlepaddle.org.cn index
+# in front of it goes down (502) while the files stay reachable.
+ENV PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=10
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install --upgrade pip \
+ && python -m pip install "paddlepaddle-gpu @ https://paddle-whl.bj.bcebos.com/stable/cu129/paddlepaddle-gpu/paddlepaddle_gpu-3.3.0-cp312-cp312-linux_x86_64.whl"
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu129
+
 COPY backend/requirements.txt .
 COPY backend/requirements-worker.txt .
 
+# Fail the build if a dependency drags torch or the nvidia-*-cu12 libs back to
+# an older CUDA without Blackwell (sm_120) kernels.
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python -m pip install --upgrade pip \
- && python -m pip install paddlepaddle-gpu==3.3.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/ \
- && python -m pip install torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu126 \
- && python -m pip install -r requirements.txt \
+    python -m pip install -r requirements.txt \
  && python -m pip install -r requirements-worker.txt \
- && if [ "$INSTALL_EMOTION_DEPS" = "1" ]; then \
-      python -m pip install gigaam; \
-      python -m pip install torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu126 --force-reinstall --no-deps; \
-    fi
+ && python -c "from importlib.metadata import version as v; import torch; \
+assert torch.__version__.startswith('2.8.0'), torch.__version__; \
+assert v('nvidia-cublas-cu12').startswith('12.9'), 'CUDA libs downgraded: cublas ' + v('nvidia-cublas-cu12'); \
+print('torch', torch.__version__, 'cublas', v('nvidia-cublas-cu12'), 'cudnn', v('nvidia-cudnn-cu12'))"
+
+# The pip OpenCV wheels (CPU-only, needed by the api image) overwrite cv2/ and
+# shadow the CUDA build. Replace their files with the bindings built above, but
+# keep the opencv-contrib-python metadata: PaddleX checks for that distribution
+# via importlib.metadata and disables OCR result handling without it.
+# The CUDA build links GStreamer (its dev packages are in the builder), so the
+# runtime libs are installed here.
+# OpenCV is copied this late so that rebuilding it keeps the Paddle, torch and
+# requirements layers above cached.
+COPY --from=opencv-cuda-builder /opt/opencv-libs /usr/local/lib
+COPY --from=opencv-cuda-builder /opt/opencv-python /opt/opencv-python
+RUN apt-get update && apt-get install -y --no-install-recommends libgstreamer-plugins-base1.0-0 \
+ && apt-get clean && rm -rf /var/lib/apt/lists/* \
+ && ldconfig \
+ && python -m pip uninstall -y opencv-python opencv-python-headless opencv-contrib-python-headless \
+ && python -m pip install --no-deps opencv-contrib-python==4.10.0.84 \
+ && rm -rf /usr/local/lib/python3.12/dist-packages/cv2 /usr/local/lib/python3.12/dist-packages/opencv_contrib_python.libs \
+ && cp -a /opt/opencv-python/cv2 /usr/local/lib/python3.12/dist-packages/cv2 \
+ && python -c "import cv2, re; assert re.search(r'NVIDIA CUDA:\s+YES', cv2.getBuildInformation()), 'cv2 built without CUDA'; [getattr(cv2.cuda, f) for f in ('cvtColor', 'createGaussianFilter', 'createBoxFilter', 'absdiff', 'calcSum', 'merge', 'fastNlMeansDenoisingColored')]; [getattr(cv2, f) for f in ('inpaint', 'imencode', 'fastNlMeansDenoisingColored', 'VideoCapture')]; print('cv2', cv2.__version__, cv2.__file__)"
 
 # Refresh CA roots late in the build so earlier heavy layers stay cached.
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
@@ -107,11 +158,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY backend ./backend
-RUN if [ "$INSTALL_EMOTION_DEPS" = "1" ]; then \
-      python /app/backend/scripts/download_gigaam_weights.py \
-        --cache-dir /app/backend/uploads/models/gigaam \
-        --export-onnx --onnx-dtype fp32 || true; \
-    fi
 WORKDIR /app/backend
 
 CMD ["arq", "subvision.worker.WorkerSettings"]

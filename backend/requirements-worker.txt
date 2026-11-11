@@ -1,4 +1,2 @@
 paddleocr==3.7.0
-# Optional emotion export — enable with INSTALL_EMOTION_DEPS=1 at build time:
-# gigaam
-# torch + torchvision: pin matching CUDA wheels (see Dockerfile worker stage)
+# torch: pinned CUDA wheel installed (see Dockerfile worker stage)

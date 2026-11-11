@@ -55,10 +55,3 @@ class WebSocketMessage(BaseModel):
     type: str
     payload: Optional[Dict[str, Any]] = None
 
-
-class EmotionExportConfig(BaseModel):
-    filename: str
-    client_id: str
-    subtitles: List[dict]
-    emotion_settings: Optional[Dict[str, Any]] = None
-    original_filename: Optional[str] = None

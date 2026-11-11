@@ -18,7 +18,7 @@ def export_stem(original_filename: str | None, storage_filename: str) -> str:
 
 
 def export_with_suffix(stem: str, suffix: str) -> str:
-    """Build export filename: stem + suffix (e.g. '_emotion.json', '_blurred.mp4')."""
+    """Build export filename: stem + suffix (e.g. '_blurred.mp4')."""
     if not suffix.startswith(("_", ".")):
         suffix = f"_{suffix}"
     full = f"{stem}{suffix}"
