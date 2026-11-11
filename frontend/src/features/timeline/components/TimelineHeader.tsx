@@ -3,6 +3,7 @@ import {
   Play, Pause, Volume2, Magnet 
 } from 'lucide-react';
 import { cn } from '../../../shared/lib';
+import { useTranslation } from '../../../i18n';
 
 interface Props {
   currentTimeDisplay: string;
@@ -38,6 +39,7 @@ export const TimelineHeader = ({
   onZoom,
   onVolumeChange
 }: Props) => {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center justify-between px-4 py-2 bg-bg-panel border-b border-border-main">
       <div className="flex items-center gap-3 w-48 shrink-0">
@@ -49,7 +51,7 @@ export const TimelineHeader = ({
             {currentTimeDisplay}
           </span>
           <span className="text-[9px] text-txt-subtle font-mono mt-0.5">
-            FRAME: <span className="text-txt-muted">{currentFrame}</span>
+            {t('timeline.frame').toUpperCase()}: <span className="text-txt-muted">{currentFrame}</span>
           </span>
         </div>
       </div>
@@ -58,13 +60,13 @@ export const TimelineHeader = ({
         <div className="flex items-center gap-1 bg-bg-main p-1 rounded-lg border border-border-main shadow-sm">
           {isPreviewMode && onStepFrame && (
             <>
-              <button onClick={() => onStepFrame(-1)} className="p-2 rounded-md hover:bg-bg-surface text-txt-subtle hover:text-white transition">
+              <button onClick={() => onStepFrame(-1)} title={t('timeline.stepBack')} className="p-2 rounded-md hover:bg-bg-surface text-txt-subtle hover:text-white transition">
                 <ChevronLeft size={16} />
               </button>
-              <button onClick={onPlayPause} className="p-2 rounded-md bg-brand-500/10 text-brand-500 hover:bg-brand-500 hover:text-white transition shadow-sm">
+              <button onClick={onPlayPause} title={t('timeline.playPause')} className="p-2 rounded-md bg-brand-500/10 text-brand-500 hover:bg-brand-500 hover:text-white transition shadow-sm">
                 {isPlaying ? <Pause size={18} /> : <Play size={18} fill="currentColor" />}
               </button>
-              <button onClick={() => onStepFrame(1)} className="p-2 rounded-md hover:bg-bg-surface text-txt-subtle hover:text-white transition">
+              <button onClick={() => onStepFrame(1)} title={t('timeline.stepForward')} className="p-2 rounded-md hover:bg-bg-surface text-txt-subtle hover:text-white transition">
                 <ChevronRight size={16} />
               </button>
             </>
@@ -76,15 +78,15 @@ export const TimelineHeader = ({
         <button 
           onClick={onToggleSnapping} 
           className={cn("p-1.5 rounded-md transition border", isSnapping ? "bg-brand-500/20 text-brand-500 border-brand-500/50" : "bg-bg-surface text-txt-subtle hover:text-white border-transparent")}
-          title="Toggle Snapping (S)"
+          title={t('timeline.snapping')}
         >
           <Magnet size={14} />
         </button>
         
         <div className="flex items-center bg-bg-main rounded-lg border border-border-main px-2 py-1.5 gap-2">
-          <button onClick={() => onZoom(-0.5)} className="text-txt-subtle hover:text-white"><ZoomOut size={14}/></button>
+          <button onClick={() => onZoom(-0.5)} title={t('timeline.zoomOut')} className="text-txt-subtle hover:text-white"><ZoomOut size={14}/></button>
           <span className="text-[10px] font-mono w-8 text-center">{Math.round(zoomLevel * 100)}%</span>
-          <button onClick={() => onZoom(0.5)} className="text-txt-subtle hover:text-white"><ZoomIn size={14}/></button>
+          <button onClick={() => onZoom(0.5)} title={t('timeline.zoomIn')} className="text-txt-subtle hover:text-white"><ZoomIn size={14}/></button>
         </div>
 
         {isPreviewMode && onVolumeChange && (

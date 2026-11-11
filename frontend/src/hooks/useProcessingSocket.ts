@@ -1,191 +1,55 @@
 import { useEffect, useCallback, useRef } from 'react';
 import useWebSocket from 'react-use-websocket';
-import axios from 'axios';
+import { api, getWsBase } from '../shared/api';
 import { useProcessingStore } from '../store/processingStore';
-import { useUIStore } from '../store/uiStore';
-import { API_URL, getWsBase } from '../shared/api/config';
-import type { SubtitleItem, WebSocketMessage } from '../types';
-import { translate } from '../i18n';
+import type { WebSocketMessage } from '../types';
+import { applySessionStatus, handleSocketMessage, type EventOutcome } from './processingEvents';
 
-function activeJobIds(): string[] {
-  const { activeOcrJobId, activeBlurJobId } = useProcessingStore.getState();
-  return [activeOcrJobId, activeBlurJobId].filter((id): id is string => !!id);
-}
-
-function bindActiveJobId(jobId: string | null | undefined) {
-  if (!jobId) return;
-  const store = useProcessingStore.getState();
-  if (jobId.startsWith('ocr_')) {
-    if (store.activeOcrJobId !== jobId) store.setActiveOcrJobId(jobId);
-    if (store.activeBlurJobId) store.setActiveBlurJobId(null);
-  } else if (jobId.startsWith('blur_')) {
-    if (store.activeBlurJobId !== jobId) store.setActiveBlurJobId(jobId);
-    if (store.activeOcrJobId) store.setActiveOcrJobId(null);
-  }
-}
-
-function isRelevantJobEvent(jobId: string | undefined, opts?: { allowUntagged?: boolean }): boolean {
-  const { isProcessing, stoppedJobId } = useProcessingStore.getState();
-  if (jobId && stoppedJobId && jobId === stoppedJobId) {
-    return false;
-  }
-  if (!isProcessing) {
-    return false;
-  }
-  const ids = activeJobIds();
-  if (ids.length === 0) {
-    return false;
-  }
-  if (!jobId) {
-    return opts?.allowUntagged === true;
-  }
-  return ids.includes(jobId);
-}
+const PING_INTERVAL_MS = 20_000;
+const WATCHDOG_INTERVAL_MS = 5_000;
+const STALL_THRESHOLD_MS = 8_000;
 
 async function ackTerminalState(clientId: string, jobId: string | undefined) {
   if (!jobId) return;
   try {
-    await axios.post(`${API_URL}/session/ack`, { client_id: clientId, job_id: jobId });
+    await api.ackSessionState(clientId, jobId);
   } catch (e) {
     console.warn('Failed to ack session state', e);
   }
 }
 
-function applyFinishState(
-  data: Extract<WebSocketMessage, { type: 'finish' }>,
-  deps: {
-    setProcessing: (v: boolean) => void;
-    setActiveOcrJobId: (v: string | null) => void;
-    setActiveBlurJobId: (v: string | null) => void;
-    updateProgress: (c: number, t: number, eta?: string) => void;
-    setRenderedVideoUrl: (url: string | null) => void;
-    setSubtitles: (subs: SubtitleItem[]) => void;
-    addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
-    showToast: boolean;
-    replaceSubtitles: boolean;
-  },
-) {
-  const {
-    setProcessing, setActiveOcrJobId, setActiveBlurJobId,
-    updateProgress, setRenderedVideoUrl, setSubtitles, addToast, showToast, replaceSubtitles,
-  } = deps;
-
-  setProcessing(false);
-  setActiveOcrJobId(null);
-  setActiveBlurJobId(null);
-
-  if (data.success) {
-    const isOcrJob = !data.job_id || data.job_id.startsWith('ocr_');
-    if (isOcrJob && replaceSubtitles && data.subtitles?.length) {
-      setSubtitles(data.subtitles);
-    }
-    const { current, total } = useProcessingStore.getState().progress;
-    const done = Math.max(current, total, 1);
-    updateProgress(done, done, '00:00');
-    const isBlurJob = !data.job_id || data.job_id.startsWith('blur_');
-    if (isBlurJob && data.download_url) {
-      setRenderedVideoUrl(data.download_url);
-      if (showToast) addToast(translate('toasts.renderCompleted'), 'success');
-    } else if (showToast) {
-      addToast(translate('toasts.processCompleted'), 'success');
-    }
-  } else if (showToast) {
-    addToast(data.error || translate('toasts.taskFailed'), 'error');
-  }
-}
-
-function softRecoverFinish(data: Extract<WebSocketMessage, { type: 'finish' }>) {
-  const store = useProcessingStore.getState();
-  if (!data.success) return;
-  const isOcrJob = !data.job_id || data.job_id.startsWith('ocr_');
-  if (isOcrJob && data.subtitles?.length && store.subtitles.length === 0) {
-    store.setSubtitles(data.subtitles);
-  }
-  const isBlurJob = !data.job_id || data.job_id.startsWith('blur_');
-  if (isBlurJob && data.download_url && !store.renderedVideoUrl) {
-    store.setRenderedVideoUrl(data.download_url);
-  }
-}
-
 export const useProcessingSocket = (clientId: string | null) => {
-  const addLog = useProcessingStore(s => s.addLog);
-  const updateProgress = useProcessingStore(s => s.updateProgress);
-  const addSubtitle = useProcessingStore(s => s.addSubtitle);
-  const updateSubtitle = useProcessingStore(s => s.updateSubtitle);
-  const setSubtitles = useProcessingStore(s => s.setSubtitles);
-  const setProcessing = useProcessingStore(s => s.setProcessing);
-  const setActiveOcrJobId = useProcessingStore(s => s.setActiveOcrJobId);
-  const setActiveBlurJobId = useProcessingStore(s => s.setActiveBlurJobId);
-  const setRenderedVideoUrl = useProcessingStore(s => s.setRenderedVideoUrl);
-  const addToast = useUIStore(s => s.addToast);
   const lastProgressAt = useRef(0);
 
-  const wsBase = getWsBase();
+  const applyOutcome = useCallback((outcome: EventOutcome) => {
+    if (outcome.progressed) lastProgressAt.current = Date.now();
+    if (clientId && outcome.ackJobId) void ackTerminalState(clientId, outcome.ackJobId);
+  }, [clientId]);
 
   const syncFromServer = useCallback(async (opts?: { showToast?: boolean }) => {
     if (!clientId) return;
-    const showToast = opts?.showToast ?? false;
     try {
-      const { data: res } = await axios.get(`${API_URL}/session/status/${clientId}`);
-      const state = res.last_state as WebSocketMessage | null | undefined;
-      const local = useProcessingStore.getState();
-
-      if (res.has_active_job && res.job_id) {
-        bindActiveJobId(res.job_id);
-        if (!local.isProcessing) setProcessing(true);
-        if (
-          state?.type === 'progress'
-          && (!state.job_id || state.job_id === res.job_id)
-        ) {
-          updateProgress(state.current, state.total, state.eta);
-          lastProgressAt.current = Date.now();
-        }
-        if (state?.type === 'finish' && (!state.job_id || state.job_id === res.job_id)) {
-          applyFinishState(state, {
-            setProcessing, setActiveOcrJobId, setActiveBlurJobId,
-            updateProgress, setRenderedVideoUrl, setSubtitles, addToast,
-            showToast,
-            replaceSubtitles: true,
-          });
-          await ackTerminalState(clientId, state.job_id || res.job_id);
-        }
-        return;
-      }
-
-      if (state?.type === 'finish') {
-        if (local.isProcessing) {
-          applyFinishState(state, {
-            setProcessing, setActiveOcrJobId, setActiveBlurJobId,
-            updateProgress, setRenderedVideoUrl, setSubtitles, addToast,
-            showToast,
-            replaceSubtitles: true,
-          });
-          await ackTerminalState(clientId, state.job_id);
-          return;
-        }
-
-        softRecoverFinish(state);
-        await ackTerminalState(clientId, state.job_id);
-        return;
-      }
-
-      if (!res.has_active_job && local.isProcessing) {
-        setProcessing(false);
-        setActiveOcrJobId(null);
-        setActiveBlurJobId(null);
-        const { current, total } = local.progress;
-        if (total > 0) updateProgress(Math.max(current, total), Math.max(current, total), '00:00');
-      }
+      const res = await api.getSessionStatus(clientId);
+      applyOutcome(applySessionStatus(res, { showToast: opts?.showToast ?? false }));
     } catch (e) {
       console.error('Failed to restore processing state', e);
     }
-  }, [
-    clientId, updateProgress, setProcessing, setActiveOcrJobId, setActiveBlurJobId,
-    setRenderedVideoUrl, setSubtitles, addToast,
-  ]);
+  }, [clientId, applyOutcome]);
 
-  const { lastJsonMessage, sendJsonMessage, readyState } = useWebSocket(
-    clientId ? `${wsBase}/ws/${clientId}` : null,
+  // Handle every message in onMessage: lastJsonMessage is React state, so a
+  // burst of events between two renders would collapse into the last one.
+  const onMessage = useCallback((event: MessageEvent) => {
+    let data: WebSocketMessage;
+    try {
+      data = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+    applyOutcome(handleSocketMessage(data));
+  }, [applyOutcome]);
+
+  const { sendJsonMessage, readyState } = useWebSocket(
+    clientId ? `${getWsBase()}/ws/${clientId}` : null,
     {
       shouldReconnect: () => true,
       reconnectAttempts: 50,
@@ -193,6 +57,9 @@ export const useProcessingSocket = (clientId: string | null) => {
       onOpen: () => {
         void syncFromServer({ showToast: true });
       },
+      onMessage,
+      // Messages are fully handled in onMessage; skip lastMessage re-renders.
+      filter: () => false,
     },
   );
 
@@ -204,7 +71,7 @@ export const useProcessingSocket = (clientId: string | null) => {
       } catch {
         /* ignore */
       }
-    }, 20000);
+    }, PING_INTERVAL_MS);
     return () => window.clearInterval(id);
   }, [clientId, readyState, sendJsonMessage]);
 
@@ -214,11 +81,11 @@ export const useProcessingSocket = (clientId: string | null) => {
       const { isProcessing, progress } = useProcessingStore.getState();
       if (!isProcessing) return;
       const atEnd = progress.total > 0 && progress.current >= progress.total;
-      const stalled = Date.now() - lastProgressAt.current > 8000;
+      const stalled = Date.now() - lastProgressAt.current > STALL_THRESHOLD_MS;
       if (atEnd || stalled) {
         void syncFromServer({ showToast: true });
       }
-    }, 5000);
+    }, WATCHDOG_INTERVAL_MS);
     return () => window.clearInterval(id);
   }, [clientId, syncFromServer]);
 
@@ -232,49 +99,4 @@ export const useProcessingSocket = (clientId: string | null) => {
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [clientId, syncFromServer]);
-
-  useEffect(() => {
-    if (!lastJsonMessage) return;
-    const data = lastJsonMessage as WebSocketMessage;
-
-    switch (data.type) {
-      case 'log':
-        if (!isRelevantJobEvent(data.job_id, { allowUntagged: true })) break;
-        addLog(data.message);
-        break;
-      case 'progress':
-        if (!isRelevantJobEvent(data.job_id)) break;
-        lastProgressAt.current = Date.now();
-        updateProgress(data.current, data.total, data.eta);
-        break;
-      case 'subtitle_new':
-        if (!isRelevantJobEvent(data.job_id)) break;
-        addSubtitle(data.item);
-        break;
-      case 'subtitle_update':
-        if (!isRelevantJobEvent(data.job_id)) break;
-        updateSubtitle(data.item);
-        break;
-      case 'subtitles_replace':
-        if (!isRelevantJobEvent(data.job_id)) break;
-        setSubtitles(data.items);
-        break;
-      case 'finish':
-        if (!isRelevantJobEvent(data.job_id)) break;
-        applyFinishState(data, {
-          setProcessing, setActiveOcrJobId, setActiveBlurJobId,
-          updateProgress, setRenderedVideoUrl, setSubtitles, addToast,
-          showToast: true,
-          replaceSubtitles: true,
-        });
-        if (clientId) void ackTerminalState(clientId, data.job_id);
-        break;
-      case 'pong':
-        break;
-    }
-  }, [
-    lastJsonMessage, addLog, updateProgress, addSubtitle, updateSubtitle, setSubtitles,
-    setProcessing, setActiveOcrJobId, setActiveBlurJobId,
-    setRenderedVideoUrl, addToast, clientId,
-  ]);
 };

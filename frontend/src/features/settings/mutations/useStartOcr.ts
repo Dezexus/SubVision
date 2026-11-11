@@ -13,7 +13,6 @@ export function useStartOcr() {
   const setProcessing = useProcessingStore((s) => s.setProcessing);
   const setActiveOcrJobId = useProcessingStore((s) => s.setActiveOcrJobId);
   const setActiveBlurJobId = useProcessingStore((s) => s.setActiveBlurJobId);
-  const addLog = useProcessingStore((s) => s.addLog);
   const addToast = useUIStore((s) => s.addToast);
 
   const mutation = useMutation({
@@ -23,7 +22,6 @@ export function useStartOcr() {
     onMutate: () => {
       setProcessing(true);
       setActiveBlurJobId(null);
-      addLog('--- Starting Process ---');
     },
     onSuccess: (data) => {
       setActiveOcrJobId(data.job_id);
@@ -33,7 +31,6 @@ export function useStartOcr() {
       setActiveOcrJobId(null);
       const msg = getApiErrorMessage(err, translate('toasts.ocrStartFailed'));
       addToast(msg, 'error');
-      addLog(`Error: ${msg}`);
     }
   });
 

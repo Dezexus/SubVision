@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import axios from 'axios';
 import { api } from '../../../shared/api';
 import { calculateTextRect } from '../../../shared/lib/textGeometry';
@@ -38,7 +38,11 @@ const generateLocalPreview = async (
       }
 
       URL.revokeObjectURL(frameUrl);
-      resolve(canvas.toDataURL('image/jpeg', 0.85));
+      canvas.toBlob(
+        (blob) => (blob ? resolve(URL.createObjectURL(blob)) : reject('Canvas encode failed')),
+        'image/jpeg',
+        0.85,
+      );
     };
     img.onerror = () => {
       URL.revokeObjectURL(frameUrl);
@@ -59,6 +63,18 @@ export const useBlurPreview = (
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Depend on the active texts only (as a string key), so editing an unrelated
+  // subtitle does not restart the preview request.
+  const time = metadata ? currentFrameIndex / metadata.fps : 0;
+  const textsKey = useMemo(
+    () => JSON.stringify(
+      subtitles
+        .filter((s) => time >= s.start && time <= s.end && s.text?.trim())
+        .map((s) => s.text.trim()),
+    ),
+    [subtitles, time],
+  );
+
   useEffect(() => {
     blurCache.forEach(url => URL.revokeObjectURL(url));
     blurCache.clear();
@@ -76,9 +92,7 @@ export const useBlurPreview = (
       abortControllerRef.current.abort();
     }
 
-    const time = currentFrameIndex / metadata.fps;
-    const activeSubs = subtitles.filter(s => time >= s.start && time <= s.end && s.text?.trim());
-    const texts = activeSubs.map(s => s.text.trim());
+    const texts: string[] = JSON.parse(textsKey);
     const text = texts[0] ?? "";
 
     const settingsKey = JSON.stringify(blurSettings);
@@ -118,15 +132,13 @@ export const useBlurPreview = (
             const firstKey = blurCache.keys().next().value;
             if (firstKey) {
               const oldUrl = blurCache.get(firstKey);
-              if (oldUrl && oldUrl.startsWith('blob:')) {
-                URL.revokeObjectURL(oldUrl);
-              }
+              if (oldUrl) URL.revokeObjectURL(oldUrl);
               blurCache.delete(firstKey);
             }
           }
           blurCache.set(cacheKey, url);
           setBlurPreviewUrl(url);
-        } else if (url.startsWith('blob:')) {
+        } else {
           URL.revokeObjectURL(url);
         }
       } catch (e) {
@@ -150,7 +162,7 @@ export const useBlurPreview = (
         abortControllerRef.current.abort();
       }
     };
-  }, [blurSettings, currentFrameIndex, metadata, subtitles, setBlurPreviewUrl]);
+  }, [blurSettings, currentFrameIndex, metadata, textsKey, setBlurPreviewUrl]);
 
   return { isPreviewUpdating };
 };

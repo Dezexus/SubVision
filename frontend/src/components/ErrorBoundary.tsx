@@ -1,6 +1,7 @@
 import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle } from 'lucide-react';
+import { translate } from '../i18n';
 
 interface Props {
   children: ReactNode;
@@ -32,8 +33,8 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="flex flex-col items-center justify-center h-full p-8 text-txt-muted">
           <AlertTriangle size={48} className="mb-4 text-red-400" />
-          <h2 className="text-xl font-semibold mb-2">Something went wrong</h2>
-          <p className="text-sm text-center">{this.state.error?.message || 'An unexpected error occurred.'}</p>
+          <h2 className="text-xl font-semibold mb-2">{translate('errors.boundaryTitle')}</h2>
+          <p className="text-sm text-center">{this.state.error?.message || translate('errors.boundaryFallback')}</p>
         </div>
       );
     }

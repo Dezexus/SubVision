@@ -89,7 +89,13 @@ export type WebSocketMessage =
   | { type: 'log'; message: string; job_id?: string }
   | { type: 'progress'; current: number; total: number; eta: string; job_id?: string }
   | { type: 'subtitle_new'; item: SubtitleItem; job_id?: string }
-  | { type: 'subtitle_update'; item: SubtitleItem; job_id?: string }
   | { type: 'subtitles_replace'; items: SubtitleItem[]; job_id?: string }
   | { type: 'finish'; success: boolean; download_url?: string; download_filename?: string; error?: string; subtitles?: SubtitleItem[]; job_id?: string }
   | { type: 'pong'; job_id?: string };
+export interface SessionStatus {
+  has_active_job: boolean;
+  job_id: string | null;
+  filename?: string | null;
+  kind?: string | null;
+  last_state?: WebSocketMessage | null;
+}

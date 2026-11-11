@@ -14,7 +14,6 @@ export function useStartBlurRender() {
   const setActiveBlurJobId = useProcessingStore((s) => s.setActiveBlurJobId);
   const setActiveOcrJobId = useProcessingStore((s) => s.setActiveOcrJobId);
   const setRenderedVideoUrl = useProcessingStore((s) => s.setRenderedVideoUrl);
-  const addLog = useProcessingStore((s) => s.addLog);
   const addToast = useUIStore((s) => s.addToast);
 
   const mutation = useMutation({
@@ -26,7 +25,6 @@ export function useStartBlurRender() {
       setActiveOcrJobId(null);
       // Drop the previous result so Stop stays available during the new render.
       setRenderedVideoUrl(null);
-      addLog('--- Starting Smart Render ---');
     },
     onSuccess: (data) => {
       setActiveBlurJobId(data.job_id);
@@ -36,8 +34,6 @@ export function useStartBlurRender() {
       setActiveBlurJobId(null);
       const msg = getApiErrorMessage(err, translate('toasts.renderStartFailed'));
       addToast(msg, 'error');
-      addLog(`Error: ${msg}`);
-      addLog('Error: Render failed to start.');
     }
   });
 

@@ -2,14 +2,55 @@ import axios from 'axios';
 import { API_URL } from './config';
 import type { VideoMetadata } from '../../types';
 
+const CHUNK_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 1000;
+
+function wait(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason);
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason);
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+/** Retry network failures and 5xx; client errors (4xx) and aborts fail at once. */
+function isRetryable(err: unknown): boolean {
+  if (axios.isCancel(err) || !axios.isAxiosError(err)) return false;
+  const status = err.response?.status;
+  return status === undefined || status >= 500;
+}
+
+async function withRetry<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (signal?.aborted || attempt >= CHUNK_RETRIES || !isRetryable(err)) throw err;
+      await wait(RETRY_BASE_DELAY_MS * 2 ** attempt, signal);
+    }
+  }
+}
+
+export interface UploadOptions {
+  onProgress?: (pct: number) => void;
+  signal?: AbortSignal;
+}
+
 export const videoApi = {
   getAllowedExtensions: async (): Promise<string[]> => {
     const response = await axios.get(`${API_URL}/video/allowed-extensions`);
     return response.data;
   },
 
-  uploadVideo: async (file: File, onProgress?: (pct: number) => void): Promise<VideoMetadata> => {
-    const configRes = await axios.get(`${API_URL}/video/config`);
+  uploadVideo: async (file: File, { onProgress, signal }: UploadOptions = {}): Promise<VideoMetadata> => {
+    const configRes = await axios.get(`${API_URL}/video/config`, { signal });
     const { chunk_size: chunkSize } = configRes.data;
 
     const totalChunks = Math.ceil(file.size / chunkSize);
@@ -17,7 +58,7 @@ export const videoApi = {
       filename: file.name,
       content_type: file.type || 'application/octet-stream',
       total_chunks: totalChunks
-    });
+    }, { signal });
     const { upload_id, urls, storage_filename } = initRes.data;
 
     for (let i = 0; i < totalChunks; i++) {
@@ -25,29 +66,28 @@ export const videoApi = {
       const end = Math.min(start + chunkSize, file.size);
       const chunk = file.slice(start, end);
 
-      if (urls && urls.length > 0) {
-        await axios.put(urls[i], chunk, {
-          headers: { 'Content-Type': file.type || 'application/octet-stream' }
-        });
-      } else {
+      await withRetry(() => {
+        if (urls && urls.length > 0) {
+          return axios.put(urls[i], chunk, {
+            headers: { 'Content-Type': file.type || 'application/octet-stream' },
+            signal,
+          });
+        }
         const formData = new FormData();
         formData.append('file', chunk);
         formData.append('upload_id', upload_id);
         formData.append('part_number', (i + 1).toString());
-        await axios.post(`${API_URL}/video/upload/chunk`, formData);
-      }
+        return axios.post(`${API_URL}/video/upload/chunk`, formData, { signal });
+      }, signal);
 
-      if (onProgress) {
-        onProgress(Math.round(((i + 1) / totalChunks) * 100));
-      }
+      onProgress?.(Math.round(((i + 1) / totalChunks) * 100));
     }
 
-    const completePayload = {
+    const completeRes = await axios.post(`${API_URL}/video/upload/complete`, {
       filename: storage_filename,
       upload_id: upload_id,
       total_chunks: totalChunks
-    };
-    const completeRes = await axios.post(`${API_URL}/video/upload/complete`, completePayload);
+    }, { signal });
     return completeRes.data as VideoMetadata;
   },
 

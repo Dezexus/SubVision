@@ -1,17 +1,10 @@
 import { useCallback } from 'react';
 import { exportStem, exportWithSuffix } from '../../../shared/lib';
+import { buildSrt } from '../../../shared/lib/srt';
 import { translate } from '../../../i18n';
 import { useProcessingStore } from '../../../store/processingStore';
 import { useVideoStore } from '../../../store/videoStore';
 import { useUIStore } from '../../../store/uiStore';
-
-const formatSrtTime = (seconds: number) => {
-  const date = new Date(0);
-  date.setSeconds(seconds);
-  date.setMilliseconds((seconds % 1) * 1000);
-  const iso = date.toISOString().substr(11, 12);
-  return iso.replace('.', ',');
-};
 
 /**
  * Hook to export subtitles to an SRT file format.
@@ -26,13 +19,7 @@ export function useExportSrt() {
       addToast(translate('toasts.noSubtitlesExport'), 'error');
       return;
     }
-    let srt = '';
-    subtitles.forEach((sub, i) => {
-      srt += `${i + 1}\n`;
-      srt += `${formatSrtTime(sub.start)} --> ${formatSrtTime(sub.end)}\n`;
-      srt += `${sub.text}\n\n`;
-    });
-    const blob = new Blob(['\uFEFF', srt], { type: 'text/plain;charset=utf-8' });
+    const blob = new Blob(['﻿', buildSrt(subtitles)], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

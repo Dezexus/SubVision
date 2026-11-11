@@ -73,7 +73,7 @@ export const ResultsPanel = () => {
               onClick={undo}
               disabled={pastSubtitles.length === 0}
               className="p-1.5 rounded-md text-txt-muted hover:text-txt-main hover:bg-bg-hover disabled:opacity-30 transition-all"
-              title="Undo (Ctrl+Z)"
+              title={t('results.undo')}
             >
               <Undo size={14} />
             </button>
@@ -81,7 +81,7 @@ export const ResultsPanel = () => {
               onClick={redo}
               disabled={futureSubtitles.length === 0}
               className="p-1.5 rounded-md text-txt-muted hover:text-txt-main hover:bg-bg-hover disabled:opacity-30 transition-all"
-              title="Redo (Ctrl+Y)"
+              title={t('results.redo')}
             >
               <Redo size={14} />
             </button>

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getClientId } from '../shared/lib';
 import { useProcessingStore } from '../store/processingStore';
 import { useVideoStore } from '../store/videoStore';
+import { useBlurStore } from '../store/blurStore';
+import { bindActiveJobId } from '../hooks/processingEvents';
 import { api } from '../shared/api';
 import { Button } from '../shared/ui';
 import { useTranslation } from '../i18n';
@@ -10,12 +11,12 @@ import { useTranslation } from '../i18n';
 export const SessionRecoveryModal: React.FC = () => {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const clientId = getClientId();
+  const clientId = useVideoStore((s) => s.clientId);
   const [isHidden, setIsHidden] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['sessionStatus', clientId],
-    queryFn: () => api.getSessionStatus(clientId as string),
+    queryFn: () => api.getSessionStatus(clientId),
     enabled: !!clientId,
     retry: false,
   });
@@ -29,6 +30,7 @@ export const SessionRecoveryModal: React.FC = () => {
     },
     onSuccess: () => {
       useProcessingStore.getState().reset();
+      useBlurStore.getState().reset();
       useVideoStore.getState().reset();
       queryClient.invalidateQueries({ queryKey: ['sessionStatus'] });
     },
@@ -36,13 +38,8 @@ export const SessionRecoveryModal: React.FC = () => {
 
   const handleContinue = () => {
     if (activeJob) {
-      const isOcr = activeJob.startsWith('ocr_');
-      useProcessingStore.setState({
-        activeOcrJobId: isOcr ? activeJob : null,
-        activeBlurJobId: !isOcr ? activeJob : null,
-        isProcessing: true,
-        stoppedJobId: null,
-      });
+      bindActiveJobId(activeJob);
+      useProcessingStore.setState({ isProcessing: true, stoppedJobId: null });
     }
     setIsHidden(true);
   };

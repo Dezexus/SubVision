@@ -7,7 +7,6 @@ import { useProcessingStore } from '../../../store/processingStore';
  */
 export function useStopBlurRender() {
   const setProcessing = useProcessingStore((s) => s.setProcessing);
-  const addLog = useProcessingStore((s) => s.addLog);
   const activeBlurJobId = useProcessingStore((s) => s.activeBlurJobId);
   const setActiveBlurJobId = useProcessingStore((s) => s.setActiveBlurJobId);
   const setStoppedJobId = useProcessingStore((s) => s.setStoppedJobId);
@@ -20,7 +19,6 @@ export function useStopBlurRender() {
       await api.stopProcessing(activeBlurJobId);
     },
     onSuccess: () => {
-      addLog('--- Render stopped by user ---');
       setActiveBlurJobId(null);
     },
     onError: (e) => {

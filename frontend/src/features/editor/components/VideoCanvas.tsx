@@ -7,8 +7,10 @@ import { useProcessingStore } from '../../../store/processingStore';
 import { Loader2, ImageOff, Eye, EyeOff, MoveVertical, AlertTriangle } from 'lucide-react';
 import { useVideoFrame } from '../hooks/useVideoFrame';
 import { calculateTextRect } from '../../../shared/lib/textGeometry';
+import { useTranslation } from '../../../i18n';
 
 export const VideoCanvas = () => {
+  const { t } = useTranslation();
   const file = useVideoStore((s) => s.file);
   const metadata = useVideoStore((s) => s.metadata);
   const currentFrameIndex = useVideoStore((s) => s.currentFrameIndex);
@@ -117,7 +119,7 @@ export const VideoCanvas = () => {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-txt-subtle">
         <ImageOff size={48} className="mb-4 opacity-20" />
-        <p className="text-sm">Upload a video to start editing</p>
+        <p className="text-sm">{t('editor.uploadPrompt')}</p>
       </div>
     );
   }
@@ -145,6 +147,7 @@ export const VideoCanvas = () => {
             {isBlurMode && (
               <button
                 onClick={() => setShowGuides(!showGuides)}
+                title={t('editor.toggleGuides')}
                 className="absolute top-4 right-4 z-50 p-2 bg-black/60 hover:bg-black/90 text-white/80 hover:text-white rounded-full transition-all border border-white/10 shadow-lg backdrop-blur-sm"
               >
                 {showGuides ? <Eye size={18} /> : <EyeOff size={18} />}
@@ -160,7 +163,7 @@ export const VideoCanvas = () => {
                 <img
                   ref={imgRef}
                   src={imgSrc}
-                  alt="Frame"
+                  alt={t('editor.frameAlt')}
                   className="w-full h-full object-contain select-none block"
                   onDragStart={(e) => e.preventDefault()}
                 />
@@ -170,7 +173,7 @@ export const VideoCanvas = () => {
               <div className="relative w-full h-full">
                 <img
                   src={blurPreviewUrl || imgSrc}
-                  alt="Frame"
+                  alt={t('editor.frameAlt')}
                   className="w-full h-full object-contain select-none block"
                   onDragStart={(e) => e.preventDefault()}
                 />
@@ -180,7 +183,7 @@ export const VideoCanvas = () => {
                       className="absolute bg-green-500/10 border border-green-500/90 z-40 cursor-grab active:cursor-grabbing group/green"
                       style={toCss(geometry.green)}
                       onMouseDown={handleMouseDown}
-                      title="Drag to Move Vertical Position"
+                      title={t('editor.dragY')}
                     >
                       <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/green:opacity-100 transition-opacity">
                         <MoveVertical size={16} className="text-green-400 drop-shadow-md" />

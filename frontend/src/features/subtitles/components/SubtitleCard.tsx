@@ -1,67 +1,51 @@
-import { useState, useEffect } from 'react';
+import { memo } from 'react';
 import { Copy, Trash2, ArrowDownToLine } from 'lucide-react';
 import type { SubtitleItem } from '../../../types';
 import { useProcessingStore } from '../../../store/processingStore';
 import { useVideoStore } from '../../../store/videoStore';
 import { useUIStore } from '../../../store/uiStore';
 import { cn, formatTimeDisplay } from '../../../shared/lib';
+import { useTranslation } from '../../../i18n';
+
+interface Props {
+  item: SubtitleItem;
+  index: number;
+  isActive: boolean;
+  hasNext: boolean;
+  onHoverChange: (id: number | null) => void;
+}
 
 /**
  * Displays an individual subtitle item with editing, merging, and deletion capabilities.
+ * Memoized: re-renders only when its own item or active state changes.
  */
-export const SubtitleCard = ({ item, index }: { item: SubtitleItem, index: number }) => {
+export const SubtitleCard = memo(({ item, index, isActive, hasNext, onHoverChange }: Props) => {
+  const { t } = useTranslation();
   const updateSubtitle = useProcessingStore((s) => s.updateSubtitle);
   const deleteSubtitle = useProcessingStore((s) => s.deleteSubtitle);
   const mergeSubtitles = useProcessingStore((s) => s.mergeSubtitles);
-  const saveHistory = useProcessingStore((s) => s.saveHistory);
-  const subtitles = useProcessingStore((s) => s.subtitles);
-  const metadata = useVideoStore((s) => s.metadata);
-  const currentFrameIndex = useVideoStore((s) => s.currentFrameIndex);
+  const beginEdit = useProcessingStore((s) => s.beginEdit);
+  const endEdit = useProcessingStore((s) => s.endEdit);
   const setCurrentFrame = useVideoStore((s) => s.setCurrentFrame);
   const addToast = useUIStore((s) => s.addToast);
 
-  const [isHovered, setIsHovered] = useState(false);
-
-  const isActive = metadata
-    ? (currentFrameIndex / metadata.fps) >= item.start && (currentFrameIndex / metadata.fps) <= item.end
-    : false;
-
   const isHighConf = item.conf > 0.85;
   const isLowConf = item.conf < 0.6;
-  const hasNext = index < subtitles.length - 1;
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLElement) {
-        const tag = e.target.tagName.toLowerCase();
-        if (tag === 'input' || tag === 'textarea') return;
-      }
-      if (isHovered && (e.key === 'Delete' || e.key === 'Backspace')) {
-        e.preventDefault();
-        deleteSubtitle(item.id);
-      }
-    };
-   
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isHovered, item.id, deleteSubtitle]);
 
   const handleJump = () => {
-    if (metadata) {
-      const frame = Math.round(item.start * metadata.fps);
-      setCurrentFrame(frame);
-    }
+    const metadata = useVideoStore.getState().metadata;
+    if (metadata) setCurrentFrame(Math.round(item.start * metadata.fps));
   };
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(item.text);
-    addToast('Subtitle copied to clipboard', 'success');
+    void navigator.clipboard.writeText(item.text);
+    addToast(t('subtitles.copied'), 'success');
   };
 
   return (
     <div
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseEnter={() => onHoverChange(item.id)}
+      onMouseLeave={() => onHoverChange(null)}
       className={cn(
         "group relative flex flex-col gap-2 p-3 rounded-xl border transition-all duration-200",
         isActive ? "bg-bg-hover border-brand-500 shadow-[0_0_10px_rgba(0,122,204,0.15)]" : "bg-bg-panel border-border-main hover:border-border-strong",
@@ -71,8 +55,9 @@ export const SubtitleCard = ({ item, index }: { item: SubtitleItem, index: numbe
     >
       <textarea
         value={item.text}
-        onFocus={() => saveHistory()}
-        onChange={(e) => updateSubtitle({ ...item, text: e.target.value })}
+        onFocus={beginEdit}
+        onBlur={endEdit}
+        onChange={(e) => updateSubtitle(item.id, { text: e.target.value })}
         className="w-full bg-transparent text-[14px] text-txt-main resize-none focus:outline-none focus:ring-1 focus:ring-brand-500/50 rounded-md px-1 py-0.5 transition-colors leading-relaxed min-h-[48px] scrollbar-hide border border-transparent focus:border-brand-500/30"
         rows={2}
         spellCheck={false}
@@ -82,10 +67,10 @@ export const SubtitleCard = ({ item, index }: { item: SubtitleItem, index: numbe
           <span className="font-mono text-[10px] font-bold text-txt-dim bg-bg-surface px-1.5 py-0.5 rounded-sm">
             #{index + 1}
           </span>
-          <button 
-            onClick={handleJump} 
-            className="font-mono text-[11px] text-txt-subtle hover:text-brand-500 transition-colors" 
-            title="Jump to time"
+          <button
+            onClick={handleJump}
+            className="font-mono text-[11px] text-txt-subtle hover:text-brand-500 transition-colors"
+            title={t('subtitles.jumpTitle')}
           >
             {formatTimeDisplay(item.start)}
           </button>
@@ -102,28 +87,30 @@ export const SubtitleCard = ({ item, index }: { item: SubtitleItem, index: numbe
             <button
               onClick={() => mergeSubtitles(index)}
               className="flex items-center gap-1.5 px-2 py-1 rounded bg-bg-surface hover:bg-brand-500 text-txt-muted hover:text-white transition-all text-[10px] font-bold uppercase tracking-wider shadow-sm opacity-50 group-hover:opacity-100"
-              title="Merge with Next Line"
+              title={t('subtitles.mergeTitle')}
             >
               <ArrowDownToLine size={12} />
-              Merge
+              {t('subtitles.merge')}
             </button>
           )}
           {item.isEdited && (
-            <span className="text-[9px] font-bold bg-blue-500/10 text-brand-400 px-1.5 py-0.5 rounded border border-brand-500/20">
-              EDITED
+            <span className="text-[9px] font-bold uppercase bg-blue-500/10 text-brand-400 px-1.5 py-0.5 rounded border border-brand-500/20">
+              {t('subtitles.edited')}
             </span>
           )}
         </div>
       </div>
-      
+
       <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200 bg-bg-panel/90 backdrop-blur-md rounded-md p-1 border border-border-strong shadow-lg translate-y-[-4px] group-hover:translate-y-0">
-        <button onClick={handleCopy} className="p-1.5 text-txt-subtle hover:text-white hover:bg-white/10 rounded transition-colors" title="Copy Text">
+        <button onClick={handleCopy} className="p-1.5 text-txt-subtle hover:text-white hover:bg-white/10 rounded transition-colors" title={t('subtitles.copyTitle')}>
           <Copy size={14} />
         </button>
-        <button onClick={() => deleteSubtitle(item.id)} className="p-1.5 text-txt-subtle hover:text-red-400 hover:bg-red-500/10 rounded transition-colors" title="Delete Line">
+        <button onClick={() => deleteSubtitle(item.id)} className="p-1.5 text-txt-subtle hover:text-red-400 hover:bg-red-500/10 rounded transition-colors" title={t('subtitles.deleteTitle')}>
           <Trash2 size={14} />
         </button>
       </div>
     </div>
   );
-};
+});
+
+SubtitleCard.displayName = 'SubtitleCard';

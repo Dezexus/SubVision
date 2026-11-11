@@ -7,7 +7,6 @@ import { useProcessingStore } from '../../../store/processingStore';
  */
 export function useStopOcr() {
   const setProcessing = useProcessingStore((s) => s.setProcessing);
-  const addLog = useProcessingStore((s) => s.addLog);
   const activeOcrJobId = useProcessingStore((s) => s.activeOcrJobId);
   const setActiveOcrJobId = useProcessingStore((s) => s.setActiveOcrJobId);
   const setStoppedJobId = useProcessingStore((s) => s.setStoppedJobId);
@@ -20,7 +19,6 @@ export function useStopOcr() {
       await api.stopProcessing(activeOcrJobId);
     },
     onSuccess: () => {
-      addLog('--- Processing stopped by user ---');
       setActiveOcrJobId(null);
     },
     onError: (e) => {

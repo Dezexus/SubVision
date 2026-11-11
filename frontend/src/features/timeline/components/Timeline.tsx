@@ -6,7 +6,7 @@ import { useTimelineZoom } from '../hooks/useTimelineZoom';
 import { useSubtitleDrag } from '../hooks/useSubtitleDrag';
 import { TimelineHeader } from './TimelineHeader';
 import { SubtitleClip } from './SubtitleClip';
-import { cn, formatTimeDisplay } from '../../../shared/lib';
+import { cn, formatTimeDisplay, useGlobalKeydown } from '../../../shared/lib';
 
 interface TimelineProps {
   isPlaying?: boolean;
@@ -59,52 +59,39 @@ export const Timeline: React.FC<TimelineProps> = ({
 
   const processedSubtitles = useMemo(() => calculateTracks(subtitles), [subtitles]);
 
-  useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLElement && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
-      
-      const store = useProcessingStore.getState();
-      const currentFps = useVideoStore.getState().metadata?.fps || 25;
-      const frameDur = 1 / currentFps;
-      const activeSub = store.subtitles.find(s => currentTimeRef.current >= s.start && currentTimeRef.current <= s.end);
+  useGlobalKeydown((e) => {
+    const store = useProcessingStore.getState();
+    const currentFps = useVideoStore.getState().metadata?.fps || 25;
+    const frameDur = 1 / currentFps;
+    const activeSub = store.subtitles.find(s => currentTimeRef.current >= s.start && currentTimeRef.current <= s.end);
 
-      if (e.key.toLowerCase() === 's' && !e.ctrlKey) {
+    if (e.key.toLowerCase() === 's' && !e.ctrlKey) {
+      e.preventDefault();
+      setIsSnapping(prev => !prev);
+    }
+
+    if (activeSub) {
+      let patch: { start?: number; end?: number } | null = null;
+      if (e.key.toLowerCase() === 'i') {
+        patch = { start: Math.min(currentTimeRef.current, activeSub.end - 0.05) };
+      } else if (e.key.toLowerCase() === 'o') {
+        patch = { end: Math.max(currentTimeRef.current, activeSub.start + 0.05) };
+      } else if (e.altKey && e.key === '[') {
+        patch = { start: Math.max(0, activeSub.start - frameDur) };
+      } else if (e.altKey && e.key === ']') {
+        patch = { start: Math.min(activeSub.end - 0.05, activeSub.start + frameDur) };
+      } else if (e.ctrlKey && e.key === '[') {
+        patch = { end: Math.max(activeSub.start + 0.05, activeSub.end - frameDur) };
+      } else if (e.ctrlKey && e.key === ']') {
+        patch = { end: activeSub.end + frameDur };
+      }
+      if (patch) {
         e.preventDefault();
-        setIsSnapping(prev => !prev);
+        store.saveHistory();
+        store.updateSubtitle(activeSub.id, patch);
       }
-
-      if (activeSub) {
-        if (e.key.toLowerCase() === 'i') {
-          e.preventDefault();
-          store.saveHistory();
-          store.updateSubtitle({ ...activeSub, start: Math.min(currentTimeRef.current, activeSub.end - 0.05) });
-        } else if (e.key.toLowerCase() === 'o') {
-          e.preventDefault();
-          store.saveHistory();
-          store.updateSubtitle({ ...activeSub, end: Math.max(currentTimeRef.current, activeSub.start + 0.05) });
-        } else if (e.altKey && e.key === '[') {
-          e.preventDefault();
-          store.saveHistory();
-          store.updateSubtitle({ ...activeSub, start: Math.max(0, activeSub.start - frameDur) });
-        } else if (e.altKey && e.key === ']') {
-          e.preventDefault();
-          store.saveHistory();
-          store.updateSubtitle({ ...activeSub, start: Math.min(activeSub.end - 0.05, activeSub.start + frameDur) });
-        } else if (e.ctrlKey && e.key === '[') {
-          e.preventDefault();
-          store.saveHistory();
-          store.updateSubtitle({ ...activeSub, end: Math.max(activeSub.start + 0.05, activeSub.end - frameDur) });
-        } else if (e.ctrlKey && e.key === ']') {
-          e.preventDefault();
-          store.saveHistory();
-          store.updateSubtitle({ ...activeSub, end: activeSub.end + frameDur });
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, []);
+    }
+  });
 
   const handleTimelineClick = (e: React.MouseEvent) => {
     if (isDraggingRef.current || !scrollContainerRef.current) return;

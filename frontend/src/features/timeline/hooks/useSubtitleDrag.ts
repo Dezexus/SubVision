@@ -60,15 +60,17 @@ export const useSubtitleDrag = (
 
       const sub = subtitles.find((s) => s.id === draggedEdge.id);
       if (sub) {
+        // The first move records one history step (see beginEdit on mousedown).
         if (draggedEdge.edge === 'start') {
-          store.updateSubtitle({ ...sub, start: Math.min(newTime, sub.end - 0.05) });
+          store.updateSubtitle(sub.id, { start: Math.min(newTime, sub.end - 0.05) });
         } else {
-          store.updateSubtitle({ ...sub, end: Math.max(newTime, sub.start + 0.05) });
+          store.updateSubtitle(sub.id, { end: Math.max(newTime, sub.start + 0.05) });
         }
       }
     };
 
     const handleMouseUp = () => {
+      useProcessingStore.getState().endEdit();
       setDraggedEdge(null);
       setTimeout(() => {
         isDraggingRef.current = false;
@@ -85,7 +87,7 @@ export const useSubtitleDrag = (
 
   const handleEdgeMouseDown = (e: React.MouseEvent, sub: ProcessedSubtitle, edge: 'start' | 'end') => {
     e.stopPropagation();
-    useProcessingStore.getState().saveHistory();
+    useProcessingStore.getState().beginEdit();
     setDraggedEdge({ id: sub.id, edge });
     isDraggingRef.current = true;
   };

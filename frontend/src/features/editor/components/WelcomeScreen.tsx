@@ -1,28 +1,28 @@
 import React, { useState } from 'react';
-import { Upload, AlertCircle, Loader2, Video, FileText, Wand2 } from 'lucide-react';
+import { Upload, AlertCircle, Loader2, Video, FileText, Wand2, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '../../../shared/lib';
-import { useUploadVideo } from '../mutations/useUploadVideo';
-import { useAllowedExtensionsQuery } from '../queries/useAllowedExtensionsQuery';
+import { UploadCancelledError, useUploadVideo } from '../mutations/useUploadVideo';
+import { formatExtensions, useVideoExtensions } from '../queries/useAllowedExtensionsQuery';
 import { LanguageSwitcher } from '../../../components/LanguageSwitcher';
 import { useTranslation } from '../../../i18n';
 
 export const WelcomeScreen = () => {
   const { t } = useTranslation();
-  const { data: allowedExtensions = [] } = useAllowedExtensionsQuery();
-  const { execute, isLoading, progress } = useUploadVideo();
+  const exts = useVideoExtensions();
+  const { execute, cancel, isLoading, progress } = useUploadVideo();
   const [isDragging, setIsDragging] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const exts = allowedExtensions.length > 0 ? allowedExtensions : ['.mp4', '.mkv', '.avi', '.mov', '.webm'];
   const acceptString = `video/*,${exts.join(',')}`;
-  const displayExts = exts.map((e) => e.replace('.', '').toUpperCase()).join(', ');
+  const displayExts = formatExtensions(exts);
 
   const handleFile = async (file: File) => {
     setErrorMsg(null);
     try {
       await execute(file);
     } catch (err: unknown) {
+      if (err instanceof UploadCancelledError) return;
       setErrorMsg(err instanceof Error ? err.message : String(err));
     }
   };
@@ -130,6 +130,20 @@ export const WelcomeScreen = () => {
               <p className={cn('text-xs', isLoading ? 'text-amber-500 animate-pulse font-medium' : 'text-txt-subtle')}>
                 {isLoading ? t('welcome.dropHint') : displayExts}
               </p>
+              {isLoading && progress < 100 && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    cancel();
+                  }}
+                  className="inline-flex items-center gap-1.5 mt-3 px-3 py-1 rounded-md text-xs font-medium text-txt-muted bg-bg-panel border border-border-strong hover:text-red-400 hover:border-red-500/50 transition-colors cursor-pointer"
+                >
+                  <X size={12} />
+                  {t('welcome.cancelUpload')}
+                </button>
+              )}
               {errorMsg && (
                 <div className="flex items-center justify-center gap-1.5 text-red-400 text-xs mt-3 font-medium bg-red-500/10 py-1 px-3 rounded border border-red-500/20">
                   <AlertCircle size={14} />

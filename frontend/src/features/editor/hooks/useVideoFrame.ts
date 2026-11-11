@@ -3,6 +3,7 @@ import axios from 'axios';
 import { api } from '../../../shared/api';
 import type { VideoMetadata } from '../../../types';
 import { useUIStore } from '../../../store/uiStore';
+import { translate } from '../../../i18n';
 
 const MAX_FRAME_CACHE = 50;
 const frameCache = new Map<string, string>();
@@ -58,7 +59,7 @@ export const useVideoFrame = (metadata: VideoMetadata | null, currentFrameIndex:
     debounceTimerRef.current = setTimeout(async () => {
       if (!isActive || videoExpiredRef.current) {
         if (videoExpiredRef.current) {
-          setError("Video unavailable");
+          setError(translate('editor.videoUnavailable'));
           setIsLoading(false);
         }
         return;
@@ -92,10 +93,10 @@ export const useVideoFrame = (metadata: VideoMetadata | null, currentFrameIndex:
         const typedErr = err as { response?: { status?: number; data?: { detail?: string } }; message?: string };
         if (typedErr.response && typedErr.response.status === 404) {
           videoExpiredRef.current = true;
-          addToast("Video file has expired or been deleted. Please re-upload.", "error");
-          setError("Video unavailable");
+          addToast(translate('toasts.videoExpired'), 'error');
+          setError(translate('editor.videoUnavailable'));
         } else {
-          const msg = typedErr.response?.data?.detail || typedErr.message || 'Failed to load frame';
+          const msg = typedErr.response?.data?.detail || typedErr.message || translate('toasts.frameLoadFailed');
           setError(msg);
           console.error('Frame fetch error:', err);
         }

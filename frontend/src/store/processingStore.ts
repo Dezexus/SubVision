@@ -29,10 +29,14 @@ function removePersistedSubtitles(): void {
   }
 }
 
+export type SubtitlePatch = Partial<Omit<SubtitleItem, 'id'>>;
+
 interface ProcessingState {
   subtitles: SubtitleItem[];
   pastSubtitles: SubtitleItem[][];
   futureSubtitles: SubtitleItem[][];
+  /** Set by `beginEdit`; the next `updateSubtitle` records one history step. */
+  editPending: boolean;
 
   isProcessing: boolean;
   activeOcrJobId: string | null;
@@ -40,13 +44,15 @@ interface ProcessingState {
   stoppedJobId: string | null;
   renderedVideoUrl: string | null;
 
-  logs: string[];
   progress: { current: number; total: number; eta: string };
-  error: string | null;
 
+  /** Server result: replaces the list and starts a fresh undo history. */
   setSubtitles: (subs: SubtitleItem[]) => void;
+  /** User action (e.g. SRT import): replaces the list as one undoable step. */
+  importSubtitles: (subs: SubtitleItem[]) => void;
   addSubtitle: (sub: SubtitleItem) => void;
-  updateSubtitle: (sub: SubtitleItem) => void;
+  /** User edit: patches the current item by id and marks it edited. */
+  updateSubtitle: (id: number, patch: SubtitlePatch) => void;
   deleteSubtitle: (id: number) => void;
   mergeSubtitles: (index: number) => void;
 
@@ -59,39 +65,49 @@ interface ProcessingState {
   undo: () => void;
   redo: () => void;
   saveHistory: () => void;
+  /** Start a continuous edit (focus, drag); history is saved on the first actual change. */
+  beginEdit: () => void;
+  endEdit: () => void;
 
   restoreFromStorage: () => void;
   reset: () => void;
-  resetProgress: () => void;
 
-  addLog: (log: string) => void;
   updateProgress: (current: number, total: number, eta?: string) => void;
-  setError: (error: string | null) => void;
 }
 
-export const useProcessingStore = create<ProcessingState>()((set, get) => ({
-  subtitles: [],
-  pastSubtitles: [],
-  futureSubtitles: [],
-
+const initialState = {
+  subtitles: [] as SubtitleItem[],
+  pastSubtitles: [] as SubtitleItem[][],
+  futureSubtitles: [] as SubtitleItem[][],
+  editPending: false,
   isProcessing: false,
   activeOcrJobId: null,
   activeBlurJobId: null,
   stoppedJobId: null,
   renderedVideoUrl: null,
-
-  logs: [],
   progress: { current: 0, total: 0, eta: '' },
-  error: null,
+};
+
+export const useProcessingStore = create<ProcessingState>()((set, get) => ({
+  ...initialState,
 
   saveHistory: () => {
     set((state) => ({
       pastSubtitles: [...state.pastSubtitles, state.subtitles].slice(-HISTORY_LIMIT),
-      futureSubtitles: []
+      futureSubtitles: [],
+      editPending: false,
     }));
   },
 
+  beginEdit: () => set({ editPending: true }),
+  endEdit: () => set({ editPending: false }),
+
   setSubtitles: (subs) => {
+    set({ subtitles: subs, pastSubtitles: [], futureSubtitles: [], editPending: false });
+    persistSubtitles(subs);
+  },
+
+  importSubtitles: (subs) => {
     get().saveHistory();
     set({ subtitles: subs });
     persistSubtitles(subs);
@@ -102,15 +118,19 @@ export const useProcessingStore = create<ProcessingState>()((set, get) => ({
     persistSubtitles(get().subtitles);
   },
 
-  updateSubtitle: (sub) => {
-    const newSubs = get().subtitles.map(s => s.id === sub.id ? { ...sub, isEdited: true } : s);
+  updateSubtitle: (id, patch) => {
+    if (!get().subtitles.some((s) => s.id === id)) return;
+    if (get().editPending) get().saveHistory();
+    const newSubs = get().subtitles.map((s) =>
+      s.id === id ? { ...s, ...patch, isEdited: true } : s,
+    );
     set({ subtitles: newSubs });
     persistSubtitles(newSubs);
   },
 
   deleteSubtitle: (id) => {
     get().saveHistory();
-    const newSubs = get().subtitles.filter(s => s.id !== id);
+    const newSubs = get().subtitles.filter((s) => s.id !== id);
     set({ subtitles: newSubs });
     persistSubtitles(newSubs);
   },
@@ -127,14 +147,10 @@ export const useProcessingStore = create<ProcessingState>()((set, get) => ({
       ...curr,
       end: next.end,
       text: `${curr.text} ${next.text}`.trim(),
-      isEdited: true
+      isEdited: true,
     };
 
-    const newSubs = [
-      ...subs.slice(0, index),
-      merged,
-      ...subs.slice(index + 2)
-    ];
+    const newSubs = [...subs.slice(0, index), merged, ...subs.slice(index + 2)];
 
     set({ subtitles: newSubs });
     persistSubtitles(newSubs);
@@ -146,25 +162,17 @@ export const useProcessingStore = create<ProcessingState>()((set, get) => ({
   setStoppedJobId: (stoppedJobId) => set({ stoppedJobId }),
   setRenderedVideoUrl: (renderedVideoUrl) => set({ renderedVideoUrl }),
 
-  addLog: (log) => set((state) => ({ logs: [...state.logs, log] })),
-
-  updateProgress: (current, total, eta = '') => set({
-    progress: { current, total, eta }
-  }),
-
-  setError: (error) => set({ error }),
+  updateProgress: (current, total, eta = '') => set({ progress: { current, total, eta } }),
 
   undo: () => {
     const { pastSubtitles, subtitles, futureSubtitles } = get();
     if (pastSubtitles.length === 0) return;
 
     const previous = pastSubtitles[pastSubtitles.length - 1];
-    const newPast = pastSubtitles.slice(0, -1);
-
     set({
       subtitles: previous,
-      pastSubtitles: newPast,
-      futureSubtitles: [subtitles, ...futureSubtitles].slice(0, HISTORY_LIMIT)
+      pastSubtitles: pastSubtitles.slice(0, -1),
+      futureSubtitles: [subtitles, ...futureSubtitles].slice(0, HISTORY_LIMIT),
     });
     persistSubtitles(previous);
   },
@@ -174,12 +182,10 @@ export const useProcessingStore = create<ProcessingState>()((set, get) => ({
     if (futureSubtitles.length === 0) return;
 
     const next = futureSubtitles[0];
-    const newFuture = futureSubtitles.slice(1);
-
     set({
       subtitles: next,
       pastSubtitles: [...pastSubtitles, subtitles].slice(-HISTORY_LIMIT),
-      futureSubtitles: newFuture
+      futureSubtitles: futureSubtitles.slice(1),
     });
     persistSubtitles(next);
   },
@@ -198,32 +204,8 @@ export const useProcessingStore = create<ProcessingState>()((set, get) => ({
     }
   },
 
-  resetProgress: () => {
-    set({
-      isProcessing: false,
-      activeOcrJobId: null,
-      activeBlurJobId: null,
-      stoppedJobId: null,
-      logs: [],
-      progress: { current: 0, total: 0, eta: '' },
-      error: null
-    });
-  },
-
   reset: () => {
-    set({
-      subtitles: [],
-      pastSubtitles: [],
-      futureSubtitles: [],
-      isProcessing: false,
-      activeOcrJobId: null,
-      activeBlurJobId: null,
-      stoppedJobId: null,
-      renderedVideoUrl: null,
-      logs: [],
-      progress: { current: 0, total: 0, eta: '' },
-      error: null
-    });
+    set({ ...initialState, progress: { current: 0, total: 0, eta: '' } });
     removePersistedSubtitles();
-  }
+  },
 }));

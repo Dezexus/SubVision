@@ -8,11 +8,14 @@ import { useProcessingStore } from '../../../store/processingStore';
 import { Timeline } from '../../timeline';
 import { ActiveSubtitleEditor } from '../../subtitles';
 import { API_BASE } from '../../../shared/api';
+import { useGlobalKeydown } from '../../../shared/lib';
+import { useTranslation } from '../../../i18n';
 import type { SubtitleItem } from '../../../types';
 
 const THROTTLE_INTERVAL = 100;
 
 export const PreviewMode = () => {
+  const { t } = useTranslation();
   const metadata = useVideoStore((s) => s.metadata);
   const file = useVideoStore((s) => s.file);
   const setCurrentFrame = useVideoStore((s) => s.setCurrentFrame);
@@ -22,7 +25,8 @@ export const PreviewMode = () => {
   const subtitles = useProcessingStore((s) => s.subtitles);
   const updateSubtitle = useProcessingStore((s) => s.updateSubtitle);
   const deleteSubtitle = useProcessingStore((s) => s.deleteSubtitle);
-  const saveHistory = useProcessingStore((s) => s.saveHistory);
+  const beginEdit = useProcessingStore((s) => s.beginEdit);
+  const endEdit = useProcessingStore((s) => s.endEdit);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const animationFrameRef = useRef<number | undefined>(undefined);
@@ -82,20 +86,12 @@ export const PreviewMode = () => {
     }
   }, []);
 
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
-        return;
-      }
-      if (e.code === 'Space') {
-        e.preventDefault();
-        handlePlayPause();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [handlePlayPause]);
+  useGlobalKeydown((e) => {
+    if (e.code === 'Space') {
+      e.preventDefault();
+      handlePlayPause();
+    }
+  });
 
   useEffect(() => {
     if (isPlaying) {
@@ -192,9 +188,8 @@ export const PreviewMode = () => {
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const newText = e.target.value;
       setLocalText(newText);
-      if (activeSub) {
-        updateSubtitle({ ...activeSub, text: newText });
-      }
+      // Patch by id: activeSub is a snapshot and may hold stale timings.
+      if (activeSub) updateSubtitle(activeSub.id, { text: newText });
     },
     [activeSub, updateSubtitle]
   );
@@ -223,10 +218,10 @@ export const PreviewMode = () => {
               ? 'border-brand-500/50 text-brand-400'
               : 'border-white/10 text-white/50 hover:text-white'
           }`}
-          title="Toggle Auto-Pause at Subtitle Center"
+          title={t('editor.autoPauseTitle')}
         >
           {isAutoPauseEnabled ? <Pause size={14} /> : <Play size={14} />}
-          Auto-Pause
+          {t('editor.autoPause')}
         </button>
       </div>
       <ActiveSubtitleEditor
@@ -234,10 +229,13 @@ export const PreviewMode = () => {
         text={localText}
         onChange={handleTextChange}
         onFocus={() => {
-          saveHistory();
+          beginEdit();
           setIsFocused(true);
         }}
-        onBlur={() => setIsFocused(false)}
+        onBlur={() => {
+          endEdit();
+          setIsFocused(false);
+        }}
         onDelete={() => {
           if (activeSub) deleteSubtitle(activeSub.id);
         }}

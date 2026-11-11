@@ -22,7 +22,11 @@ interface LocaleState {
 export const useLocaleStore = create<LocaleState>((set) => ({
   locale: loadLocale(),
   setLocale: (locale) => {
-    localStorage.setItem(STORAGE_KEY, locale);
+    try {
+      localStorage.setItem(STORAGE_KEY, locale);
+    } catch {
+      /* ignore */
+    }
     set({ locale });
   },
 }));

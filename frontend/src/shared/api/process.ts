@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { API_URL } from './config';
-import type { ProcessConfig, RenderConfig, SubtitleItem, BlurSettings, Preset, Language, OcrSettings, WebSocketMessage } from '../../types';
+import type { ProcessConfig, RenderConfig, SubtitleItem, BlurSettings, Preset, Language, OcrSettings, SessionStatus } from '../../types';
 
 export const processApi = {
   getPresets: async (): Promise<Preset[]> => {
@@ -64,13 +64,7 @@ export const processApi = {
     return response.data;
   },
 
-  getSessionStatus: async (clientId: string): Promise<{
-    has_active_job: boolean;
-    job_id: string | null;
-    filename?: string | null;
-    kind?: string | null;
-    last_state?: WebSocketMessage | null;
-  }> => {
+  getSessionStatus: async (clientId: string): Promise<SessionStatus> => {
     const response = await axios.get(`${API_URL}/session/status/${clientId}`);
     return response.data;
   },

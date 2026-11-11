@@ -5,17 +5,25 @@ import { useProcessingStore } from './processingStore';
 import { useBlurStore } from './blurStore';
 import type { VideoMetadata } from '../types';
 
+const STORAGE_KEY = 'subvision_video_state';
+
+function storeVideoState(value: { filename: string; metadata: VideoMetadata } | null): void {
+  try {
+    if (value) localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
+    else localStorage.removeItem(STORAGE_KEY);
+  } catch (e) {
+    console.warn('Failed to persist video state', e);
+  }
+}
+
 interface VideoState {
   file: File | null;
   filename: string | null;
   metadata: VideoMetadata | null;
   clientId: string;
-  isUploading: boolean;
-  uploadProgress: number;
 
   isPreviewMode: boolean;
   previewVolume: number;
-  allowedExtensions: string[];
   currentFrameIndex: number;
   roi: [number, number, number, number];
 
@@ -24,12 +32,9 @@ interface VideoState {
 
   setFile: (file: File | null) => void;
   setMetadata: (metadata: VideoMetadata | null) => void;
-  setUploadInfo: (filename: string, metadata: VideoMetadata) => void;
-  setUploading: (isUploading: boolean, progress: number) => void;
 
   setPreviewMode: (mode: boolean) => void;
   setPreviewVolume: (vol: number) => void;
-  setAllowedExtensions: (exts: string[]) => void;
   setCurrentFrame: (frame: number | ((prev: number) => number)) => void;
   setRoi: (roi: [number, number, number, number]) => void;
 
@@ -45,12 +50,9 @@ export const useVideoStore = create<VideoState>()((set, get) => ({
   filename: null,
   metadata: null,
   clientId: '',
-  isUploading: false,
-  uploadProgress: 0,
 
   isPreviewMode: false,
   previewVolume: 0.5,
-  allowedExtensions: [],
   currentFrameIndex: 0,
   roi: [0, 0, 0, 0],
 
@@ -65,7 +67,7 @@ export const useVideoStore = create<VideoState>()((set, get) => ({
 
   restoreVideoState: () => {
     try {
-      const saved = localStorage.getItem('subvision_video_state');
+      const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed.filename && parsed.metadata) {
@@ -81,29 +83,14 @@ export const useVideoStore = create<VideoState>()((set, get) => ({
 
   setMetadata: (metadata) => {
     set({ metadata });
-    if (metadata) {
-      localStorage.setItem('subvision_video_state', JSON.stringify({ filename: metadata.filename, metadata }));
-    }
+    if (metadata) storeVideoState({ filename: metadata.filename, metadata });
   },
-
-  setUploadInfo: (filename, metadata) => {
-    set({
-      filename,
-      metadata,
-      isUploading: false,
-      uploadProgress: 100
-    });
-    localStorage.setItem('subvision_video_state', JSON.stringify({ filename, metadata }));
-  },
-
-  setUploading: (isUploading, uploadProgress) => set({ isUploading, uploadProgress }),
 
   setPreviewMode: (isPreviewMode) => set({ isPreviewMode }),
   setPreviewVolume: (previewVolume) => set({ previewVolume }),
-  setAllowedExtensions: (allowedExtensions) => set({ allowedExtensions }),
 
   setCurrentFrame: (frame) => set((state) => ({
-    currentFrameIndex: typeof frame === 'function' ? frame(state.currentFrameIndex) : frame
+    currentFrameIndex: typeof frame === 'function' ? frame(state.currentFrameIndex) : frame,
   })),
 
   setRoi: (roi) => set({ roi }),
@@ -113,13 +100,11 @@ export const useVideoStore = create<VideoState>()((set, get) => ({
       file: null,
       filename: null,
       metadata: null,
-      isUploading: false,
-      uploadProgress: 0,
       isPreviewMode: false,
       currentFrameIndex: 0,
-      roi: [0, 0, 0, 0]
+      roi: [0, 0, 0, 0],
     });
-    localStorage.removeItem('subvision_video_state');
+    storeVideoState(null);
   },
 
   resetProject: async () => {
@@ -134,5 +119,5 @@ export const useVideoStore = create<VideoState>()((set, get) => ({
     useProcessingStore.getState().reset();
     useBlurStore.getState().reset();
     get().reset();
-  }
+  },
 }));

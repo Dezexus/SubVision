@@ -9,6 +9,7 @@ import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { useVideoStore } from './store/videoStore';
 import { useProcessingStore } from './store/processingStore';
 import { useProcessingSocket } from './hooks/useProcessingSocket';
+import { useGlobalKeydown } from './shared/lib';
 
 /**
  * Main application component.
@@ -38,28 +39,18 @@ function App() {
 
   const isProjectLoaded = !!clientId && (!!file || !!metadata || !!filename);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLElement) {
-        const tag = e.target.tagName.toLowerCase();
-        if (tag === 'input' || tag === 'textarea') return;
-      }
-      if (e.ctrlKey || e.metaKey) {
-        if (e.key.toLowerCase() === 'z') {
-          if (e.shiftKey) redo();
-          else {
-            e.preventDefault();
-            undo();
-          }
-        } else if (e.key.toLowerCase() === 'y') {
-          e.preventDefault();
-          redo();
-        }
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo]);
+  useGlobalKeydown((e) => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    const key = e.key.toLowerCase();
+    if (key === 'z') {
+      e.preventDefault();
+      if (e.shiftKey) redo();
+      else undo();
+    } else if (key === 'y') {
+      e.preventDefault();
+      redo();
+    }
+  });
 
   return (
     <div className="w-full h-screen bg-bg-main flex flex-col text-txt-main overflow-hidden">
