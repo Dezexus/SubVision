@@ -59,7 +59,9 @@ export type OcrSettings = Omit<ProcessConfig, 'filename' | 'client_id' | 'roi' |
 export interface BlurSettings {
   mode: 'blur' | 'hybrid';
   y: number;
-  /** Horizontal shift of the zone from the frame center, in px. */
+  /** Which edge of the zone stays put as the cue length changes (text alignment). */
+  align: 'center' | 'left' | 'right';
+  /** Horizontal position of that anchor as a shift from the frame center, in px. */
   x_offset: number;
   font_size: number;
   sigma: number;

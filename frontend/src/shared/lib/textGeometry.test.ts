@@ -56,6 +56,21 @@ describe('calculateTextRect', () => {
     expect(pushed.w).toBe(centered.w);
   });
 
+  it('keeps the anchored edge fixed as the line length changes', () => {
+    const left = { ...settings, align: 'left' as const, x_offset: -700 };
+    const short = calculateTextRect('Hi', 1920, 1080, left);
+    const long = calculateTextRect('A much longer subtitle line', 1920, 1080, left);
+    expect(short.x).toBe(260);
+    expect(long.x).toBe(260);
+    expect(long.w).toBeGreaterThan(short.w);
+
+    const right = { ...settings, align: 'right' as const, x_offset: 700 };
+    const r1 = calculateTextRect('Hi', 1920, 1080, right);
+    const r2 = calculateTextRect('A much longer subtitle line', 1920, 1080, right);
+    expect(r1.x + r1.w).toBe(1660);
+    expect(r2.x + r2.w).toBe(1660);
+  });
+
   it('handles multiline text height', () => {
     const single = calculateTextRect('Line', 1920, 1080, settings);
     const multi = calculateTextRect('Line\nLine', 1920, 1080, settings);

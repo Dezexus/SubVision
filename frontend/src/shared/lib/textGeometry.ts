@@ -1,5 +1,8 @@
 import type { BlurSettings } from '../../types';
 
+/** Text used to size a zone when no cue is on screen. */
+export const PLACEHOLDER_TEXT = 'Preview Text Size';
+
 export interface TextRect {
   x: number;
   y: number;
@@ -35,7 +38,8 @@ export function calculateTextRect(
   text: string,
   frameWidth: number,
   frameHeight: number,
-  settings: Pick<BlurSettings, 'y' | 'font_size' | 'width_multiplier' | 'height_multiplier'> & { x_offset?: number }
+  settings: Pick<BlurSettings, 'y' | 'font_size' | 'width_multiplier' | 'height_multiplier'>
+    & { x_offset?: number; align?: BlurSettings['align'] }
 ): TextRect {
   if (!text) {
     return { x: 0, y: 0, w: 0, h: 0 };
@@ -63,11 +67,17 @@ export function calculateTextRect(
   const textH = Math.floor((fontSizePx + 4) * numLines * heightMultiplier);
   const textW = maxLineWidth;
 
+  // The anchor is the zone's center, left or right edge per `align`, so the
+  // edge that matches the text alignment stays put as the cue length changes.
+  const offset = settings.x_offset ?? 0;
+  const half = Math.floor(frameWidth / 2);
+  const anchored = settings.align === 'left'
+    ? half + offset
+    : settings.align === 'right'
+      ? half + offset - textW
+      : Math.floor((frameWidth - textW) / 2) + offset;
   // Keep a shifted zone inside the frame (a centered one is unaffected).
-  const x = Math.min(
-    Math.floor((frameWidth - textW) / 2) + (settings.x_offset ?? 0),
-    Math.max(0, frameWidth - textW),
-  );
+  const x = Math.min(anchored, Math.max(0, frameWidth - textW));
   const y = yPos - textH;
 
   const finalX = Math.max(0, x);

@@ -7,7 +7,7 @@ import { settingsForTrack, useBlurStore } from '../../../store/blurStore';
 import { useProcessingStore } from '../../../store/processingStore';
 import { Loader2, ImageOff, Eye, EyeOff, Move, AlertTriangle } from 'lucide-react';
 import { useVideoFrame } from '../hooks/useVideoFrame';
-import { calculateTextRect } from '../../../shared/lib/textGeometry';
+import { calculateTextRect, PLACEHOLDER_TEXT } from '../../../shared/lib/textGeometry';
 import { cn, countTracks, subtitleAt, trackColor, trackOf } from '../../../shared/lib';
 import { useTranslation } from '../../../i18n';
 import { useTrackLabel } from '../../../hooks/useTrackLabel';
@@ -15,7 +15,6 @@ import type { Roi, VideoMetadata } from '../../../types';
 
 type Rect = { x: number; y: number; w: number; h: number };
 
-const PLACEHOLDER_TEXT = 'Preview Text Size';
 
 function toCss(rect: Rect, metadata: VideoMetadata): React.CSSProperties {
   return {

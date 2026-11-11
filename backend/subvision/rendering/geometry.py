@@ -50,7 +50,16 @@ def calculate_text_roi(text: str, width: int, height: int, settings: Dict[str, A
     text_h = int((font_size_px + 4) * num_lines * height_multiplier)
     text_w = max_line_width
 
-    x = (width - text_w) // 2 + int(settings.get("x_offset", 0) or 0)
+    # The anchor is the zone's center, left or right edge per `align`, so the
+    # edge that matches the text alignment stays put as the cue length changes.
+    x_offset = int(settings.get("x_offset", 0) or 0)
+    align = settings.get("align", "center")
+    if align == "left":
+        x = width // 2 + x_offset
+    elif align == "right":
+        x = width // 2 + x_offset - text_w
+    else:
+        x = (width - text_w) // 2 + x_offset
     # Keep a shifted zone inside the frame (a centered one is unaffected).
     x = min(x, max(0, width - text_w))
     y = y_pos - text_h

@@ -6,6 +6,7 @@ const placeholderBlurSettings: BlurSettings = {
   mode: 'hybrid',
   y: 0,
   x_offset: 0,
+  align: 'center',
   font_size: 30,
   sigma: 5,
   feather: 40,

@@ -1,12 +1,13 @@
 import React, { useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { Video, RotateCcw, Wand2, ScanLine, Droplet, Loader2, Square } from 'lucide-react';
+import { Video, RotateCcw, Wand2, ScanLine, Droplet, Loader2, Square, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
 import { useVideoStore } from '../../../store/videoStore';
 import { useProcessingStore } from '../../../store/processingStore';
 import { allTrackSettings, LINKED_KEYS, settingsForTrack, useBlurStore } from '../../../store/blurStore';
 import { useTrackLabel } from '../../../hooks/useTrackLabel';
 import { Slider, Button, Switch } from '../../../shared/ui';
-import { cn, countTracks, trackColor } from '../../../shared/lib';
+import { cn, countTracks, subtitleAt, trackColor, trackOf } from '../../../shared/lib';
+import { calculateTextRect, PLACEHOLDER_TEXT } from '../../../shared/lib/textGeometry';
 import { useBlurPreview } from '../hooks/useBlurPreview';
 import { useStartBlurRender } from '../mutations/useStartBlurRender';
 import { useStopBlurRender } from '../mutations/useStopBlurRender';
@@ -87,14 +88,31 @@ export const BlurControlPanel = () => {
   const videoWidth = metadata?.width || 1920;
   const halfWidth = Math.round(videoWidth / 2);
 
-  /** Zone position that matches a region: baseline at its bottom, centered on it. */
+  const clampOffset = (value: number) => Math.max(-halfWidth, Math.min(halfWidth, Math.round(value)));
+
+  /**
+   * Zone position that matches a region: baseline at its bottom, anchored at
+   * its left edge, center or right edge depending on the track's alignment.
+   */
   const positionFromRoi = (i: number): Partial<BlurSettings> | null => {
     const roi = rois[i];
     if (!roi || roi[2] <= 0 || roi[3] <= 0) return null;
+    const align = settingsForTrack(useBlurStore.getState(), i).align ?? 'center';
+    const anchor = align === 'left' ? roi[0] : align === 'right' ? roi[0] + roi[2] : roi[0] + roi[2] / 2;
     return {
       y: Math.max(0, Math.min(videoHeight, roi[1] + roi[3])),
-      x_offset: Math.max(-halfWidth, Math.min(halfWidth, Math.round(roi[0] + roi[2] / 2 - videoWidth / 2))),
+      x_offset: clampOffset(anchor - videoWidth / 2),
     };
+  };
+
+  /** Switch alignment without moving the zone: re-anchor at its current edge. */
+  const handleAlignChange = (align: BlurSettings['align']) => {
+    if (align === blurSettings.align || !metadata) return;
+    const time = currentFrameIndex / metadata.fps;
+    const cue = subtitleAt(subtitles.filter((s) => trackOf(s) === track), time);
+    const rect = calculateTextRect(cue?.text ?? PLACEHOLDER_TEXT, videoWidth, videoHeight, blurSettings);
+    const anchor = align === 'left' ? rect.x : align === 'right' ? rect.x + rect.w : rect.x + rect.w / 2;
+    setTrackSettings(track, { align, x_offset: clampOffset(anchor - videoWidth / 2) });
   };
 
   // (Re)apply server defaults once they load or after a project reset cleared them.
@@ -149,7 +167,7 @@ export const BlurControlPanel = () => {
 
   const handleXChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     userPositioned.current.add(track);
-    setBlurSettings({ x_offset: Math.max(-halfWidth, Math.min(halfWidth, Number(e.target.value))) });
+    setBlurSettings({ x_offset: clampOffset(Number(e.target.value)) });
   };
 
   return (
@@ -227,6 +245,34 @@ export const BlurControlPanel = () => {
               value={videoHeight - blurSettings.y}
               onChange={handleYChange}
             />
+            <div className="space-y-2">
+              <div className="text-[11px] font-semibold text-txt-muted">{t('blur.align')}</div>
+              <div role="radiogroup" aria-label={t('blur.align')} className="grid grid-cols-3 gap-1.5 bg-bg-input p-1 rounded-lg border border-border-strong">
+                {([
+                  { align: 'left' as const, icon: AlignLeft, label: t('blur.alignLeft') },
+                  { align: 'center' as const, icon: AlignCenter, label: t('blur.alignCenter') },
+                  { align: 'right' as const, icon: AlignRight, label: t('blur.alignRight') },
+                ]).map(({ align, icon: Icon, label: text }) => (
+                  <button
+                    key={align}
+                    type="button"
+                    role="radio"
+                    aria-checked={(blurSettings.align ?? 'center') === align}
+                    onClick={() => handleAlignChange(align)}
+                    className={cn(
+                      'flex items-center justify-center gap-1.5 text-[11px] py-1.5 font-semibold rounded-md transition-colors',
+                      (blurSettings.align ?? 'center') === align
+                        ? 'bg-brand-500 text-white shadow-sm'
+                        : 'text-txt-subtle hover:text-txt-muted hover:bg-bg-hover',
+                    )}
+                  >
+                    <Icon size={13} aria-hidden />
+                    {text}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-txt-subtle leading-snug">{t('blur.alignHint')}</p>
+            </div>
             <Slider
               label={t('blur.horizontalPosition')}
               min={-halfWidth}

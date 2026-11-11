@@ -246,3 +246,14 @@ def test_text_roi_shifts_horizontally_and_stays_in_frame():
     pushed = calculate_text_roi("Hello world", width, height, {**SETTINGS, "x_offset": -5000})
     assert pushed[0] == 0
     assert pushed[2] == centered[2]
+
+
+@pytest.mark.parametrize("align, edge", [("left", 0), ("right", 1)])
+def test_aligned_zone_keeps_its_edge_as_line_length_changes(align, edge):
+    width, height = 1920, 1080
+    settings = {**SETTINGS, "align": align, "x_offset": -700 if align == "left" else 700}
+    short = calculate_text_roi("Hi", width, height, settings)
+    long = calculate_text_roi("A much longer subtitle line", width, height, settings)
+    edges = [(r[0], r[0] + r[2]) for r in (short, long)]
+    assert edges[0][edge] == edges[1][edge] == (260 if align == "left" else 1660)
+    assert long[2] > short[2]
