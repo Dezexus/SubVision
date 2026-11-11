@@ -186,32 +186,22 @@ export const BlurControlPanel = () => {
             <p className="text-[11px] text-txt-subtle pb-1.5">{t('blur.linkTracksHint')}</p>
           </div>
         )}
-        <div className="w-full bg-bg-panel p-2 rounded-xl border border-border-main shadow-sm flex items-center relative overflow-hidden">
-          <div className="flex-1 flex items-center">
-            {isPreviewUpdating ? (
-              <span className="inline-flex items-center gap-1.5 text-[11px] text-brand-500 font-mono bg-brand-500/10 px-2.5 py-1 rounded shadow-inner">
-                <Loader2 size={12} className="animate-spin" />
-                {t('blur.updating')}
-              </span>
-            ) : (
-                <div className="w-32" />
-            )}
-          </div>
-          <div className="flex-none">
-              <button
-                onClick={handleReset}
-                className="inline-flex items-center gap-1.5 text-[11px] font-bold text-txt-subtle hover:text-txt-main transition-colors bg-bg-surface hover:bg-bg-hover px-3.5 py-1.5 rounded-md border border-border-strong shadow-md active:scale-95"
-                title={t('blur.resetAllTitle')}
-              >
-                <RotateCcw size={12} />
-                {t('blur.resetAll')}
-              </button>
-          </div>
-        </div>
-
         <div className="bg-bg-panel border border-border-main rounded-xl p-4 shadow-sm relative overflow-hidden">
-          <div className="flex items-center gap-2 text-xs font-bold text-txt-main tracking-wide mb-3">
-            <Wand2 size={16} className="text-brand-500" /> {t('blur.algorithm')}
+          {/* Reset and the preview spinner live in this header instead of a card of their own. */}
+          <div className="flex items-center gap-2 mb-3">
+            <Wand2 size={16} className="text-brand-500" aria-hidden />
+            <span className="text-xs font-bold text-txt-main tracking-wide">{t('blur.algorithm')}</span>
+            {isPreviewUpdating && (
+              <Loader2 size={13} className="animate-spin text-brand-500" aria-label={t('blur.updating')} />
+            )}
+            <button
+              onClick={handleReset}
+              className="ml-auto inline-flex items-center gap-1.5 text-[11px] font-semibold text-txt-subtle hover:text-txt-main hover:bg-bg-hover px-2 py-1 rounded-md transition-colors"
+              title={t('blur.resetAllTitle')}
+            >
+              <RotateCcw size={12} aria-hidden />
+              {t('blur.resetAll')}
+            </button>
           </div>
           <div className="grid grid-cols-2 gap-1.5 bg-bg-input p-1 rounded-lg border border-border-strong">
             {([
